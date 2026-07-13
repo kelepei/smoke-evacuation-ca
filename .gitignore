@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# 虚拟环境
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Mac系统
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# 项目输出（太大了，不上传）
+outputs/
+*.log
+
+# 测试
+.pytest_cache/
+.coverage
