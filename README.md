@@ -84,3 +84,16 @@ smoke-evacuation-ca/
      ├── 热力图
      └── 数据分析
 ```
+
+五.功能模块
+
+
+| 模块 | 功能 |
+|------|------|
+| **core** | 核心数据结构（Grid、Cell、Agent 等） |
+| **map_import** | JSON / CSV 地图解析与地图编辑 |
+| **simulation** | 元胞自动机、烟雾扩散、Floor Field、冲突处理 |
+| **social** | 社会关系网络、信息传播、群体行为 |
+| **control** | 疏散引导与出口管理 |
+| **visualization** | GUI、动画展示、热力图 |
+| **analysis** | 数据统计、实验分析、报告生成 |
