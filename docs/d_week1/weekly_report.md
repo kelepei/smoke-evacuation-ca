@@ -33,15 +33,15 @@
 
 Git 分支：
 
-`docs/d-week1-design`
+`docs/d-week1-design`（已合并至 `main`）
 
 Git commit：
 
-`【push 后填写 commit 链接】`
+https://github.com/kelepei/smoke-evacuation-ca/commit/ba1dc52717a20c9cdbb66fe396ffbae8873d8db0
 
 Pull Request：
 
-`【如创建 PR，在此填写；未创建则写“暂未创建”】`
+https://github.com/kelepei/smoke-evacuation-ca/pull/1`
 
 ---
 
@@ -160,7 +160,7 @@ Pull Request：
 | 低保真界面草图 | 已完成文字版      |
 | 图片版界面草图 | 可选，待补充      |
 | 实验日志格式   | 已完成第一版      |
-| Git 提交       | 【待填写】        |
+| Git 提交       | 已完成并合并至 main        |
 | 真实仿真接入   | 尚未开始          |
 | 仿真动画       | 计划第 3—4 周完成 |
 | CSV 日志代码   | 计划第 3—4 周完成 |
