@@ -24,7 +24,9 @@
   
 三.项目目录
 
+## 三、项目目录
 
+```text
 smoke-evacuation-ca/
 │
 ├── analysis/
@@ -49,10 +51,13 @@ smoke-evacuation-ca/
 │
 ├── README.md
 ├── requirements.txt
-└── .gitignore
+└── requirements.txt
+```
+
 
 四.系统架构
 
+```text
 地图输入
      │
      ▼
@@ -78,3 +83,4 @@ smoke-evacuation-ca/
      ├── GUI可视化
      ├── 热力图
      └── 数据分析
+```
