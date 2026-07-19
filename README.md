@@ -15,29 +15,35 @@
 2. 开发一套可视化疏散仿真平台，实现地图导入、人数设置、烟雾扩散、人员关系设置、信息传播和管控措施配置等功能；
 3. 实现不同烟雾浓度、不同人群规模、不同社会关系和不同管控策略下的疏散仿真；
 4. 形成疏散时间、出口利用率、拥堵区域、风险暴露人数、滞留人数等评价指标；
+
 三.项目目录
+
+## 📂 项目目录
+
+```text
 smoke-evacuation-ca/
 │
-├── analysis/              # 数据分析模块
-├── control/               # 疏散控制策略
-├── core/                  # 核心数据结构
-├── docs/                  # 项目文档
-├── experiments/           # 实验脚本
-├── map_import/            # 地图导入模块
-├── maps/                  # 地图资源
+├── analysis/
+├── control/
+├── core/
+├── docs/
+├── experiments/
+├── map_import/
+├── maps/
 │   ├── raw/
 │   ├── processed/
 │   └── examples/
-├── outputs/               # 仿真输出
+├── outputs/
 │   ├── figures/
 │   ├── logs/
 │   └── videos/
-├── scenarios/             # 示例场景
-├── simulation/            # 仿真核心模块
-├── social/                # 社会关系与信息传播
-├── tests/                 # 测试代码
-├── visualization/         # 可视化模块
+├── scenarios/
+├── simulation/
+├── social/
+├── tests/
+├── visualization/
 │
 ├── README.md
 ├── requirements.txt
 └── .gitignore
+```
