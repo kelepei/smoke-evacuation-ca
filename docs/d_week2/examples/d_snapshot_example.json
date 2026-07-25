@@ -1,0 +1,105 @@
+{
+  "schema_version": "0.1-draft",
+  "run_id": "run_001",
+  "scenario_id": "demo_room_001",
+  "step": 20,
+  "time_step": 0.5,
+  "time_s": 10.0,
+  "people": [
+    {
+      "person_id": 1,
+      "x": 1,
+      "y": 1,
+      "heading": "right",
+      "target_exit": "exit_02",
+      "evacuated": false,
+      "risk": 0.35,
+      "dose": 0.84,
+      "info_state": "ALERTED",
+      "info_source": 2,
+      "info_source_history": [
+        {
+          "info_source": "broadcast",
+          "receive_time": 5
+        },
+        {
+          "info_source": 2,
+          "receive_time": 14
+        }
+      ],
+      "receive_time": 5,
+      "follow_target": 2
+    },
+    {
+      "person_id": 2,
+      "x": 2,
+      "y": 1,
+      "heading": "right",
+      "target_exit": "exit_01",
+      "evacuated": true,
+      "risk": 0.15,
+      "dose": 0.35,
+      "info_state": "CONFIRMED",
+      "info_source": "broadcast",
+      "info_source_history": [
+        {
+          "info_source": "broadcast",
+          "receive_time": 4
+        }
+      ],
+      "receive_time": 4,
+      "follow_target": null
+    }
+  ],
+  "exits": [
+    {
+      "exit_id": "exit_01",
+      "queue_length": 0
+    },
+    {
+      "exit_id": "exit_02",
+      "queue_length": 2
+    }
+  ],
+  "fields": {
+    "smoke_field": [
+      [0.0, 0.1, 0.2],
+      [0.0, 0.2, 0.4]
+    ],
+    "risk_field": [
+      [0.0, 0.05, 0.15],
+      [0.0, 0.1, 0.35]
+    ],
+    "congestion_field": [
+      [0.0, 0.4, 0.0],
+      [0.0, 0.8, 0.5]
+    ]
+  },
+  "relations": [
+    {
+      "person_a_id": 1,
+      "person_b_id": 2,
+      "relation_type": "friend",
+      "strength": 0.8,
+      "trust": 0.9
+    }
+  ],
+  "events": [
+    {
+      "type": "exit_switch",
+      "step": 20,
+      "person_id": 1,
+      "x": 1,
+      "y": 1,
+      "details": {
+        "from_exit": "exit_01",
+        "to_exit": "exit_02",
+        "reason": "congestion"
+      }
+    }
+  ],
+  "strategy_state": {
+    "strategy_name": "baseline",
+    "control_command": null
+  }
+}
