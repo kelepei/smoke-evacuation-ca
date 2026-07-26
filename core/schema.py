@@ -11,8 +11,9 @@ class CellType(Enum):
     EXIT = "exit"  # 出口位置
     SMOKE_SOURCE = "smoke_source"  # 烟源位置
     SIGN = "sign"  # 指示牌
-    GUIDE_ZONE = "guide_zone"  # 引导区域
 
+
+GUIDE_ZONE = "guide_zone"  # 引导区域
 
 
 
@@ -25,8 +26,11 @@ class SemanticType(Enum):
     SHOP = "shop"  # 商店
     HALL = "hall"  # 大厅
     CANTEEN = "canteen"  # 食堂
-    DORM = "dorm"  # 宿舍
 
+
+DORM = "dorm"  # 宿舍
+LIBRARY = "library"  # 图书馆
+HOSPITAL = "hospital"  # 医院
 
 
 
@@ -41,6 +45,7 @@ class InfoState(Enum):
 
 
 
+
 # 4. 社会关系类型
 class RelationType(Enum):
     FRIEND = "friend"
@@ -51,7 +56,7 @@ class RelationType(Enum):
 
 
 STAFF_TO_CUSTOMER = "staff_to_customer"
-
+DOCTOR_PATIENT = "doctor_patient"
 
 
 
@@ -70,7 +75,6 @@ class Cell:
 
 
 
-
 # 6. Exit 出口对象
 
 @dataclass
@@ -82,6 +86,8 @@ x: int  # 出口位置坐标
 y: int  # 出口位置坐标
 width: float = 1.0  # 出口实际宽度(m)
 label: str = "EXIT"  # 出口名称
+
+
 
 
 
@@ -99,10 +105,12 @@ familiarity: float = 0.5  # 对环境熟悉程度
 herding_tendency: float = 0.5  # 从众倾向
 group_id: Optional[str] = None  # 所属群体
 profile: str = "default"  # 人员类型
+# 此处只保留接口，具体student/teacher等由C模块定义
 info_state: InfoState = InfoState.UNKNOWN  # 当前信息状态
 target_exit_id: Optional[str] = None  # 当前选择的出口
 evacuated: bool = False  # 是否已经完成疏散
 dose: float = 0.0  # 烟雾暴露剂量， B模块计算
+
 
 
 
@@ -115,7 +123,7 @@ class Relation:
 
 relation_type: RelationType = RelationType.STRANGER  # 关系类型
 strength: float = 0.5  # 关系强度
-trust: float = 0.5
+trust: float = 0.5  # 信任程度
 wait_probability: float = 0.3  # 等待概率
 follow_probability: float = 0.3  # 跟随概率
 
@@ -139,6 +147,7 @@ class SmokeSource:
     x: int  # 烟源位置
     y: int
     intensity: float = 1.0  # 初始强度
+
 
 
 
