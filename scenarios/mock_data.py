@@ -1,4 +1,4 @@
-from schema import ScenarioConfig, Grid, Cell, Person, CellType, SmokeSource, Exit
+from core.schema import ScenarioConfig, Grid, Cell, Person, CellType, SmokeSource, Exit
 
 
 def build_base_scene():
