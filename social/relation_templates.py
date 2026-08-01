@@ -14,7 +14,7 @@ Relation 字段:
 """
 
 import numpy as np
-from typing import List, Tuple  # ✅ 删除未使用的 Optional
+from typing import List, Tuple 
 
 
 # ============================================================
@@ -147,7 +147,7 @@ def _sparse_clique_edges(
     return r
 
 
-# ✅ 新增：公共方法，消除重复代码
+
 def _filter_by_profile(profiles: List[str], profile_type: str) -> List[int]:
     """
     从 profiles 列表中筛选指定类型的索引列表
@@ -364,7 +364,7 @@ class RelationGenerator:
         return _sparse_clique_edges(self.n, fraction, (3, 3), "classmate")
 
     # ----------------------------------------------------------
-    # shop / hall（✅ 使用 _filter_by_profile 消除重复）
+    # shop / hall
     # ----------------------------------------------------------
     def _shop(self) -> List[Tuple[int, int, str]]:
         r = []
