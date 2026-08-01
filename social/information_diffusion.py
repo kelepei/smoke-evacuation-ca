@@ -93,7 +93,6 @@ class InformationDiffusionEngine:
         self.misinfo_params = DIFFUSION_PARAMS["misinformation"]
 
         self.misinfo_active = False
-        # ✅ 修复1：安全访问嵌套字典，避免 'str' 索引警告
         inject_data = self.misinfo_params.get("inject", {})
         self.misinfo_inject_time = inject_data.get("trigger_time", 25) if isinstance(inject_data, dict) else 25
 
@@ -113,7 +112,7 @@ class InformationDiffusionEngine:
             if current_step == self.broadcast_params["trigger_time"]:
                 self._apply_broadcast(all_persons, current_step)
 
-        # 2. 错误信息（✅ 修复2：安全访问）
+        # 2. 错误信息
         if self.misinfo_params.get("enabled", False):
             inject_data = self.misinfo_params.get("inject", {})
             if isinstance(inject_data, dict) and current_step == inject_data.get("trigger_time"):
@@ -232,7 +231,7 @@ class InformationDiffusionEngine:
                                                   "word_of_mouth", f"口头传播: {spreader_state}")
 
     # ============================================================
-    # 3. 关系传播（✅ 修复3：relation_boost 类型守卫）
+    # 3. 关系传播
     # ============================================================
     def _apply_relation_spread(self, all_persons: List, current_step: int):
         base_prob = self.rel_params["base_prob"]
@@ -299,7 +298,7 @@ class InformationDiffusionEngine:
                                                   "relation", f"关系传播: {rel_type}")
 
     # ============================================================
-    # 4. 错误信息注入（✅ 修复4：source 类型转换）
+    # 4. 错误信息注入
     # ============================================================
     def _inject_misinformation(self, all_persons: List, current_step: int):
         self.misinfo_active = True
@@ -333,7 +332,7 @@ class InformationDiffusionEngine:
         self.step_stats["misinfo_injected"] = injected
 
     # ============================================================
-    # 错误信息传播（✅ 修复5：base_prob 类型转换）
+    # 错误信息传播
     # ============================================================
     def _spread_misinformation(self, all_persons: List, current_step: int):
         spread_params = self.misinfo_params.get("spread", {})
@@ -382,7 +381,7 @@ class InformationDiffusionEngine:
                                                       "misinformation_spread", "错误信息传播")
 
     # ============================================================
-    # 错误信息纠正（✅ 修复6：数值类型转换）
+    # 错误信息纠正
     # ============================================================
     def _apply_correction(self, all_persons: List, current_step: int,
                           smoke_grid: Optional[np.ndarray] = None):
@@ -473,7 +472,7 @@ class InformationDiffusionEngine:
                             break
 
     # ============================================================
-    # 5. 烟雾触发确认（✅ 修复：索引类型转换）
+    # 5. 烟雾触发确认
     # ============================================================
     def _apply_smoke_confirmation(self, all_persons: List,
                                   smoke_grid: np.ndarray, current_step: int):
