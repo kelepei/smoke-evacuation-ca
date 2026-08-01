@@ -118,7 +118,7 @@ class SignageModel:
     管理所有指示牌，计算每个位置的引导效用值
     """
 
-    def __init__(self, exit_list: List = None):  # ✅ 修复：exits → exit_list
+    def __init__(self, exit_list: List = None):  
         """
         :param exit_list: 出口列表，格式: [(exit_id, x, y), ...]
         """
@@ -179,14 +179,14 @@ class SignageModel:
 
     def update_dynamic_signages(self, all_persons: List,
                                 smoke_grid: Optional[np.ndarray],
-                                _congestion_grid: Optional[np.ndarray],  # ✅ 修复：预留参数
+                                _congestion_grid: Optional[np.ndarray],  
                                 current_step: int):
         """
         更新所有动态指示牌的方向
 
         :param all_persons: 所有行人列表
         :param smoke_grid: 烟雾网格
-        :param _congestion_grid: 拥堵网格（预留，暂未使用）
+        :param _congestion_grid: 拥堵网格
         :param current_step: 当前步数
         """
         if not self.dynamic_params["enabled"]:
@@ -230,7 +230,7 @@ class SignageModel:
         """根据出口ID获取位置"""
         for eid, x, y in self.exits:
             if eid == exit_id:
-                return x, y  # ✅ 修复：移除冗余圆括号
+                return x, y  
         return None
 
     def _calculate_best_direction(self, x: int, y: int,
@@ -268,7 +268,7 @@ class SignageModel:
         best_dir = max(scores, key=scores.get)
         return best_dir
 
-    @staticmethod  # ✅ 修复：添加 @staticmethod
+    @staticmethod  
     def _evaluate_smoke_directions(x: int, y: int,
                                    directions: List[Tuple[int, int]],
                                    smoke_grid: Optional[np.ndarray]) -> Dict[Tuple[int, int], float]:
@@ -291,7 +291,7 @@ class SignageModel:
 
         return scores
 
-    @staticmethod  # ✅ 修复：添加 @staticmethod
+    @staticmethod  
     def _evaluate_congestion_directions(x: int, y: int,
                                         directions: List[Tuple[int, int]],
                                         all_persons: List) -> Dict[Tuple[int, int], float]:
@@ -318,13 +318,13 @@ class SignageModel:
     def quantize_direction(dx: int, dy: int) -> Tuple[int, int]:
         """将方向量化为8方向之一（公开方法）"""
         if dx == 0 and dy == 0:
-            return 0, 0  # ✅ 修复：移除冗余圆括号
+            return 0, 0  
 
         angle = np.arctan2(dy, dx) * 180 / np.pi
         angle = angle % 360
 
         if 22.5 <= angle < 67.5:
-            return 1, 1  # ✅ 修复：移除冗余圆括号
+            return 1, 1  
         elif 67.5 <= angle < 112.5:
             return 0, 1
         elif 112.5 <= angle < 157.5:
@@ -456,7 +456,7 @@ class SignageModel:
 # ============================================================
 # 便捷函数
 # ============================================================
-def create_signage_model(exit_list: List = None) -> SignageModel:  # ✅ 修复：exits → exit_list
+def create_signage_model(exit_list: List = None) -> SignageModel:  
     """创建疏散标识模型"""
     return SignageModel(exit_list)
 
