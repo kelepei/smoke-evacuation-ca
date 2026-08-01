@@ -2,7 +2,7 @@
 C05: 从众行为模块 (herding_model.py)
 根据局部可见人群的方向，影响行人的出口选择和移动方向。
 
-核心机制（任务书第5.5节）：
+核心机制：
     从众概率: P_i(follow) = σ(k(n_same/n_visible - θ_i))
     其中 n_same 是主流方向人数，n_visible 是可见总人数
 
