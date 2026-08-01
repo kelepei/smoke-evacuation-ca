@@ -13,9 +13,10 @@ C03: 关系图生成 (social_graph.py)
 """
 
 import json
+from typing import Dict, List, Tuple
+
 import networkx as nx
 import numpy as np
-from typing import Dict, List, Tuple, Optional
 
 # 导入 C02 模块
 from relation_templates import (
@@ -179,7 +180,6 @@ class SocialGraphBuilder:
             graph, persons = builder.build_with_config()
         """
         # 导入场景配置模块
-        from scene_config import SceneConfig
 
         # 创建构建器实例（复用原有的 __init__）
         builder = cls(
