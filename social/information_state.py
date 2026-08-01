@@ -131,7 +131,7 @@ class InformationStateEngine:
     # 状态优先级（供C07使用）
     # ============================================================
     @staticmethod
-    def state_priority(info_state: InfoState) -> int:  # ✅ 修复：state → info_state
+    def state_priority(info_state: InfoState) -> int:  
         priorities = {
             InfoState.UNKNOWN: 0,
             InfoState.ALERTED: 1,
@@ -209,7 +209,7 @@ class InformationStateEngine:
         total_people = len(self.person_states)
 
         for data in self.person_states.values():
-            current_state = data["state"]  # ✅ 修复：state → current_state
+            current_state = data["state"]  
             state_counts[current_state.value] += 1
             total_confidence += data["confidence"]
             if current_state != InfoState.UNKNOWN:
