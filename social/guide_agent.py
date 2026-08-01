@@ -246,7 +246,6 @@ class GuideAgentModel:
 
         center_x = np.mean([p.x for p in all_persons])
         center_y = np.mean([p.y for p in all_persons])
-        # ✅ 修复：np.float64 → int
         self._move_toward_point(guide, int(center_x), int(center_y))
 
     def _move_escort(self, guide: GuideAgent, all_persons: List, exits: List, _current_step: int):
@@ -293,7 +292,6 @@ class GuideAgentModel:
         self.step_stats["total_guided"] = sum(1 for r in results.values() if r["is_guided"])
         return results
 
-    # ✅ 修复：current_step → _current_step（未使用）
     def _calc_person_guidance(self, person, _current_step: int) -> dict:
         pid = person.id
 
@@ -339,7 +337,6 @@ class GuideAgentModel:
             "guide_trust": best_trust,
         }
 
-    # ✅ 修复：relation_boost 类型守卫，profile_boost 类型守卫
     def _calc_trust(self, person_id: int, guide: GuideAgent) -> float:
         base_trust = self.trust_params["base_trust"]
 
