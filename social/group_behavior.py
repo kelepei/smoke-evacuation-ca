@@ -102,7 +102,6 @@ class GroupBehaviorEngine:
                     results[pid] = self._no_behavior()
                 continue
 
-            # ✅ 修复：显式循环，安全可靠
             active_members = []
             for pid in member_ids:
                 if pid in self.persons and not self.persons[pid].evacuated:
