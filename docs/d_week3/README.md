@@ -20,7 +20,7 @@
 | 文件 | 作用 |
 |---|---|
 | `visualization/ca_snapshot_adapter.py` | 只读适配 B 当前运行状态，生成 D 标准快照 |
-| `visualization/scene_input_adapter.py` | 只读接入 A 的 JSON/CSV Grid 和 C 的 YAML SceneConfig |
+| `visualization/scene_input_adapter.py` | 只读接入 A 的 JSON/CSV Grid、C 的 YAML SceneConfig 和 C 的人员关系 JSON |
 | `visualization/visualizer.py` | Matplotlib 地图、烟雾、人员动画及控制按钮 |
 | `experiments/csv_logger.py` | 写入逐人逐步日志与事件日志 |
 | `experiments/runner.py` | 创建实验、推进仿真、重置和管理日志 |
@@ -49,8 +49,9 @@ A 的地图文件可以通过 `visualization.scene_input_adapter.load_map_grid()
 绘制的地图预览快照；预览不包含人员、烟雾场或仿真事件。
 
 C 的 YAML 可以通过 `load_population_config()` 调用 C 提供的
-`SceneConfigGenerator.load_config_from_yaml()`。C 当前交付只包含场景参数，
-没有 persons/relations 生成接口，因此 D 不会自行补造人员或关系。
+`SceneConfigGenerator.load_config_from_yaml()`。C 生成的
+`output_people.json` 可以通过 `load_population_output()` 接入 D；当前 C
+输出使用 0-based 编号，D 映射为 1-based 编号并保留 source ID。
 ```
 
 D 只负责读取、适配、显示和记录，不修改 A、B、C 的模型逻辑。
@@ -134,6 +135,7 @@ evac_success
 - A 的 CSV 地图：D 适配器支持并拒绝非稠密、非行优先输入；
 - A 的 `core.grid.Grid` 到 D 地图预览快照；
 - C 的 YAML 到只读 `SceneConfig` 参数视图；
+- C 的 `output_people.json` 到 D 的人员和关系只读适配；
 - B 当前 mock 地图；
 - B 当前人员坐标；
 - B 当前烟雾矩阵；
@@ -218,7 +220,7 @@ python -B -m unittest discover -s experiments/tests -p "test_*.py" -v
 ## 10. 当前边界
 
 - A 的 JSON/CSV 已接入 D 地图预览适配层，但尚未组成 B 可运行场景；
-- C 的 YAML 参数已接入 D 只读视图，但 persons/relations 尚未接入；
+- C 的 YAML 参数和 `output_people.json` 已接入 D 只读适配层，但尚未驱动 B 的正式运行场景；
 - 尚未接入 B 的正式公开快照；
 - 当前快照仅部分兼容 `0.1-draft`：B 未提供的必填 `heading`
   暂时为空，并已在日志和说明中明确保留；
