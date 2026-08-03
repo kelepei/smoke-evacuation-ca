@@ -1,0 +1,2059 @@
+{
+  "metadata": {
+    "semantic": "my_classroom",
+    "persons": 40,
+    "directed_edges": 160,
+    "groups": 10,
+    "edge_types": {
+      "classmate": 160
+    },
+    "profiles": {
+      "student": 35,
+      "teacher": 5
+    }
+  },
+  "persons": [
+    {
+      "id": 0,
+      "x": 0,
+      "y": 0,
+      "speed": 1.4226206851751189,
+      "group_id": "0",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 1,
+      "x": 0,
+      "y": 0,
+      "speed": 1.3746596253655117,
+      "group_id": "1",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 2,
+      "x": 0,
+      "y": 0,
+      "speed": 1.3161796049705299,
+      "group_id": "2",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 3,
+      "x": 0,
+      "y": 0,
+      "speed": 1.1127116700572046,
+      "group_id": "3",
+      "profile": "teacher",
+      "risk_sensitivity": 0.3,
+      "familiarity": 0.9,
+      "herding_tendency": 0.3,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 4,
+      "x": 0,
+      "y": 0,
+      "speed": 1.3121964643431325,
+      "group_id": "0",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 5,
+      "x": 0,
+      "y": 0,
+      "speed": 1.3150366644053495,
+      "group_id": "0",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 6,
+      "x": 0,
+      "y": 0,
+      "speed": 1.395921235667613,
+      "group_id": "4",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 7,
+      "x": 0,
+      "y": 0,
+      "speed": 1.3775114942710427,
+      "group_id": "5",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 8,
+      "x": 0,
+      "y": 0,
+      "speed": 1.4274425485152653,
+      "group_id": "3",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 9,
+      "x": 0,
+      "y": 0,
+      "speed": 1.34444298503239,
+      "group_id": "1",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 10,
+      "x": 0,
+      "y": 0,
+      "speed": 1.1239188491876604,
+      "group_id": "5",
+      "profile": "teacher",
+      "risk_sensitivity": 0.3,
+      "familiarity": 0.9,
+      "herding_tendency": 0.3,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 11,
+      "x": 0,
+      "y": 0,
+      "speed": 1.392648957444599,
+      "group_id": "2",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 12,
+      "x": 0,
+      "y": 0,
+      "speed": 1.2521570097233794,
+      "group_id": "1",
+      "profile": "teacher",
+      "risk_sensitivity": 0.3,
+      "familiarity": 0.9,
+      "herding_tendency": 0.3,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 13,
+      "x": 0,
+      "y": 0,
+      "speed": 1.3622554395138993,
+      "group_id": "4",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 14,
+      "x": 0,
+      "y": 0,
+      "speed": 1.4041934359909123,
+      "group_id": "4",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 15,
+      "x": 0,
+      "y": 0,
+      "speed": 1.1987591192728781,
+      "group_id": "6",
+      "profile": "teacher",
+      "risk_sensitivity": 0.3,
+      "familiarity": 0.9,
+      "herding_tendency": 0.3,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 16,
+      "x": 0,
+      "y": 0,
+      "speed": 1.3545465658763989,
+      "group_id": "7",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 17,
+      "x": 0,
+      "y": 0,
+      "speed": 1.33550820367171,
+      "group_id": "1",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 18,
+      "x": 0,
+      "y": 0,
+      "speed": 1.255083825348819,
+      "group_id": "7",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 19,
+      "x": 0,
+      "y": 0,
+      "speed": 1.271578285398661,
+      "group_id": "3",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 20,
+      "x": 0,
+      "y": 0,
+      "speed": 1.2562858371373469,
+      "group_id": "1",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 21,
+      "x": 0,
+      "y": 0,
+      "speed": 1.3772820822527563,
+      "group_id": "8",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 22,
+      "x": 0,
+      "y": 0,
+      "speed": 1.3128711962152655,
+      "group_id": "3",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 23,
+      "x": 0,
+      "y": 0,
+      "speed": 1.3517141382329407,
+      "group_id": "2",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 24,
+      "x": 0,
+      "y": 0,
+      "speed": 1.4315132947852187,
+      "group_id": "3",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 25,
+      "x": 0,
+      "y": 0,
+      "speed": 1.299858445829775,
+      "group_id": "7",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 26,
+      "x": 0,
+      "y": 0,
+      "speed": 1.332076584607126,
+      "group_id": "1",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 27,
+      "x": 0,
+      "y": 0,
+      "speed": 1.4011102277086098,
+      "group_id": "6",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 28,
+      "x": 0,
+      "y": 0,
+      "speed": 1.2957596330983245,
+      "group_id": "6",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 29,
+      "x": 0,
+      "y": 0,
+      "speed": 1.1153959819657586,
+      "group_id": "9",
+      "profile": "teacher",
+      "risk_sensitivity": 0.3,
+      "familiarity": 0.9,
+      "herding_tendency": 0.3,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 30,
+      "x": 0,
+      "y": 0,
+      "speed": 1.3079502905827538,
+      "group_id": "5",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 31,
+      "x": 0,
+      "y": 0,
+      "speed": 1.282244257450801,
+      "group_id": "9",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 32,
+      "x": 0,
+      "y": 0,
+      "speed": 1.4359395304685147,
+      "group_id": "4",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 33,
+      "x": 0,
+      "y": 0,
+      "speed": 1.4116240759128835,
+      "group_id": "0",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 34,
+      "x": 0,
+      "y": 0,
+      "speed": 1.376680751302085,
+      "group_id": "9",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 35,
+      "x": 0,
+      "y": 0,
+      "speed": 1.4242921180375436,
+      "group_id": "1",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 36,
+      "x": 0,
+      "y": 0,
+      "speed": 1.410734415379823,
+      "group_id": "3",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 37,
+      "x": 0,
+      "y": 0,
+      "speed": 1.2873140117772073,
+      "group_id": "1",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 38,
+      "x": 0,
+      "y": 0,
+      "speed": 1.4285117996979957,
+      "group_id": "4",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    },
+    {
+      "id": 39,
+      "x": 0,
+      "y": 0,
+      "speed": 1.3578684483831303,
+      "group_id": "3",
+      "profile": "student",
+      "risk_sensitivity": 0.4,
+      "familiarity": 0.6,
+      "herding_tendency": 0.5,
+      "target_exit": "",
+      "info_state": "UNKNOWN",
+      "evacuated": false,
+      "dose": 0.0
+    }
+  ],
+  "relations": [
+    {
+      "from": 0,
+      "to": 33,
+      "relation_type": "classmate",
+      "strength": 0.4090892760682916,
+      "trust": 0.5561926379184461,
+      "wait_probability": 0.5900822968153118,
+      "follow_probability": 0.6280527567781833
+    },
+    {
+      "from": 0,
+      "to": 4,
+      "relation_type": "classmate",
+      "strength": 0.4927396809879964,
+      "trust": 0.5706704456052105,
+      "wait_probability": 0.5167312223701744,
+      "follow_probability": 0.465546927392997
+    },
+    {
+      "from": 0,
+      "to": 5,
+      "relation_type": "classmate",
+      "strength": 0.4619055232572655,
+      "trust": 0.6627590039413898,
+      "wait_probability": 0.5369462345107758,
+      "follow_probability": 0.4825233878689783
+    },
+    {
+      "from": 1,
+      "to": 12,
+      "relation_type": "classmate",
+      "strength": 0.3,
+      "trust": 0.6,
+      "wait_probability": 0.0,
+      "follow_probability": 0.3
+    },
+    {
+      "from": 1,
+      "to": 17,
+      "relation_type": "classmate",
+      "strength": 0.463862727518083,
+      "trust": 0.690012393410161,
+      "wait_probability": 0.5901214293875112,
+      "follow_probability": 0.5646875776246573
+    },
+    {
+      "from": 1,
+      "to": 35,
+      "relation_type": "classmate",
+      "strength": 0.42859833641056716,
+      "trust": 0.6523021263434945,
+      "wait_probability": 0.5236436126632522,
+      "follow_probability": 0.4702245352245581
+    },
+    {
+      "from": 1,
+      "to": 37,
+      "relation_type": "classmate",
+      "strength": 0.5972002127645741,
+      "trust": 0.6506756370517883,
+      "wait_probability": 0.47525191710618314,
+      "follow_probability": 0.4667001433397338
+    },
+    {
+      "from": 1,
+      "to": 9,
+      "relation_type": "classmate",
+      "strength": 0.41126065513636745,
+      "trust": 0.5237635832536144,
+      "wait_probability": 0.423505249355421,
+      "follow_probability": 0.5798420604232127
+    },
+    {
+      "from": 1,
+      "to": 26,
+      "relation_type": "classmate",
+      "strength": 0.40243089493796325,
+      "trust": 0.6939757653415278,
+      "wait_probability": 0.4086319823901152,
+      "follow_probability": 0.6282286227396143
+    },
+    {
+      "from": 1,
+      "to": 20,
+      "relation_type": "classmate",
+      "strength": 0.50554022181726,
+      "trust": 0.69859295922386,
+      "wait_probability": 0.4147593129470798,
+      "follow_probability": 0.5607708568802642
+    },
+    {
+      "from": 2,
+      "to": 23,
+      "relation_type": "classmate",
+      "strength": 0.522683039187158,
+      "trust": 0.5836486072581237,
+      "wait_probability": 0.5865456966708027,
+      "follow_probability": 0.6232127779000818
+    },
+    {
+      "from": 2,
+      "to": 11,
+      "relation_type": "classmate",
+      "strength": 0.4090437340212379,
+      "trust": 0.5052733948994503,
+      "wait_probability": 0.47529267337560993,
+      "follow_probability": 0.6121106661563667
+    },
+    {
+      "from": 3,
+      "to": 19,
+      "relation_type": "classmate",
+      "strength": 0.4,
+      "trust": 0.7,
+      "wait_probability": 0.05,
+      "follow_probability": 0.5
+    },
+    {
+      "from": 3,
+      "to": 36,
+      "relation_type": "classmate",
+      "strength": 0.4,
+      "trust": 0.7,
+      "wait_probability": 0.05,
+      "follow_probability": 0.5
+    },
+    {
+      "from": 3,
+      "to": 22,
+      "relation_type": "classmate",
+      "strength": 0.4,
+      "trust": 0.7,
+      "wait_probability": 0.05,
+      "follow_probability": 0.5
+    },
+    {
+      "from": 3,
+      "to": 24,
+      "relation_type": "classmate",
+      "strength": 0.4,
+      "trust": 0.7,
+      "wait_probability": 0.05,
+      "follow_probability": 0.5
+    },
+    {
+      "from": 3,
+      "to": 39,
+      "relation_type": "classmate",
+      "strength": 0.4,
+      "trust": 0.7,
+      "wait_probability": 0.05,
+      "follow_probability": 0.5
+    },
+    {
+      "from": 3,
+      "to": 8,
+      "relation_type": "classmate",
+      "strength": 0.4,
+      "trust": 0.7,
+      "wait_probability": 0.05,
+      "follow_probability": 0.5
+    },
+    {
+      "from": 4,
+      "to": 33,
+      "relation_type": "classmate",
+      "strength": 0.49090821295355463,
+      "trust": 0.6255116160168126,
+      "wait_probability": 0.5168628623846201,
+      "follow_probability": 0.6302316020981978
+    },
+    {
+      "from": 4,
+      "to": 0,
+      "relation_type": "classmate",
+      "strength": 0.4927396809879964,
+      "trust": 0.5706704456052105,
+      "wait_probability": 0.5167312223701744,
+      "follow_probability": 0.465546927392997
+    },
+    {
+      "from": 4,
+      "to": 5,
+      "relation_type": "classmate",
+      "strength": 0.5948789615332333,
+      "trust": 0.6972421488959206,
+      "wait_probability": 0.539632342803949,
+      "follow_probability": 0.5572192732688241
+    },
+    {
+      "from": 5,
+      "to": 33,
+      "relation_type": "classmate",
+      "strength": 0.4911313505571426,
+      "trust": 0.6240265195603073,
+      "wait_probability": 0.45547623659622655,
+      "follow_probability": 0.4876242319447523
+    },
+    {
+      "from": 5,
+      "to": 4,
+      "relation_type": "classmate",
+      "strength": 0.5948789615332333,
+      "trust": 0.6972421488959206,
+      "wait_probability": 0.539632342803949,
+      "follow_probability": 0.5572192732688241
+    },
+    {
+      "from": 5,
+      "to": 0,
+      "relation_type": "classmate",
+      "strength": 0.4619055232572655,
+      "trust": 0.6627590039413898,
+      "wait_probability": 0.5369462345107758,
+      "follow_probability": 0.4825233878689783
+    },
+    {
+      "from": 6,
+      "to": 38,
+      "relation_type": "classmate",
+      "strength": 0.425412102530377,
+      "trust": 0.6044486520109609,
+      "wait_probability": 0.5539987106197222,
+      "follow_probability": 0.4931642054993687
+    },
+    {
+      "from": 6,
+      "to": 32,
+      "relation_type": "classmate",
+      "strength": 0.48779428414112724,
+      "trust": 0.5156912762684531,
+      "wait_probability": 0.4050701486830915,
+      "follow_probability": 0.6425296829355851
+    },
+    {
+      "from": 6,
+      "to": 14,
+      "relation_type": "classmate",
+      "strength": 0.5671960241024412,
+      "trust": 0.6391948412187396,
+      "wait_probability": 0.481790588882854,
+      "follow_probability": 0.4846588640141692
+    },
+    {
+      "from": 6,
+      "to": 13,
+      "relation_type": "classmate",
+      "strength": 0.4312874085342172,
+      "trust": 0.5500485796329191,
+      "wait_probability": 0.5098453329412241,
+      "follow_probability": 0.5929191845400126
+    },
+    {
+      "from": 7,
+      "to": 10,
+      "relation_type": "classmate",
+      "strength": 0.3,
+      "trust": 0.6,
+      "wait_probability": 0.0,
+      "follow_probability": 0.3
+    },
+    {
+      "from": 7,
+      "to": 30,
+      "relation_type": "classmate",
+      "strength": 0.4916505780983033,
+      "trust": 0.6091233578631869,
+      "wait_probability": 0.588292961755305,
+      "follow_probability": 0.5272205275601549
+    },
+    {
+      "from": 8,
+      "to": 19,
+      "relation_type": "classmate",
+      "strength": 0.4901088270620187,
+      "trust": 0.5258318830302989,
+      "wait_probability": 0.5908102054517445,
+      "follow_probability": 0.5712349268901761
+    },
+    {
+      "from": 8,
+      "to": 36,
+      "relation_type": "classmate",
+      "strength": 0.5510274511347238,
+      "trust": 0.6240619102706929,
+      "wait_probability": 0.5408159536198447,
+      "follow_probability": 0.4925928323017822
+    },
+    {
+      "from": 8,
+      "to": 22,
+      "relation_type": "classmate",
+      "strength": 0.572472741749349,
+      "trust": 0.6899041247315284,
+      "wait_probability": 0.4294146961858076,
+      "follow_probability": 0.6353175250322989
+    },
+    {
+      "from": 8,
+      "to": 24,
+      "relation_type": "classmate",
+      "strength": 0.4151726656217328,
+      "trust": 0.5257759443821298,
+      "wait_probability": 0.4256091677915545,
+      "follow_probability": 0.4803805387024589
+    },
+    {
+      "from": 8,
+      "to": 39,
+      "relation_type": "classmate",
+      "strength": 0.5793576819812024,
+      "trust": 0.5947923280525744,
+      "wait_probability": 0.5335115477042054,
+      "follow_probability": 0.484463974240326
+    },
+    {
+      "from": 8,
+      "to": 3,
+      "relation_type": "classmate",
+      "strength": 0.3,
+      "trust": 0.6,
+      "wait_probability": 0.0,
+      "follow_probability": 0.3
+    },
+    {
+      "from": 9,
+      "to": 12,
+      "relation_type": "classmate",
+      "strength": 0.3,
+      "trust": 0.6,
+      "wait_probability": 0.0,
+      "follow_probability": 0.3
+    },
+    {
+      "from": 9,
+      "to": 17,
+      "relation_type": "classmate",
+      "strength": 0.4778403357468326,
+      "trust": 0.5021675302960596,
+      "wait_probability": 0.5810763952838527,
+      "follow_probability": 0.46825733535722674
+    },
+    {
+      "from": 9,
+      "to": 35,
+      "relation_type": "classmate",
+      "strength": 0.4883061002746754,
+      "trust": 0.67754083655166,
+      "wait_probability": 0.4701830025104157,
+      "follow_probability": 0.47341340328552123
+    },
+    {
+      "from": 9,
+      "to": 37,
+      "relation_type": "classmate",
+      "strength": 0.4748541591512241,
+      "trust": 0.5741284294133782,
+      "wait_probability": 0.5625599134515005,
+      "follow_probability": 0.6394497154767718
+    },
+    {
+      "from": 9,
+      "to": 1,
+      "relation_type": "classmate",
+      "strength": 0.41126065513636745,
+      "trust": 0.5237635832536144,
+      "wait_probability": 0.423505249355421,
+      "follow_probability": 0.5798420604232127
+    },
+    {
+      "from": 9,
+      "to": 26,
+      "relation_type": "classmate",
+      "strength": 0.5492089758530847,
+      "trust": 0.616673753019432,
+      "wait_probability": 0.5924345096949084,
+      "follow_probability": 0.5249741159047409
+    },
+    {
+      "from": 9,
+      "to": 20,
+      "relation_type": "classmate",
+      "strength": 0.45714241725637217,
+      "trust": 0.673719825637892,
+      "wait_probability": 0.4447191677038905,
+      "follow_probability": 0.6426445078881223
+    },
+    {
+      "from": 10,
+      "to": 7,
+      "relation_type": "classmate",
+      "strength": 0.4,
+      "trust": 0.7,
+      "wait_probability": 0.05,
+      "follow_probability": 0.5
+    },
+    {
+      "from": 10,
+      "to": 30,
+      "relation_type": "classmate",
+      "strength": 0.4,
+      "trust": 0.7,
+      "wait_probability": 0.05,
+      "follow_probability": 0.5
+    },
+    {
+      "from": 11,
+      "to": 23,
+      "relation_type": "classmate",
+      "strength": 0.5821854368987684,
+      "trust": 0.6645074485846338,
+      "wait_probability": 0.5899599826583848,
+      "follow_probability": 0.5951439016776721
+    },
+    {
+      "from": 11,
+      "to": 2,
+      "relation_type": "classmate",
+      "strength": 0.4090437340212379,
+      "trust": 0.5052733948994503,
+      "wait_probability": 0.47529267337560993,
+      "follow_probability": 0.6121106661563667
+    },
+    {
+      "from": 12,
+      "to": 17,
+      "relation_type": "classmate",
+      "strength": 0.4,
+      "trust": 0.7,
+      "wait_probability": 0.05,
+      "follow_probability": 0.5
+    },
+    {
+      "from": 12,
+      "to": 35,
+      "relation_type": "classmate",
+      "strength": 0.4,
+      "trust": 0.7,
+      "wait_probability": 0.05,
+      "follow_probability": 0.5
+    },
+    {
+      "from": 12,
+      "to": 37,
+      "relation_type": "classmate",
+      "strength": 0.4,
+      "trust": 0.7,
+      "wait_probability": 0.05,
+      "follow_probability": 0.5
+    },
+    {
+      "from": 12,
+      "to": 9,
+      "relation_type": "classmate",
+      "strength": 0.4,
+      "trust": 0.7,
+      "wait_probability": 0.05,
+      "follow_probability": 0.5
+    },
+    {
+      "from": 12,
+      "to": 1,
+      "relation_type": "classmate",
+      "strength": 0.4,
+      "trust": 0.7,
+      "wait_probability": 0.05,
+      "follow_probability": 0.5
+    },
+    {
+      "from": 12,
+      "to": 26,
+      "relation_type": "classmate",
+      "strength": 0.4,
+      "trust": 0.7,
+      "wait_probability": 0.05,
+      "follow_probability": 0.5
+    },
+    {
+      "from": 12,
+      "to": 20,
+      "relation_type": "classmate",
+      "strength": 0.4,
+      "trust": 0.7,
+      "wait_probability": 0.05,
+      "follow_probability": 0.5
+    },
+    {
+      "from": 13,
+      "to": 38,
+      "relation_type": "classmate",
+      "strength": 0.5032600696602391,
+      "trust": 0.5645912945882492,
+      "wait_probability": 0.5590372389537408,
+      "follow_probability": 0.5041664502524149
+    },
+    {
+      "from": 13,
+      "to": 6,
+      "relation_type": "classmate",
+      "strength": 0.4312874085342172,
+      "trust": 0.5500485796329191,
+      "wait_probability": 0.5098453329412241,
+      "follow_probability": 0.5929191845400126
+    },
+    {
+      "from": 13,
+      "to": 32,
+      "relation_type": "classmate",
+      "strength": 0.5108708105022801,
+      "trust": 0.6223441492468704,
+      "wait_probability": 0.483920012485558,
+      "follow_probability": 0.4995461979002315
+    },
+    {
+      "from": 13,
+      "to": 14,
+      "relation_type": "classmate",
+      "strength": 0.47119453573025233,
+      "trust": 0.6515692220928738,
+      "wait_probability": 0.4028786977259512,
+      "follow_probability": 0.4732145281013833
+    },
+    {
+      "from": 14,
+      "to": 38,
+      "relation_type": "classmate",
+      "strength": 0.5081270243220213,
+      "trust": 0.6274859802996413,
+      "wait_probability": 0.5452182667445323,
+      "follow_probability": 0.645170415892507
+    },
+    {
+      "from": 14,
+      "to": 6,
+      "relation_type": "classmate",
+      "strength": 0.5671960241024412,
+      "trust": 0.6391948412187396,
+      "wait_probability": 0.481790588882854,
+      "follow_probability": 0.4846588640141692
+    },
+    {
+      "from": 14,
+      "to": 32,
+      "relation_type": "classmate",
+      "strength": 0.5320394753435462,
+      "trust": 0.5559867793891885,
+      "wait_probability": 0.5909730561326388,
+      "follow_probability": 0.5975793833391537
+    },
+    {
+      "from": 14,
+      "to": 13,
+      "relation_type": "classmate",
+      "strength": 0.47119453573025233,
+      "trust": 0.6515692220928738,
+      "wait_probability": 0.4028786977259512,
+      "follow_probability": 0.4732145281013833
+    },
+    {
+      "from": 15,
+      "to": 28,
+      "relation_type": "classmate",
+      "strength": 0.4,
+      "trust": 0.7,
+      "wait_probability": 0.05,
+      "follow_probability": 0.5
+    },
+    {
+      "from": 15,
+      "to": 27,
+      "relation_type": "classmate",
+      "strength": 0.4,
+      "trust": 0.7,
+      "wait_probability": 0.05,
+      "follow_probability": 0.5
+    },
+    {
+      "from": 16,
+      "to": 18,
+      "relation_type": "classmate",
+      "strength": 0.5006272517160175,
+      "trust": 0.6712979682376644,
+      "wait_probability": 0.5317387263237889,
+      "follow_probability": 0.48258688541628597
+    },
+    {
+      "from": 16,
+      "to": 25,
+      "relation_type": "classmate",
+      "strength": 0.41411374948008595,
+      "trust": 0.6284838556412631,
+      "wait_probability": 0.4053022621083244,
+      "follow_probability": 0.5671551162546927
+    },
+    {
+      "from": 17,
+      "to": 12,
+      "relation_type": "classmate",
+      "strength": 0.3,
+      "trust": 0.6,
+      "wait_probability": 0.0,
+      "follow_probability": 0.3
+    },
+    {
+      "from": 17,
+      "to": 35,
+      "relation_type": "classmate",
+      "strength": 0.5501742135582994,
+      "trust": 0.6509085748169364,
+      "wait_probability": 0.42062477376718654,
+      "follow_probability": 0.6305105813359134
+    },
+    {
+      "from": 17,
+      "to": 37,
+      "relation_type": "classmate",
+      "strength": 0.5010504744895714,
+      "trust": 0.6652914932215483,
+      "wait_probability": 0.46400992020612236,
+      "follow_probability": 0.6291046456992402
+    },
+    {
+      "from": 17,
+      "to": 9,
+      "relation_type": "classmate",
+      "strength": 0.4778403357468326,
+      "trust": 0.5021675302960596,
+      "wait_probability": 0.5810763952838527,
+      "follow_probability": 0.46825733535722674
+    },
+    {
+      "from": 17,
+      "to": 1,
+      "relation_type": "classmate",
+      "strength": 0.463862727518083,
+      "trust": 0.690012393410161,
+      "wait_probability": 0.5901214293875112,
+      "follow_probability": 0.5646875776246573
+    },
+    {
+      "from": 17,
+      "to": 26,
+      "relation_type": "classmate",
+      "strength": 0.5263674424339598,
+      "trust": 0.5896891043956639,
+      "wait_probability": 0.4586421543396129,
+      "follow_probability": 0.5157329090739833
+    },
+    {
+      "from": 17,
+      "to": 20,
+      "relation_type": "classmate",
+      "strength": 0.5345036912154078,
+      "trust": 0.650474905887536,
+      "wait_probability": 0.5583158087451697,
+      "follow_probability": 0.6079236285589108
+    },
+    {
+      "from": 18,
+      "to": 25,
+      "relation_type": "classmate",
+      "strength": 0.5270187301735287,
+      "trust": 0.5090608019544088,
+      "wait_probability": 0.47492252292529424,
+      "follow_probability": 0.5751719831428473
+    },
+    {
+      "from": 18,
+      "to": 16,
+      "relation_type": "classmate",
+      "strength": 0.5006272517160175,
+      "trust": 0.6712979682376644,
+      "wait_probability": 0.5317387263237889,
+      "follow_probability": 0.48258688541628597
+    },
+    {
+      "from": 19,
+      "to": 36,
+      "relation_type": "classmate",
+      "strength": 0.5974552258629889,
+      "trust": 0.5300833782207056,
+      "wait_probability": 0.5188261430704271,
+      "follow_probability": 0.5261781713262044
+    },
+    {
+      "from": 19,
+      "to": 22,
+      "relation_type": "classmate",
+      "strength": 0.5939828795629206,
+      "trust": 0.6684237846271417,
+      "wait_probability": 0.5676657409422275,
+      "follow_probability": 0.5437386319589941
+    },
+    {
+      "from": 19,
+      "to": 24,
+      "relation_type": "classmate",
+      "strength": 0.482963900467533,
+      "trust": 0.5546814143861413,
+      "wait_probability": 0.4112750993301854,
+      "follow_probability": 0.6229444752510107
+    },
+    {
+      "from": 19,
+      "to": 39,
+      "relation_type": "classmate",
+      "strength": 0.5625802018260155,
+      "trust": 0.6999435346572261,
+      "wait_probability": 0.5993273674147811,
+      "follow_probability": 0.5610863411205256
+    },
+    {
+      "from": 19,
+      "to": 3,
+      "relation_type": "classmate",
+      "strength": 0.3,
+      "trust": 0.6,
+      "wait_probability": 0.0,
+      "follow_probability": 0.3
+    },
+    {
+      "from": 19,
+      "to": 8,
+      "relation_type": "classmate",
+      "strength": 0.4901088270620187,
+      "trust": 0.5258318830302989,
+      "wait_probability": 0.5908102054517445,
+      "follow_probability": 0.5712349268901761
+    },
+    {
+      "from": 20,
+      "to": 12,
+      "relation_type": "classmate",
+      "strength": 0.3,
+      "trust": 0.6,
+      "wait_probability": 0.0,
+      "follow_probability": 0.3
+    },
+    {
+      "from": 20,
+      "to": 17,
+      "relation_type": "classmate",
+      "strength": 0.5345036912154078,
+      "trust": 0.650474905887536,
+      "wait_probability": 0.5583158087451697,
+      "follow_probability": 0.6079236285589108
+    },
+    {
+      "from": 20,
+      "to": 35,
+      "relation_type": "classmate",
+      "strength": 0.5412484454312992,
+      "trust": 0.5162697561283799,
+      "wait_probability": 0.4169675428170384,
+      "follow_probability": 0.6473279157002352
+    },
+    {
+      "from": 20,
+      "to": 37,
+      "relation_type": "classmate",
+      "strength": 0.42223949646123027,
+      "trust": 0.5985250208581718,
+      "wait_probability": 0.4022707289534838,
+      "follow_probability": 0.5437321283988253
+    },
+    {
+      "from": 20,
+      "to": 9,
+      "relation_type": "classmate",
+      "strength": 0.45714241725637217,
+      "trust": 0.673719825637892,
+      "wait_probability": 0.4447191677038905,
+      "follow_probability": 0.6426445078881223
+    },
+    {
+      "from": 20,
+      "to": 1,
+      "relation_type": "classmate",
+      "strength": 0.50554022181726,
+      "trust": 0.69859295922386,
+      "wait_probability": 0.4147593129470798,
+      "follow_probability": 0.5607708568802642
+    },
+    {
+      "from": 20,
+      "to": 26,
+      "relation_type": "classmate",
+      "strength": 0.5938605071238198,
+      "trust": 0.6046195688340298,
+      "wait_probability": 0.5258797276270525,
+      "follow_probability": 0.5891497377969235
+    },
+    {
+      "from": 22,
+      "to": 19,
+      "relation_type": "classmate",
+      "strength": 0.5939828795629206,
+      "trust": 0.6684237846271417,
+      "wait_probability": 0.5676657409422275,
+      "follow_probability": 0.5437386319589941
+    },
+    {
+      "from": 22,
+      "to": 36,
+      "relation_type": "classmate",
+      "strength": 0.44572856110069253,
+      "trust": 0.6343401368811713,
+      "wait_probability": 0.5236256480915792,
+      "follow_probability": 0.5216325436065682
+    },
+    {
+      "from": 22,
+      "to": 24,
+      "relation_type": "classmate",
+      "strength": 0.42727429511735393,
+      "trust": 0.5029089331335763,
+      "wait_probability": 0.4701175117613194,
+      "follow_probability": 0.5679835373709267
+    },
+    {
+      "from": 22,
+      "to": 39,
+      "relation_type": "classmate",
+      "strength": 0.47844880901994646,
+      "trust": 0.5874949844047458,
+      "wait_probability": 0.5808317388987497,
+      "follow_probability": 0.5196510934046601
+    },
+    {
+      "from": 22,
+      "to": 3,
+      "relation_type": "classmate",
+      "strength": 0.3,
+      "trust": 0.6,
+      "wait_probability": 0.0,
+      "follow_probability": 0.3
+    },
+    {
+      "from": 22,
+      "to": 8,
+      "relation_type": "classmate",
+      "strength": 0.572472741749349,
+      "trust": 0.6899041247315284,
+      "wait_probability": 0.4294146961858076,
+      "follow_probability": 0.6353175250322989
+    },
+    {
+      "from": 23,
+      "to": 11,
+      "relation_type": "classmate",
+      "strength": 0.5821854368987684,
+      "trust": 0.6645074485846338,
+      "wait_probability": 0.5899599826583848,
+      "follow_probability": 0.5951439016776721
+    },
+    {
+      "from": 23,
+      "to": 2,
+      "relation_type": "classmate",
+      "strength": 0.522683039187158,
+      "trust": 0.5836486072581237,
+      "wait_probability": 0.5865456966708027,
+      "follow_probability": 0.6232127779000818
+    },
+    {
+      "from": 24,
+      "to": 19,
+      "relation_type": "classmate",
+      "strength": 0.482963900467533,
+      "trust": 0.5546814143861413,
+      "wait_probability": 0.4112750993301854,
+      "follow_probability": 0.6229444752510107
+    },
+    {
+      "from": 24,
+      "to": 36,
+      "relation_type": "classmate",
+      "strength": 0.4227115184399258,
+      "trust": 0.6343146391185599,
+      "wait_probability": 0.5040615401807587,
+      "follow_probability": 0.6044636783471279
+    },
+    {
+      "from": 24,
+      "to": 22,
+      "relation_type": "classmate",
+      "strength": 0.42727429511735393,
+      "trust": 0.5029089331335763,
+      "wait_probability": 0.4701175117613194,
+      "follow_probability": 0.5679835373709267
+    },
+    {
+      "from": 24,
+      "to": 39,
+      "relation_type": "classmate",
+      "strength": 0.49842325861590764,
+      "trust": 0.5516488776597916,
+      "wait_probability": 0.49182715124765225,
+      "follow_probability": 0.6460065150570955
+    },
+    {
+      "from": 24,
+      "to": 3,
+      "relation_type": "classmate",
+      "strength": 0.3,
+      "trust": 0.6,
+      "wait_probability": 0.0,
+      "follow_probability": 0.3
+    },
+    {
+      "from": 24,
+      "to": 8,
+      "relation_type": "classmate",
+      "strength": 0.4151726656217328,
+      "trust": 0.5257759443821298,
+      "wait_probability": 0.4256091677915545,
+      "follow_probability": 0.4803805387024589
+    },
+    {
+      "from": 25,
+      "to": 18,
+      "relation_type": "classmate",
+      "strength": 0.5270187301735287,
+      "trust": 0.5090608019544088,
+      "wait_probability": 0.47492252292529424,
+      "follow_probability": 0.5751719831428473
+    },
+    {
+      "from": 25,
+      "to": 16,
+      "relation_type": "classmate",
+      "strength": 0.41411374948008595,
+      "trust": 0.6284838556412631,
+      "wait_probability": 0.4053022621083244,
+      "follow_probability": 0.5671551162546927
+    },
+    {
+      "from": 26,
+      "to": 12,
+      "relation_type": "classmate",
+      "strength": 0.3,
+      "trust": 0.6,
+      "wait_probability": 0.0,
+      "follow_probability": 0.3
+    },
+    {
+      "from": 26,
+      "to": 17,
+      "relation_type": "classmate",
+      "strength": 0.5263674424339598,
+      "trust": 0.5896891043956639,
+      "wait_probability": 0.4586421543396129,
+      "follow_probability": 0.5157329090739833
+    },
+    {
+      "from": 26,
+      "to": 35,
+      "relation_type": "classmate",
+      "strength": 0.4168213612229995,
+      "trust": 0.640193826291824,
+      "wait_probability": 0.4145526012728387,
+      "follow_probability": 0.6143720118580713
+    },
+    {
+      "from": 26,
+      "to": 37,
+      "relation_type": "classmate",
+      "strength": 0.5554293831854874,
+      "trust": 0.611680849947161,
+      "wait_probability": 0.48484440184939526,
+      "follow_probability": 0.6312708770189472
+    },
+    {
+      "from": 26,
+      "to": 9,
+      "relation_type": "classmate",
+      "strength": 0.5492089758530847,
+      "trust": 0.616673753019432,
+      "wait_probability": 0.5924345096949084,
+      "follow_probability": 0.5249741159047409
+    },
+    {
+      "from": 26,
+      "to": 1,
+      "relation_type": "classmate",
+      "strength": 0.40243089493796325,
+      "trust": 0.6939757653415278,
+      "wait_probability": 0.4086319823901152,
+      "follow_probability": 0.6282286227396143
+    },
+    {
+      "from": 26,
+      "to": 20,
+      "relation_type": "classmate",
+      "strength": 0.5938605071238198,
+      "trust": 0.6046195688340298,
+      "wait_probability": 0.5258797276270525,
+      "follow_probability": 0.5891497377969235
+    },
+    {
+      "from": 27,
+      "to": 28,
+      "relation_type": "classmate",
+      "strength": 0.49311960362649204,
+      "trust": 0.6085289269415153,
+      "wait_probability": 0.45730825042565687,
+      "follow_probability": 0.5681666521138022
+    },
+    {
+      "from": 27,
+      "to": 15,
+      "relation_type": "classmate",
+      "strength": 0.3,
+      "trust": 0.6,
+      "wait_probability": 0.0,
+      "follow_probability": 0.3
+    },
+    {
+      "from": 28,
+      "to": 15,
+      "relation_type": "classmate",
+      "strength": 0.3,
+      "trust": 0.6,
+      "wait_probability": 0.0,
+      "follow_probability": 0.3
+    },
+    {
+      "from": 28,
+      "to": 27,
+      "relation_type": "classmate",
+      "strength": 0.49311960362649204,
+      "trust": 0.6085289269415153,
+      "wait_probability": 0.45730825042565687,
+      "follow_probability": 0.5681666521138022
+    },
+    {
+      "from": 29,
+      "to": 34,
+      "relation_type": "classmate",
+      "strength": 0.4,
+      "trust": 0.7,
+      "wait_probability": 0.05,
+      "follow_probability": 0.5
+    },
+    {
+      "from": 29,
+      "to": 31,
+      "relation_type": "classmate",
+      "strength": 0.4,
+      "trust": 0.7,
+      "wait_probability": 0.05,
+      "follow_probability": 0.5
+    },
+    {
+      "from": 30,
+      "to": 7,
+      "relation_type": "classmate",
+      "strength": 0.4916505780983033,
+      "trust": 0.6091233578631869,
+      "wait_probability": 0.588292961755305,
+      "follow_probability": 0.5272205275601549
+    },
+    {
+      "from": 30,
+      "to": 10,
+      "relation_type": "classmate",
+      "strength": 0.3,
+      "trust": 0.6,
+      "wait_probability": 0.0,
+      "follow_probability": 0.3
+    },
+    {
+      "from": 31,
+      "to": 34,
+      "relation_type": "classmate",
+      "strength": 0.40920052840435056,
+      "trust": 0.508145760463794,
+      "wait_probability": 0.5710921168022014,
+      "follow_probability": 0.5907315718760048
+    },
+    {
+      "from": 31,
+      "to": 29,
+      "relation_type": "classmate",
+      "strength": 0.3,
+      "trust": 0.6,
+      "wait_probability": 0.0,
+      "follow_probability": 0.3
+    },
+    {
+      "from": 32,
+      "to": 38,
+      "relation_type": "classmate",
+      "strength": 0.5245780951638,
+      "trust": 0.5170694929987536,
+      "wait_probability": 0.41033634423372156,
+      "follow_probability": 0.5562709263136296
+    },
+    {
+      "from": 32,
+      "to": 6,
+      "relation_type": "classmate",
+      "strength": 0.48779428414112724,
+      "trust": 0.5156912762684531,
+      "wait_probability": 0.4050701486830915,
+      "follow_probability": 0.6425296829355851
+    },
+    {
+      "from": 32,
+      "to": 14,
+      "relation_type": "classmate",
+      "strength": 0.5320394753435462,
+      "trust": 0.5559867793891885,
+      "wait_probability": 0.5909730561326388,
+      "follow_probability": 0.5975793833391537
+    },
+    {
+      "from": 32,
+      "to": 13,
+      "relation_type": "classmate",
+      "strength": 0.5108708105022801,
+      "trust": 0.6223441492468704,
+      "wait_probability": 0.483920012485558,
+      "follow_probability": 0.4995461979002315
+    },
+    {
+      "from": 33,
+      "to": 4,
+      "relation_type": "classmate",
+      "strength": 0.49090821295355463,
+      "trust": 0.6255116160168126,
+      "wait_probability": 0.5168628623846201,
+      "follow_probability": 0.6302316020981978
+    },
+    {
+      "from": 33,
+      "to": 0,
+      "relation_type": "classmate",
+      "strength": 0.4090892760682916,
+      "trust": 0.5561926379184461,
+      "wait_probability": 0.5900822968153118,
+      "follow_probability": 0.6280527567781833
+    },
+    {
+      "from": 33,
+      "to": 5,
+      "relation_type": "classmate",
+      "strength": 0.4911313505571426,
+      "trust": 0.6240265195603073,
+      "wait_probability": 0.45547623659622655,
+      "follow_probability": 0.4876242319447523
+    },
+    {
+      "from": 34,
+      "to": 31,
+      "relation_type": "classmate",
+      "strength": 0.40920052840435056,
+      "trust": 0.508145760463794,
+      "wait_probability": 0.5710921168022014,
+      "follow_probability": 0.5907315718760048
+    },
+    {
+      "from": 34,
+      "to": 29,
+      "relation_type": "classmate",
+      "strength": 0.3,
+      "trust": 0.6,
+      "wait_probability": 0.0,
+      "follow_probability": 0.3
+    },
+    {
+      "from": 35,
+      "to": 12,
+      "relation_type": "classmate",
+      "strength": 0.3,
+      "trust": 0.6,
+      "wait_probability": 0.0,
+      "follow_probability": 0.3
+    },
+    {
+      "from": 35,
+      "to": 17,
+      "relation_type": "classmate",
+      "strength": 0.5501742135582994,
+      "trust": 0.6509085748169364,
+      "wait_probability": 0.42062477376718654,
+      "follow_probability": 0.6305105813359134
+    },
+    {
+      "from": 35,
+      "to": 37,
+      "relation_type": "classmate",
+      "strength": 0.41824122060973806,
+      "trust": 0.5988840609405163,
+      "wait_probability": 0.41151175200332885,
+      "follow_probability": 0.5599057764647472
+    },
+    {
+      "from": 35,
+      "to": 9,
+      "relation_type": "classmate",
+      "strength": 0.4883061002746754,
+      "trust": 0.67754083655166,
+      "wait_probability": 0.4701830025104157,
+      "follow_probability": 0.47341340328552123
+    },
+    {
+      "from": 35,
+      "to": 1,
+      "relation_type": "classmate",
+      "strength": 0.42859833641056716,
+      "trust": 0.6523021263434945,
+      "wait_probability": 0.5236436126632522,
+      "follow_probability": 0.4702245352245581
+    },
+    {
+      "from": 35,
+      "to": 26,
+      "relation_type": "classmate",
+      "strength": 0.4168213612229995,
+      "trust": 0.640193826291824,
+      "wait_probability": 0.4145526012728387,
+      "follow_probability": 0.6143720118580713
+    },
+    {
+      "from": 35,
+      "to": 20,
+      "relation_type": "classmate",
+      "strength": 0.5412484454312992,
+      "trust": 0.5162697561283799,
+      "wait_probability": 0.4169675428170384,
+      "follow_probability": 0.6473279157002352
+    },
+    {
+      "from": 36,
+      "to": 19,
+      "relation_type": "classmate",
+      "strength": 0.5974552258629889,
+      "trust": 0.5300833782207056,
+      "wait_probability": 0.5188261430704271,
+      "follow_probability": 0.5261781713262044
+    },
+    {
+      "from": 36,
+      "to": 22,
+      "relation_type": "classmate",
+      "strength": 0.44572856110069253,
+      "trust": 0.6343401368811713,
+      "wait_probability": 0.5236256480915792,
+      "follow_probability": 0.5216325436065682
+    },
+    {
+      "from": 36,
+      "to": 24,
+      "relation_type": "classmate",
+      "strength": 0.4227115184399258,
+      "trust": 0.6343146391185599,
+      "wait_probability": 0.5040615401807587,
+      "follow_probability": 0.6044636783471279
+    },
+    {
+      "from": 36,
+      "to": 39,
+      "relation_type": "classmate",
+      "strength": 0.5040327002223987,
+      "trust": 0.670436300063708,
+      "wait_probability": 0.5103813677548971,
+      "follow_probability": 0.5621875943070773
+    },
+    {
+      "from": 36,
+      "to": 3,
+      "relation_type": "classmate",
+      "strength": 0.3,
+      "trust": 0.6,
+      "wait_probability": 0.0,
+      "follow_probability": 0.3
+    },
+    {
+      "from": 36,
+      "to": 8,
+      "relation_type": "classmate",
+      "strength": 0.5510274511347238,
+      "trust": 0.6240619102706929,
+      "wait_probability": 0.5408159536198447,
+      "follow_probability": 0.4925928323017822
+    },
+    {
+      "from": 37,
+      "to": 12,
+      "relation_type": "classmate",
+      "strength": 0.3,
+      "trust": 0.6,
+      "wait_probability": 0.0,
+      "follow_probability": 0.3
+    },
+    {
+      "from": 37,
+      "to": 17,
+      "relation_type": "classmate",
+      "strength": 0.5010504744895714,
+      "trust": 0.6652914932215483,
+      "wait_probability": 0.46400992020612236,
+      "follow_probability": 0.6291046456992402
+    },
+    {
+      "from": 37,
+      "to": 35,
+      "relation_type": "classmate",
+      "strength": 0.41824122060973806,
+      "trust": 0.5988840609405163,
+      "wait_probability": 0.41151175200332885,
+      "follow_probability": 0.5599057764647472
+    },
+    {
+      "from": 37,
+      "to": 9,
+      "relation_type": "classmate",
+      "strength": 0.4748541591512241,
+      "trust": 0.5741284294133782,
+      "wait_probability": 0.5625599134515005,
+      "follow_probability": 0.6394497154767718
+    },
+    {
+      "from": 37,
+      "to": 1,
+      "relation_type": "classmate",
+      "strength": 0.5972002127645741,
+      "trust": 0.6506756370517883,
+      "wait_probability": 0.47525191710618314,
+      "follow_probability": 0.4667001433397338
+    },
+    {
+      "from": 37,
+      "to": 26,
+      "relation_type": "classmate",
+      "strength": 0.5554293831854874,
+      "trust": 0.611680849947161,
+      "wait_probability": 0.48484440184939526,
+      "follow_probability": 0.6312708770189472
+    },
+    {
+      "from": 37,
+      "to": 20,
+      "relation_type": "classmate",
+      "strength": 0.42223949646123027,
+      "trust": 0.5985250208581718,
+      "wait_probability": 0.4022707289534838,
+      "follow_probability": 0.5437321283988253
+    },
+    {
+      "from": 38,
+      "to": 6,
+      "relation_type": "classmate",
+      "strength": 0.425412102530377,
+      "trust": 0.6044486520109609,
+      "wait_probability": 0.5539987106197222,
+      "follow_probability": 0.4931642054993687
+    },
+    {
+      "from": 38,
+      "to": 32,
+      "relation_type": "classmate",
+      "strength": 0.5245780951638,
+      "trust": 0.5170694929987536,
+      "wait_probability": 0.41033634423372156,
+      "follow_probability": 0.5562709263136296
+    },
+    {
+      "from": 38,
+      "to": 14,
+      "relation_type": "classmate",
+      "strength": 0.5081270243220213,
+      "trust": 0.6274859802996413,
+      "wait_probability": 0.5452182667445323,
+      "follow_probability": 0.645170415892507
+    },
+    {
+      "from": 38,
+      "to": 13,
+      "relation_type": "classmate",
+      "strength": 0.5032600696602391,
+      "trust": 0.5645912945882492,
+      "wait_probability": 0.5590372389537408,
+      "follow_probability": 0.5041664502524149
+    },
+    {
+      "from": 39,
+      "to": 19,
+      "relation_type": "classmate",
+      "strength": 0.5625802018260155,
+      "trust": 0.6999435346572261,
+      "wait_probability": 0.5993273674147811,
+      "follow_probability": 0.5610863411205256
+    },
+    {
+      "from": 39,
+      "to": 36,
+      "relation_type": "classmate",
+      "strength": 0.5040327002223987,
+      "trust": 0.670436300063708,
+      "wait_probability": 0.5103813677548971,
+      "follow_probability": 0.5621875943070773
+    },
+    {
+      "from": 39,
+      "to": 22,
+      "relation_type": "classmate",
+      "strength": 0.47844880901994646,
+      "trust": 0.5874949844047458,
+      "wait_probability": 0.5808317388987497,
+      "follow_probability": 0.5196510934046601
+    },
+    {
+      "from": 39,
+      "to": 24,
+      "relation_type": "classmate",
+      "strength": 0.49842325861590764,
+      "trust": 0.5516488776597916,
+      "wait_probability": 0.49182715124765225,
+      "follow_probability": 0.6460065150570955
+    },
+    {
+      "from": 39,
+      "to": 3,
+      "relation_type": "classmate",
+      "strength": 0.3,
+      "trust": 0.6,
+      "wait_probability": 0.0,
+      "follow_probability": 0.3
+    },
+    {
+      "from": 39,
+      "to": 8,
+      "relation_type": "classmate",
+      "strength": 0.5793576819812024,
+      "trust": 0.5947923280525744,
+      "wait_probability": 0.5335115477042054,
+      "follow_probability": 0.484463974240326
+    }
+  ]
+}

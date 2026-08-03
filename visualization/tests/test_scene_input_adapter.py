@@ -11,6 +11,7 @@ from visualization.scene_input_adapter import (
     grid_to_static_snapshot,
     load_map_grid,
     load_population_config,
+    load_population_output,
 )
 
 
@@ -49,7 +50,7 @@ class SceneInputAdapterTests(unittest.TestCase):
                 "0,1,free\n2,1,exit\n",
                 encoding="utf-8",
             )
-            with self.assertRaisesRegex(SceneInputError, "exactly 6 cells"):
+            with self.assertRaisesRegex(SceneInputError, r"6.*5"):
                 load_map_grid(sparse)
 
     def test_c_yaml_loader_is_called_without_fabricating_people(self) -> None:
@@ -100,6 +101,17 @@ class SceneInputAdapterTests(unittest.TestCase):
             self.assertEqual(view.random_seed, 42)
             self.assertFalse(view.has_person_output)
             self.assertFalse(view.has_relation_output)
+
+    def test_c_output_people_is_mapped_from_zero_based_ids(self) -> None:
+        view = load_population_output(ROOT / "docs" / "d_week3" / "examples" / "c_output_people.json")
+        self.assertEqual(view.source_id_base, 0)
+        self.assertEqual(len(view.persons), 40)
+        self.assertEqual(len(view.relations), 160)
+        self.assertEqual(view.persons[0]["source_person_id"], 0)
+        self.assertEqual(view.persons[0]["person_id"], 1)
+        self.assertEqual(view.persons[-1]["person_id"], 40)
+        self.assertEqual(view.relations[0]["person_a_id"], 1)
+        self.assertEqual(view.relations[0]["person_b_id"], 34)
 
 
 if __name__ == "__main__":

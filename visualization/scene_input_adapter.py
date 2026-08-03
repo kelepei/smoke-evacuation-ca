@@ -11,7 +11,11 @@ The adapters deliberately keep ownership with the upstream modules:
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
+import json
+import os
 import types
 from dataclasses import dataclass
 from enum import Enum
@@ -98,7 +102,11 @@ def load_map_grid(path: str | Path) -> Any:
         grid = load_grid(str(map_path))
     except SceneInputError:
         raise
-    except (OSError, KeyError, TypeError, ValueError) as exc:
+    except ValueError as exc:
+        # Preserve A's validation message so callers can see whether the
+        # input was sparse, malformed, or otherwise invalid.
+        raise SceneInputError(str(exc)) from exc
+    except (OSError, KeyError, TypeError) as exc:
         raise SceneInputError(f"A map loader failed for {map_path}") from exc
     return validate_grid(grid)
 
@@ -178,13 +186,124 @@ class PopulationConfigView:
     has_relation_output: bool
 
 
+@dataclass(frozen=True)
+class PopulationOutputView:
+    """D's validated view of C's optional people/relation JSON output."""
+
+    source_path: Path
+    source_id_base: int
+    persons: tuple[dict[str, Any], ...]
+    relations: tuple[dict[str, Any], ...]
+    metadata: Mapping[str, Any]
+
+
+def _source_person_id(value: Any, field: str, source_id_base: int) -> tuple[int, int]:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise SceneInputError(f"{field} must be an integer")
+    if source_id_base == 0 and value < 0:
+        raise SceneInputError(f"{field} must be a non-negative integer")
+    if source_id_base == 1 and value <= 0:
+        raise SceneInputError(f"{field} must be a positive integer")
+    return int(value), int(value) + (1 if source_id_base == 0 else 0)
+
+
+def _relation_endpoint(
+    item: Mapping[str, Any], canonical: str, alias: str, source_id_base: int
+) -> tuple[int, int]:
+    return _source_person_id(item.get(canonical, item.get(alias)), canonical, source_id_base)
+
+
+def load_population_output(
+    path: str | Path, *, source_id_base: int = 0
+) -> PopulationOutputView:
+    """Load C's output_people.json and map source IDs to D's positive IDs.
+
+    C's current generator emits zero-based IDs.  D maps them to 1-based IDs
+    while preserving source IDs for traceability.  A future one-based source
+    can pass ``source_id_base=1`` explicitly.
+    """
+
+    if source_id_base not in (0, 1):
+        raise SceneInputError("source_id_base must be 0 or 1")
+    output_path = Path(path)
+    if not output_path.is_file():
+        raise SceneInputError(f"C population output does not exist: {output_path}")
+    try:
+        payload = json.loads(output_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SceneInputError("C population output is not valid UTF-8 JSON") from exc
+    if not isinstance(payload, Mapping):
+        raise SceneInputError("C population output must be a JSON object")
+    raw_persons = payload.get("persons")
+    raw_relations = payload.get("relations", [])
+    if not isinstance(raw_persons, list) or not isinstance(raw_relations, list):
+        raise SceneInputError("C output must contain persons[] and relations[]")
+
+    persons: list[dict[str, Any]] = []
+    person_ids: set[int] = set()
+    for index, raw in enumerate(raw_persons):
+        if not isinstance(raw, Mapping):
+            raise SceneInputError(f"persons[{index}] must be an object")
+        source_id, person_id = _source_person_id(
+            raw.get("person_id", raw.get("id")), "person_id", source_id_base
+        )
+        if person_id in person_ids:
+            raise SceneInputError(f"duplicate person_id: {person_id}")
+        person_ids.add(person_id)
+        item = dict(raw)
+        item.pop("id", None)
+        item["source_person_id"] = source_id
+        item["person_id"] = person_id
+        persons.append(item)
+
+    relations: list[dict[str, Any]] = []
+    for index, raw in enumerate(raw_relations):
+        if not isinstance(raw, Mapping):
+            raise SceneInputError(f"relations[{index}] must be an object")
+        item = dict(raw)
+        source_a, person_a = _relation_endpoint(item, "person_a_id", "from", source_id_base)
+        source_b, person_b = _relation_endpoint(item, "person_b_id", "to", source_id_base)
+        if person_a not in person_ids or person_b not in person_ids:
+            raise SceneInputError(f"relations[{index}] references an unknown person_id")
+        for field in ("strength", "trust", "wait_probability", "follow_probability"):
+            if field in item and item[field] is not None:
+                value = float(item[field])
+                if not 0.0 <= value <= 1.0:
+                    raise SceneInputError(f"relations[{index}].{field} must be within [0, 1]")
+                item[field] = value
+        item.pop("from", None)
+        item.pop("to", None)
+        item["source_person_a_id"] = source_a
+        item["source_person_b_id"] = source_b
+        item["person_a_id"] = person_a
+        item["person_b_id"] = person_b
+        relations.append(item)
+
+    metadata = payload.get("metadata", {})
+    if not isinstance(metadata, Mapping):
+        raise SceneInputError("metadata must be an object when present")
+    return PopulationOutputView(
+        source_path=output_path,
+        source_id_base=source_id_base,
+        persons=tuple(persons),
+        relations=tuple(relations),
+        metadata=dict(metadata),
+    )
+
+
 def _load_module_from_path(module_path: Path) -> types.ModuleType:
     module_name = "_d_c_scene_config_" + str(abs(hash(module_path.resolve())))
     spec = importlib.util.spec_from_file_location(module_name, module_path)
     if spec is None or spec.loader is None:
         raise SceneInputError(f"cannot import C scene module: {module_path}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    previous_cwd = Path.cwd()
+    try:
+        os.chdir(module_path.parent)
+        with contextlib.redirect_stdout(io.StringIO()):
+            spec.loader.exec_module(module)
+    finally:
+        os.chdir(previous_cwd)
     return module
 
 
