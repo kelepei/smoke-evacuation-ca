@@ -111,7 +111,7 @@ smoke_concentration,risk,dose,
 info_state,info_source,receive_time,follow_target
 ```
 
-当前上游没有提供的 `heading`、`risk`、`dose`、信息状态等字段保留为空，不填入演示值。
+当前 B 没有提供的 `heading`、`risk`、`dose`、信息状态等字段保留为空，不填入演示值。
 
 已经撤离的行人继续记录到仿真结束。
 
@@ -151,7 +151,7 @@ evac_success
 ### 7.3 仍待团队确认
 
 - 已确认正式入口为 `simulation.ca_model.CaEvacSimulation`，`step` 从 0 开始，`time_s = step × 0.5`；
-- 上游暂未提供运行后快照、`people_log.csv` 与公开逐步状态 API；
+- B 暂未提供运行后快照、`people_log.csv` 与公开逐步状态 API；
 - 二维场索引顺序是否最终固定为 `[y][x]`；
 - A 地图的坐标原点与方向；
 - A 的 CSV 行优先保证和 `upload.py` 的正式函数命名；
@@ -172,7 +172,7 @@ evac_success
 
 ## 8. 临时兼容说明
 
-当前上游尚未提供完整公开快照；D 对暂未实现的 `heading`、`risk`、`dose`、`conflict` 与 `exit_switch` 统一保留为空，不填入演示值。撤离状态暂时只读：
+当前 B 尚未提供完整公开快照；D 对暂未实现的 `heading`、`risk`、`dose`、`conflict` 与 `exit_switch` 统一保留为空，不填入演示值。撤离状态暂时只读：
 
 ```text
 simulation._evacuated_status
