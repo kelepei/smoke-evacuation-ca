@@ -150,8 +150,8 @@ evac_success
 
 ### 7.3 仍待团队确认
 
-- B 的正式入口是 `ca_model.py` 还是 `evac_simulation.py`；
-- B 是否提供公开快照和撤离状态 API；
+- 已确认正式入口为 `simulation.ca_model.CaEvacSimulation`，`step` 从 0 开始，`time_s = step × 0.5`；
+- 上游暂未提供运行后快照、`people_log.csv` 与公开逐步状态 API；
 - 二维场索引顺序是否最终固定为 `[y][x]`；
 - A 地图的坐标原点与方向；
 - A 的 CSV 行优先保证和 `upload.py` 的正式函数命名；
@@ -165,13 +165,14 @@ evac_success
   `cells[y * width + x]` 读取；接入前必须确认 CSV 已按行优先完整排列，
   或由 A 的 loader 统一排序；
 - C 当前关系图人员编号为 `0...N-1`，而团队 D schema 约定为正整数；
-  在团队决定由 C 改为 `1...N` 或提供统一映射前，D 不擅自重编号；
+  D 已在只读适配层采用显式 `0-based → 1-based` 映射，并保留 source ID；
+  团队后续仍需冻结最终编号口径；
 - C 当前角色比例采用随机抽样，不保证 40 人按 0.9 / 0.1 精确得到
   36 / 4，`relation_intensity` 是否参与关系生成也仍待 C 确认。
 
 ## 8. 临时兼容说明
 
-当前 B 没有公开撤离状态，适配器临时只读：
+当前上游尚未提供完整公开快照；D 对暂未实现的 `heading`、`risk`、`dose`、`conflict` 与 `exit_switch` 统一保留为空，不填入演示值。撤离状态暂时只读：
 
 ```text
 simulation._evacuated_status
