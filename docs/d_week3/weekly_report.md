@@ -47,8 +47,8 @@
 
 ## 4. 当前最大问题
 
-1. 上游已确认正式仿真入口为 `simulation.ca_model.CaEvacSimulation`，`step` 从 0 开始，且 `time_s = step × 0.5`；
-2. 上游暂未提供公开的运行后快照、`people_log.csv`、`heading`、`risk`、`dose`、`conflict` 和 `exit_switch`；D 对这些字段统一保留为空，不编造演示值；
+1. B 已确认正式仿真入口为 `simulation.ca_model.CaEvacSimulation`，`step` 从 0 开始，且 `time_s = step × 0.5`；
+2. B 暂未提供公开的运行后快照、`people_log.csv`、`heading`、`risk`、`dose`、`conflict` 和 `exit_switch`；D 对这些字段统一保留为空，不编造演示值；
 3. A 的 JSON/CSV 已能进入 D 地图预览，但地图烟源和出口元数据尚未组装为 B 的 `ScenarioConfig`；
 4. C 的 YAML 配置和 `output_people.json` 均可读取；
 5. C 的人员编号已经在 D 适配层兼容，当前仍需团队确认最终统一编号口径；
@@ -71,7 +71,7 @@ D 没有修改 A、B、C 的代码或模型逻辑；本次新增的 `c_output_pe
 后续联调需要：
 
 - A 确认 CSV 行优先规则、上传函数命名及地图元数据传递方式；
-- 上游后续提供运行后快照、`people_log.csv` 与未实现字段的正式输出；
+- B 后续提供运行后快照、`people_log.csv` 与未实现字段的正式输出；
 - C 提供 YAML 配置到人员、关系及信息状态的稳定输出；
 - 团队共同确认坐标、场数组和事件格式。
 
