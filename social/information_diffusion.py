@@ -19,7 +19,7 @@ C07: 信息传播模块 (information_diffusion.py)
 import numpy as np
 from typing import Dict, List, Optional, Any
 from collections import Counter, defaultdict
-from information_state import InfoState, InformationStateEngine
+from .information_state import InfoState, InformationStateEngine
 
 
 # ============================================================
