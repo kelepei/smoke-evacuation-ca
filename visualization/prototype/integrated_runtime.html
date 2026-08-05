@@ -473,7 +473,7 @@
       return;
     }
     if(location.protocol==='file:'){
-      alert('真实联调需要从本地 D 服务打开页面。请按说明运行 python -m experiments.web_runtime_server，再访问 http://127.0.0.1:8765/visualization/prototype/week2_ui_prototype.html');
+      alert('真实联调需要从本地 D 服务打开页面。请按说明运行 python -m experiments.web_runtime_server，再访问 http://127.0.0.1:8765/visualization/prototype/integrated_runtime.html');
       return;
     }
     try{
@@ -1145,6 +1145,30 @@
     addLog('演示快照导出','d_snapshot_demo.json');
   }
 
+  async function exportLiveResultPackage(){
+    if(location.protocol==='file:'){
+      alert('真实结果包需要从本地 D 服务页面导出。请运行 python -m experiments.web_runtime_server 后重试。');
+      return;
+    }
+    try{
+      const response=await fetch('/api/session/export',{method:'GET'});
+      if(!response.ok){
+        const error=await response.json().catch(()=>({error:'结果包导出失败'}));
+        throw new Error(error.error||'结果包导出失败');
+      }
+      const blob=await response.blob();
+      const disposition=response.headers.get('Content-Disposition')||'';
+      const match=disposition.match(/filename="?([^";]+)"?/i);
+      const filename=match?match[1]:'d_runtime_result_package.zip';
+      const link=document.createElement('a');
+      link.href=URL.createObjectURL(blob);link.download=filename;link.click();
+      URL.revokeObjectURL(link.href);
+      addLiveLog('真实结果包导出',filename,liveSnapshot);
+    }catch(error){
+      alert(`无法导出真实结果包：${error.message}`);
+    }
+  }
+
   function exportConfig(){
     const cfg={
       prototype:true, data_source:'frontend_demo', scene,
@@ -1164,7 +1188,7 @@
   $('resetBtn').onclick=()=>{if(isLiveMode())resetLiveRuntime();else reset();};
   $('stepBtn').onclick=()=>{if(isLiveMode())liveStep();else stepOnce();};
   $('speedSelect').onchange=e=>{speed=+e.target.value;if(isLiveMode()&&running)startLiveTimer();};
-  $('exportBtn').onclick=exportSnapshot;
+  $('exportBtn').onclick=()=>{if(isLiveMode())exportLiveResultPackage();else exportSnapshot();};
   $('saveConfigBtn').onclick=exportConfig;
   $('applyBtn').onclick=()=>{
     if(isLiveMode()){addLiveLog('参数面板','真实联调参数由导入的 A/C 文件和 B 当前模型决定；修改后请重新初始化。');return;}
