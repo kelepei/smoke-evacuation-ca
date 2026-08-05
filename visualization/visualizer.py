@@ -282,10 +282,15 @@ class MatplotlibSimulationViewer:
             status = "Running"
         else:
             status = "Paused"
-        self._status_text.set_text(
-            f"Status: {status}  |  real B mock step()  |  "
-            "A map and C social configuration not connected yet"
+        snapshot = self.runner.current_snapshot or {}
+        adapter_meta = snapshot.get("adapter_meta", {})
+        input_mode = adapter_meta.get("input_mode")
+        source_text = (
+            str(input_mode)
+            if input_mode
+            else "real B mock step() | A/C input not connected"
         )
+        self._status_text.set_text(f"Status: {status}  |  {source_text}")
 
     def save_screenshot(self, path: str | Path, *, dpi: int = 150) -> Path:
         output_path = Path(path)
