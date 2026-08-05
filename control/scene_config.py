@@ -521,28 +521,13 @@ if __name__ == "__main__":
     print(f"\n📂 读取配置: {yaml_file}")
 
     try:
-        config = SceneConfigGenerator.load_config_from_yaml(yaml_file)
-        print("✅ 配置加载成功")
-        print(f"   场景名称: {config.scene_name}")
-        print(f"   总人数: {config.total_persons}")
-        print(f"   角色比例: {config.profile_ratios}")
-        print(f"   关系紧密程度: {config.relation_intensity}")
-        print(f"   随机种子: {config.random_seed}")
-    except FileNotFoundError:
-        print(f"⚠️ 未找到 {yaml_file}，使用预设场景 'classroom'")
-        config = SceneConfigGenerator.get_preset("classroom")
-    except Exception as e:
-        print(f"❌ 配置加载失败: {e}")
-        sys.exit(1)
+       
+        from .social_graph import SocialGraphBuilder
 
-    print("\n🔨 生成社会关系图...")
-    try:
-        from social_graph import SocialGraphBuilder
         builder = SocialGraphBuilder.from_config(config)
         graph, persons = builder.build_with_config()
         builder.print_summary()
 
-        # 导出 JSON（转换 numpy 类型）
         output_data = {
             "metadata": convert_numpy(builder.summary()),
             "persons": [convert_numpy(p.to_dict()) for p in persons.values()],
@@ -555,8 +540,10 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"❌ 生成失败: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 
     print("\n" + "=" * 70)
     print("✅ 完成！")
+    
