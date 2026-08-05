@@ -252,9 +252,16 @@ class CaSnapshotAdapter:
                     f"person {person_id!r} position ({x}, {y}) is outside the grid"
                 )
 
-            raw_evacuated = _optional_attr(person, "evacuated")
+            # B's current CA stores the authoritative runtime value in
+            # ``_evacuated_status`` while the shared Person instance retains
+            # its schema default.  Prefer that runtime mapping when it has an
+            # entry; otherwise consume a future public ``person.evacuated``.
+            if person_id in evacuated_fallback:
+                raw_evacuated = evacuated_fallback[person_id]
+            else:
+                raw_evacuated = _optional_attr(person, "evacuated")
             if raw_evacuated is None:
-                raw_evacuated = evacuated_fallback.get(person_id, False)
+                raw_evacuated = False
             evacuated = bool(raw_evacuated)
 
             target_exit = _optional_attr(person, "target_exit_id", "target_exit")
@@ -345,6 +352,25 @@ class CaSnapshotAdapter:
         if raw_cell_size is None or float(raw_cell_size) <= 0:
             raise SnapshotAdapterError("grid.cell_size must be greater than zero")
 
+        adapter_meta = {
+            "simulation_module": simulation.__class__.__module__,
+            "grid_layout_assumption": (
+                "temporary B mock: cells[y * width + x], fields[y][x], "
+                "display origin upper; shared A/B/D rule is not frozen"
+            ),
+            "derived_fields": (
+                ["people.status"] if any(
+                    person["status"] == "EVACUATED" for person in people
+                ) else []
+            ),
+            "private_fallbacks": ["simulation._evacuated_status"],
+            "missing_fields_are_null": True,
+            "missing_values_are_not_inferred": True,
+        }
+        extra_meta = getattr(simulation, "d_adapter_meta", None)
+        if isinstance(extra_meta, Mapping):
+            adapter_meta.update(dict(extra_meta))
+
         return {
             "schema_version": self.schema_version,
             "run_id": self.run_id,
@@ -369,19 +395,5 @@ class CaSnapshotAdapter:
             "relations": relations,
             "events": [],
             "strategy_state": {},
-            "adapter_meta": {
-                "simulation_module": simulation.__class__.__module__,
-                "grid_layout_assumption": (
-                    "temporary B mock: cells[y * width + x], fields[y][x], "
-                    "display origin upper; shared A/B/D rule is not frozen"
-                ),
-                "derived_fields": (
-                    ["people.status"] if any(
-                        person["status"] == "EVACUATED" for person in people
-                    ) else []
-                ),
-                "private_fallbacks": ["simulation._evacuated_status"],
-                "missing_fields_are_null": True,
-                "missing_values_are_not_inferred": True,
-            },
+            "adapter_meta": adapter_meta,
         }
