@@ -19,7 +19,7 @@ import networkx as nx
 import numpy as np
 
 # 导入 C02 模块
-from relation_templates import (
+from .relation_templates import (
     RelationGenerator,
     make_relation,
     generate_profiles,
@@ -180,8 +180,8 @@ class SocialGraphBuilder:
             graph, persons = builder.build_with_config()
         """
         # 导入场景配置模块
+        from .scene_config import SceneConfig
 
-        # 创建构建器实例（复用原有的 __init__）
         builder = cls(
             semantic=scene_config.scene_name,
             person_count=scene_config.total_persons,
@@ -193,7 +193,7 @@ class SocialGraphBuilder:
         builder.scene_config = scene_config
 
         # 使用场景配置生成角色列表（覆盖原有随机生成）
-        from relation_templates import generate_profiles_from_config
+        from .relation_templates import generate_profiles_from_config
         builder.profiles_list = generate_profiles_from_config(scene_config)
         builder.num_persons = len(builder.profiles_list)
 
@@ -215,7 +215,7 @@ class SocialGraphBuilder:
         self._create_persons()
 
         # 使用场景配置生成关系
-        from relation_templates import generate_relations_from_config
+        from .relation_templates import generate_relations_from_config
 
         # 生成无向关系边
         raw_relations = generate_relations_from_config(
