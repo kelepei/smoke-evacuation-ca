@@ -24,6 +24,7 @@ from typing import Any, Mapping
 from urllib.parse import urlparse
 
 from experiments.integrated_runner import create_integrated_runner
+from experiments.result_package import ResultPackageError, build_result_package
 
 
 MAX_REQUEST_BYTES = 8 * 1024 * 1024
@@ -41,6 +42,8 @@ class RuntimeSession:
 
     temporary_directory: tempfile.TemporaryDirectory[str]
     runner: Any
+    input_files: dict[str, Path]
+    max_steps: int
 
     def close(self) -> None:
         self.runner.close()
@@ -121,8 +124,17 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802 - required HTTP handler name
-        if urlparse(self.path).path == "/api/health":
+        path = urlparse(self.path).path
+        if path == "/api/health":
             self._send_json({"ok": True, "service": "d_web_runtime", "version": "0.1"})
+            return
+        if path == "/api/session/export":
+            try:
+                self._export_session()
+            except WebRuntimeError as exc:
+                self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            except Exception as exc:
+                self._send_error_json(HTTPStatus.INTERNAL_SERVER_ERROR, f"export error: {exc}")
             return
         super().do_GET()
 
@@ -232,7 +244,18 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         except Exception:
             runner.close()
             raise
-        self.server.session = RuntimeSession(temporary_directory, runner)
+        input_files = {
+            "map": map_path,
+            "population": people_path,
+        }
+        if yaml_path is not None:
+            input_files["yaml"] = yaml_path
+        self.server.session = RuntimeSession(
+            temporary_directory=temporary_directory,
+            runner=runner,
+            input_files=input_files,
+            max_steps=max_steps,
+        )
         return {"ok": True, "snapshot": snapshot}
 
     def _require_session(self) -> RuntimeSession:
@@ -250,6 +273,29 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         snapshot = session.runner.reset()
         return {"ok": True, "snapshot": snapshot}
 
+    def _export_session(self) -> None:
+        """Return a ZIP built from the active runner's actual CSV output."""
+
+        session = self._require_session()
+        snapshot = session.runner.current_snapshot
+        run_id = session.runner.current_run_id
+        if snapshot is None or not run_id:
+            raise WebRuntimeError("active session has no current snapshot to export")
+        try:
+            package = build_result_package(
+                output_dir=session.runner.output_root / run_id,
+                final_snapshot=snapshot,
+                input_files=session.input_files,
+                max_steps=session.max_steps,
+            )
+        except ResultPackageError as exc:
+            raise WebRuntimeError(str(exc)) from exc
+        self._send_binary(
+            package.content,
+            content_type="application/zip",
+            filename=package.filename,
+        )
+
     def _send_json(self, data: Mapping[str, Any]) -> None:
         encoded = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(HTTPStatus.OK)
@@ -257,6 +303,14 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
+
+    def _send_binary(self, content: bytes, *, content_type: str, filename: str) -> None:
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(content)))
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.end_headers()
+        self.wfile.write(content)
 
     def _send_error_json(self, status: HTTPStatus, message: str) -> None:
         self.send_response(status)

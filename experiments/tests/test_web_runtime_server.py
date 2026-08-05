@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import io
 import tempfile
 import threading
 import unittest
+import zipfile
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -86,6 +88,17 @@ class WebRuntimeServerTests(unittest.TestCase):
                 stepped = post("/api/session/step", {})["snapshot"]
                 self.assertEqual(1, stepped["step"])
                 self.assertEqual(0.5, stepped["time_s"])
+                with urlopen(base_url + "/api/session/export", timeout=10) as response:
+                    self.assertEqual("application/zip", response.headers.get_content_type())
+                    package = zipfile.ZipFile(io.BytesIO(response.read()))
+                names = set(package.namelist())
+                self.assertIn("d_web_runtime/people_log.csv", names)
+                self.assertIn("d_web_runtime/event_log.csv", names)
+                self.assertIn("d_web_runtime/metrics.csv", names)
+                self.assertIn("d_web_runtime/evacuation_curve.svg", names)
+                self.assertIn("d_web_runtime/occupancy_heatmap.svg", names)
+                self.assertIn("d_web_runtime/inputs/map_file.json", names)
+                self.assertIn("d_web_runtime/inputs/population_file.json", names)
         finally:
             try:
                 post("/api/session/close", {})
