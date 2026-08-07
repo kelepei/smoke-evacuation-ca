@@ -1,72 +1,47 @@
-from core.grid import Grid
-from core.schema import CellType
-from typing import Dict
-from dataclasses import dataclass
+from core.schema import Grid, CellType
 
+# 8邻域方向
+DIRS = [(-1,-1),(-1,0),(-1,1),
+        (0,-1),        (0,1),
+        (1,-1), (1,0), (1,1)]
 
-@dataclass
-class SimplePerson:
-    """临时行人类，后续对接C模块时替换为schema.Person"""
-    pid: int
-    x: int
-    y: int
+def calc_next_position(person, grid: Grid, smoke_matrix, single_behavior, signage_model=None):
+    px, py = int(person.x), int(person.y)
+    best_x, best_y = px, py
+    max_utility = -9999.0
 
+    w_g = 0.5  # 指示牌引导权重，和signage_model参数对齐
 
-class CAModel:
-    def __init__(self, grid: Grid):
-        # 严格按照文档：CA模型仅接收Grid对象
-        self.grid: Grid = grid
-        self.persons: Dict[int, SimplePerson] = {}
-        # B模块内部定义烟源参数
-        self.smoke_sources = [{"x": 6, "y": 6, "strength": 1.0}]
-        # 烟雾浓度矩阵
-        self.smoke_matrix = [[0.0 for _ in range(grid.width)] for _ in range(grid.height)]
+    for dx, dy in DIRS:
+        tx = px + dx
+        ty = py + dy
+        # 边界判断
+        if not (0 <= tx < grid.width and 0 <= ty < grid.height):
+            continue
+        cell = grid.get_cell(tx, ty)
+        if cell is None or cell.cell_type == CellType.WALL:
+            continue
 
-    def show_map_info(self):
-        """打印地图信息，验证Grid读取正常"""
-        print("地图尺寸：", self.grid.width, self.grid.height)
-        for cell in self.grid.cells:
-            print(cell.x, cell.y, cell.cell_type)
+        # ========== 基础效用项 ==========
+        # 1.烟雾惩罚
+        smoke_cost = smoke_matrix[ty][tx] * 1.0
+        utility = -smoke_cost
 
-    def get_neighbors(self, x: int, y: int):
-        """获取当前元胞8邻域"""
-        return self.grid.get_neighbors(x, y)
+        # 2.出口正向奖励
+        if cell.cell_type == CellType.EXIT:
+            utility += 1.2
 
-    def add_person(self, pid: int, x: int, y: int):
-        """新增行人"""
-        self.persons[pid] = SimplePerson(pid, x, y)
+        # ========== C08 指示牌引导效用 ==========
+        if signage_model is not None:
+            guide_u = signage_model.get_guidance_utility(person, (tx, ty))
+            utility += w_g * guide_u
 
-    def _update_smoke(self):
-        """烟雾扩散逻辑"""
-        for source in self.smoke_sources:
-            sx, sy = source["x"], source["y"]
-            strength = source["strength"]
-            if 0 <= sx < self.grid.width and 0 <= sy < self.grid.height:
-                self.smoke_matrix[sy][sx] = min(1.0, self.smoke_matrix[sy][sx] + strength * 0.05)
+        # ========== 原有社交行为（从众、结伴、引导员）可在此叠加 ==========
+        # 后续你可以把herding/group/guide行为效用继续叠加在这里
 
-    def step(self):
-        """单步仿真：烟雾更新 + CA行人移动规则"""
-        self._update_smoke()
+        # 更新最优格子
+        if utility > max_utility:
+            max_utility = utility
+            best_x, best_y = tx, ty
 
-        # 行人移动逻辑，后续替换为你的效用函数模型
-        for person in self.persons.values():
-            neighbors = self.get_neighbors(person.x, person.y)
-            candidates = []
-            for cell in neighbors:
-                # 仅允许移动到空地
-                if cell.cell_type == CellType.FREE:
-                    candidates.append(cell)
-
-            if candidates:
-                target_cell = candidates[0]
-                person.x = target_cell.x
-                person.y = target_cell.y
-
-    def run(self, max_step=500):
-        """持续运行仿真"""
-        for step in range(max_step):
-            self.step()
-            # 每20步打印状态
-            if step % 20 == 0:
-                for p in self.persons.values():
-                    print(f"Step {step} 行人{p.pid} 坐标({p.x},{p.y})")
+    return best_x, best_y
