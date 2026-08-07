@@ -19,7 +19,7 @@ import networkx as nx
 import numpy as np
 
 # 导入 C02 模块
-from .relation_templates import (
+from social.relation_templates import (
     RelationGenerator,
     make_relation,
     generate_profiles,
@@ -180,7 +180,7 @@ class SocialGraphBuilder:
             graph, persons = builder.build_with_config()
         """
         # 导入场景配置模块
-        from .scene_config import SceneConfig
+        from control.scene_config import SceneConfig
 
         builder = cls(
             semantic=scene_config.scene_name,

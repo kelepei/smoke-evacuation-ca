@@ -40,7 +40,7 @@ from typing import Dict, List, Optional, Tuple
 from collections import Counter
 
 # 从 C08 导入方向量化工具
-from .signage_model import SignageModel
+from control.signage_model import SignageModel
 
 
 # ============================================================

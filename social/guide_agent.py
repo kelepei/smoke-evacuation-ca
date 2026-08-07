@@ -27,7 +27,7 @@ from collections import defaultdict
 from enum import Enum
 from types import SimpleNamespace
 from .information_state import InfoState
-from .signage_model import SignageModel
+from control.signage_model import SignageModel
 
 
 # ============================================================
