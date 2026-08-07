@@ -1,114 +1,186 @@
 import matplotlib.pyplot as plt
-import json
+import matplotlib
+
+from matplotlib.colors import ListedColormap
 
 from core.schema import CellType
 
 
+# Mac中文字体
+matplotlib.rcParams["font.sans-serif"] = [
+    "PingFang SC"
+]
+
+matplotlib.rcParams["axes.unicode_minus"] = False
+
+
+
 class MapEditor:
+
 
     def __init__(self, grid):
 
         self.grid = grid
 
-        # 默认编辑障碍物
-        self.current_type = CellType.OBSTACLE
+
+        # 当前编辑类型
+        self.current_type = CellType.FREE
 
 
         self.fig, self.ax = plt.subplots(
-            figsize=(12, 8)
+            figsize=(12, 10)
         )
 
 
-        # 键盘提示
-        self.title = (
-            "Map Editor | "
-            "1:FREE  2:WALL  3:OBSTACLE  "
-            "4:EXIT  5:SMOKE"
-        )
-
-
-        self.draw()
-
-
-        # 鼠标点击
         self.fig.canvas.mpl_connect(
             "button_press_event",
             self.onclick
         )
 
 
-        # 键盘
         self.fig.canvas.mpl_connect(
             "key_press_event",
-            self.onkey
+            self.keypress
         )
 
 
+        self.draw()
+
+
+
+    # ==================================
+    # 绘制地图
+    # ==================================
 
     def draw(self):
 
         self.ax.clear()
 
 
-        for cell in self.grid.cells:
+        image = []
 
 
-            if cell.cell_type == CellType.WALL:
+        for y in range(self.grid.height):
 
-                color = "black"
-
-
-            elif cell.cell_type == CellType.FREE:
-
-                color = "white"
+            row = []
 
 
-            elif cell.cell_type == CellType.OBSTACLE:
+            for x in range(self.grid.width):
 
-                color = "red"
-
-
-            elif cell.cell_type == CellType.EXIT:
-
-                color = "green"
+                cell = self.grid.get_cell(
+                    x,
+                    y
+                )
 
 
-            elif cell.cell_type == CellType.SMOKE_SOURCE:
+                if cell.cell_type == CellType.FREE:
 
-                color = "orange"
-
-
-            else:
-
-                color = "white"
+                    row.append(0)
 
 
+                elif cell.cell_type == CellType.WALL:
 
-            self.ax.scatter(
+                    row.append(1)
 
-                cell.x,
 
-                cell.y,
+                elif cell.cell_type == CellType.OBSTACLE:
 
-                c=color,
+                    row.append(2)
 
-                s=8
-            )
+
+                elif cell.cell_type == CellType.EXIT:
+
+                    row.append(3)
+
+
+                else:
+
+                    row.append(0)
+
+
+            image.append(row)
 
 
 
-        # 坐标方向和图片一致
+        # 固定颜色
 
-        self.ax.invert_yaxis()
-
-
-        self.ax.set_title(
-            self.title
+        cmap = ListedColormap(
+            [
+                "white",   # FREE
+                "black",   # WALL
+                "gray",    # OBSTACLE
+                "green"    # EXIT
+            ]
         )
 
 
-        self.ax.set_aspect(
-            "equal"
+
+        self.ax.imshow(
+
+            image,
+
+            cmap=cmap,
+
+            interpolation="nearest",
+
+            origin="upper",
+
+            vmin=0,
+
+            vmax=3
+
+        )
+
+
+
+        # 网格
+
+        self.ax.grid(
+            True,
+            linewidth=0.3
+        )
+
+
+
+        # 坐标显示优化
+
+        step_x = max(
+            1,
+            self.grid.width // 15
+        )
+
+
+        step_y = max(
+            1,
+            self.grid.height // 15
+        )
+
+
+        self.ax.set_xticks(
+            range(
+                0,
+                self.grid.width,
+                step_x
+            )
+        )
+
+
+        self.ax.set_yticks(
+            range(
+                0,
+                self.grid.height,
+                step_y
+            )
+        )
+
+
+
+        self.ax.set_title(
+
+            "CA Map Editor\n"
+            "1-Free  2-Wall  "
+            "3-Obstacle  4-Exit"
+
         )
 
 
@@ -116,94 +188,156 @@ class MapEditor:
 
 
 
-    def onclick(self,event):
+    # ==================================
+    # 点击修改
+    # ==================================
+
+    def onclick(self, event):
 
 
         if event.xdata is None:
+
             return
 
-        if event.ydata is None:
+
+
+        x = int(event.xdata)
+
+        y = int(event.ydata)
+
+
+
+        if (
+
+            x < 0
+
+            or x >= self.grid.width
+
+            or y < 0
+
+            or y >= self.grid.height
+
+        ):
+
             return
 
 
 
-        x=int(round(event.xdata))
-
-        y=int(round(event.ydata))
-
-
-        cell=self.grid.get_cell(
+        cell = self.grid.get_cell(
             x,
             y
         )
-
-
-        if cell is None:
-
-            return
-
 
 
         cell.cell_type = self.current_type
 
 
 
+        print("================")
+
         print(
-            "修改:",
+            "修改元胞:"
+        )
+
+
+        print(
+            "x:",
             x,
-            y,
+            "y:",
+            y
+        )
+
+
+        print(
+            "类型:",
             self.current_type.value
         )
+
+
+        print(
+            "实际位置:",
+            round(
+                x * self.grid.cell_size,
+                2
+            ),
+            "m ,",
+            round(
+                y * self.grid.cell_size,
+                2
+            ),
+            "m"
+        )
+
+
+        print("================")
+
 
 
         self.draw()
 
 
 
+    # ==================================
+    # 键盘切换
+    # ==================================
 
-    def onkey(self,event):
+    def keypress(self,event):
 
 
         if event.key == "1":
 
             self.current_type = CellType.FREE
 
+            print(
+                "当前模式: 空地"
+            )
+
 
         elif event.key == "2":
 
             self.current_type = CellType.WALL
+
+            print(
+                "当前模式: 墙"
+            )
 
 
         elif event.key == "3":
 
             self.current_type = CellType.OBSTACLE
 
+            print(
+                "当前模式: 障碍物"
+            )
+
 
         elif event.key == "4":
 
             self.current_type = CellType.EXIT
 
-
-        elif event.key == "5":
-
-            self.current_type = CellType.SMOKE_SOURCE
-
-
-        else:
-
-            return
+            print(
+                "当前模式: 出口"
+            )
 
 
 
-        print(
-            "当前模式:",
-            self.current_type.value
-        )
+    # ==================================
+    # 显示
+    # ==================================
+
+    def show(self):
+
+        plt.show()
 
 
 
+    # ==================================
+    # 保存JSON
+    # ==================================
 
     def save_json(self, filename):
+
+        import json
 
 
         data = {
@@ -225,7 +359,7 @@ class MapEditor:
         for cell in self.grid.cells:
 
 
-            data["cells"].append({
+            item = {
 
                 "x": cell.x,
 
@@ -235,42 +369,49 @@ class MapEditor:
 
                 "room_id": cell.room_id,
 
-                "semantic":
-                    cell.semantic.value
-                    if cell.semantic
-                    else None,
-
                 "smoke": cell.smoke,
 
                 "risk": cell.risk,
 
                 "guidance": cell.guidance
 
-            })
+            }
+
+
+            if cell.semantic is not None:
+
+                item["semantic"] = cell.semantic.value
+
+
+            data["cells"].append(item)
 
 
 
         with open(
+
             filename,
+
             "w",
+
             encoding="utf-8"
+
         ) as f:
 
+
             json.dump(
+
                 data,
+
                 f,
+
                 indent=4,
+
                 ensure_ascii=False
+
             )
 
 
         print(
-            "保存完成:",
+            "JSON保存成功:",
             filename
         )
-
-
-
-    def show(self):
-
-        plt.show()
