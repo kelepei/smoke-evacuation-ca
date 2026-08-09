@@ -121,7 +121,7 @@ def normalize_profile_ratios(ratios: dict) -> dict:
 PRESET_SCENES = {
     "classroom": SceneConfig(
         scene_name="classroom",
-        total_persons=60,
+        total_persons=40,
         profile_ratios={"student": 0.9, "teacher": 0.1},
         group_config=GroupConfig(
             has_family_prob=0.0,
@@ -138,7 +138,7 @@ PRESET_SCENES = {
     ),
     "shop": SceneConfig(
         scene_name="shop",
-        total_persons=70,
+        total_persons=50,
         profile_ratios={
             "customer": 0.55,
             "staff": 0.25,
@@ -159,7 +159,7 @@ PRESET_SCENES = {
     ),
     "hospital": SceneConfig(
         scene_name="hospital",
-        total_persons=60,
+        total_persons=35,
         profile_ratios={
             "patient": 0.35,
             "family_member": 0.20,
@@ -180,7 +180,7 @@ PRESET_SCENES = {
     ),
     "canteen": SceneConfig(
         scene_name="canteen",
-        total_persons=65,
+        total_persons=45,
         profile_ratios={"student": 0.8, "staff": 0.15, "teacher": 0.05},
         group_config=GroupConfig(
             has_family_prob=0.0,
@@ -196,7 +196,7 @@ PRESET_SCENES = {
     ),
     "corridor": SceneConfig(
         scene_name="corridor",
-        total_persons=55,
+        total_persons=30,
         profile_ratios={"student": 0.7, "teacher": 0.2, "staff": 0.1},
         group_config=GroupConfig(
             has_family_prob=0.0,
@@ -212,7 +212,7 @@ PRESET_SCENES = {
     ),
     "dorm": SceneConfig(
         scene_name="dorm",
-        total_persons=72,
+        total_persons=48,
         profile_ratios={"student": 1.0},
         group_config=GroupConfig(
             has_family_prob=0.0,
@@ -520,10 +520,31 @@ if __name__ == "__main__":
 
     print(f"\n📂 读取配置: {yaml_file}")
 
+    # ✅ 修复：先加载配置
     try:
-       
-        from .social_graph import SocialGraphBuilder
+        config = SceneConfigGenerator.load_config_from_yaml(yaml_file)
+        print("✅ 配置加载成功")
+        print(f"   场景名称: {config.scene_name}")
+        print(f"   总人数: {config.total_persons}")
+        print(f"   角色比例: {config.profile_ratios}")
+        print(f"   关系紧密程度: {config.relation_intensity}")
+        print(f"   随机种子: {config.random_seed}")
+    except FileNotFoundError:
+        print(f"⚠️ 未找到 {yaml_file}，使用预设场景 'classroom'")
+        config = SceneConfigGenerator.get_preset("classroom")
+    except Exception as e:
+        print(f"❌ 配置加载失败: {e}")
+        sys.exit(1)
 
+    # ✅ 修复：导入 SocialGraphBuilder（从 social 包）
+    # 由于 scene_config.py 在 control/ 下，需要将项目根目录加入路径
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+    print("\n🔨 生成社会关系图...")
+    try:
+        from ..social.social_graph import SocialGraphBuilder
         builder = SocialGraphBuilder.from_config(config)
         graph, persons = builder.build_with_config()
         builder.print_summary()
@@ -540,7 +561,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"❌ 生成失败: {e}")
         import traceback
-
         traceback.print_exc()
         sys.exit(1)
 
