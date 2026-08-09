@@ -15,13 +15,13 @@ demo scenario:
 from __future__ import annotations
 
 import argparse
-import importlib
 import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
 
 from core.schema import CellType, Exit, Person, Relation, ScenarioConfig, SmokeSource
+from experiments.b_runtime_adapter import EvacEngineRuntimeAdapter
 from experiments.runner import SimulationRunner
 from visualization.scene_input_adapter import (
     PopulationConfigView,
@@ -252,75 +252,20 @@ def build_integrated_scenario(
     )
 
 
-class ConflictWaitCompatibilitySimulation:
-    """Temporary D wrapper for B's documented ``None == wait`` conflict result.
-
-    B's ``resolve_conflict`` documents ``None`` as a failed move that should
-    remain in place, but the current ``CaEvacSimulation.step`` unpacks it as a
-    coordinate.  This wrapper applies the documented interpretation only in
-    memory for the current call and restores B's function immediately.  No B
-    source code or files are changed.
-    """
-
-    def __init__(self, simulation: Any) -> None:
-        self._simulation = simulation
-        self.d_adapter_meta = {
-            "input_mode": "A map + C population + B CA",
-            "temporary_compatibility": [
-                "B conflict result None interpreted as wait-in-place"
-            ],
-            "missing_fields_are_null": True,
-        }
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._simulation, name)
-
-    def init_simulation(self) -> Any:
-        return self._simulation.init_simulation()
-
-    def all_done(self) -> bool:
-        return bool(self._simulation.all_done())
-
-    def step(self) -> Any:
-        module = importlib.import_module(self._simulation.__class__.__module__)
-        resolver = getattr(module, "resolve_conflict", None)
-        if not callable(resolver):
-            return self._simulation.step()
-
-        def wait_in_place(candidate_moves: dict[int, tuple[int, int]]) -> dict[int, tuple[int, int]]:
-            resolved = resolver(candidate_moves)
-            return {
-                pid: position
-                if position is not None
-                else (
-                    int(self._simulation.persons[pid].x),
-                    int(self._simulation.persons[pid].y),
-                )
-                for pid, position in resolved.items()
-            }
-
-        setattr(module, "resolve_conflict", wait_in_place)
-        try:
-            return self._simulation.step()
-        finally:
-            setattr(module, "resolve_conflict", resolver)
-
-
 def integrated_simulation_factory(
     scenario: IntegratedScenario,
-) -> Callable[[], ConflictWaitCompatibilitySimulation]:
-    """Return a reset-safe factory around B's current actual CA class."""
+) -> Callable[[], EvacEngineRuntimeAdapter]:
+    """Return a reset-safe D adapter around B's current public runtime."""
 
-    def create() -> ConflictWaitCompatibilitySimulation:
-        from simulation.evac_simulation import CaEvacSimulation
+    def create() -> EvacEngineRuntimeAdapter:
+        from simulation.evac_simulation import EvacEngine
 
         seed = scenario.config.parameters.get("random_seed")  # type: ignore[attr-defined]
         if seed is not None:
             random.seed(seed)
-        simulation = CaEvacSimulation(scenario.config)
-        wrapped = ConflictWaitCompatibilitySimulation(simulation)
-        wrapped.d_adapter_meta.update(
-            {
+        wrapped = EvacEngineRuntimeAdapter(
+            EvacEngine(scenario.config),
+            adapter_meta={
                 "map_path": str(scenario.map_path),
                 "population_path": str(scenario.population_path),
                 "yaml_path": None
@@ -330,7 +275,7 @@ def integrated_simulation_factory(
                 "person_count": scenario.person_count,
                 "relation_count": scenario.relation_count,
                 "smoke_source_count": scenario.smoke_source_count,
-            }
+            },
         )
         return wrapped
 

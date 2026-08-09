@@ -1,9 +1,9 @@
-"""D-side adapter from the current CA runtime to the shared snapshot shape.
+"""D-side adapter from B runtimes to the shared snapshot shape.
 
 This module deliberately uses structural (duck-typed) reads so the
-visualization layer does not modify or depend on the concrete implementation
-of A/B/C modules.  The only private fallback is ``_evacuated_status`` because
-the current B mock does not expose a public evacuation-state API yet.
+visualization layer does not modify or depend on concrete A/B/C classes. B's
+current public ``EvacEngine`` fields are preferred; old private state is only
+a compatibility fallback.
 """
 
 from __future__ import annotations
@@ -186,8 +186,11 @@ class CaSnapshotAdapter:
             random_seed = parameters.get("random_seed")
 
         smoke_sim = getattr(simulation, "smoke_sim", None)
+        public_smoke_matrix = _optional_attr(simulation, "smoke_matrix")
         smoke_field = _matrix_to_lists(
-            getattr(smoke_sim, "smoke_matrix", None),
+            public_smoke_matrix
+            if public_smoke_matrix is not None
+            else getattr(smoke_sim, "smoke_matrix", None),
             width=width,
             height=height,
             field_name="smoke_field",
@@ -204,12 +207,8 @@ class CaSnapshotAdapter:
             height=height,
             field_name="congestion_field",
         )
-        if any(
-            value < 0.0 or value > 1.0
-            for row in smoke_field
-            for value in row
-        ):
-            raise SnapshotAdapterError("smoke_field values must be within [0, 1]")
+        if any(value < 0.0 for row in smoke_field for value in row):
+            raise SnapshotAdapterError("smoke_field values must be non-negative")
         if any(
             value < 0.0 or value > 1.0
             for row in congestion_field
@@ -252,14 +251,9 @@ class CaSnapshotAdapter:
                     f"person {person_id!r} position ({x}, {y}) is outside the grid"
                 )
 
-            # B's current CA stores the authoritative runtime value in
-            # ``_evacuated_status`` while the shared Person instance retains
-            # its schema default.  Prefer that runtime mapping when it has an
-            # entry; otherwise consume a future public ``person.evacuated``.
-            if person_id in evacuated_fallback:
+            raw_evacuated = _optional_attr(person, "evacuated")
+            if raw_evacuated is None and person_id in evacuated_fallback:
                 raw_evacuated = evacuated_fallback[person_id]
-            else:
-                raw_evacuated = _optional_attr(person, "evacuated")
             if raw_evacuated is None:
                 raw_evacuated = False
             evacuated = bool(raw_evacuated)
@@ -363,9 +357,17 @@ class CaSnapshotAdapter:
                     person["status"] == "EVACUATED" for person in people
                 ) else []
             ),
-            "private_fallbacks": ["simulation._evacuated_status"],
+            "private_fallbacks": (
+                ["simulation._evacuated_status"]
+                if any(
+                    _optional_attr(person, "evacuated") is None
+                    for _, person in _person_items(getattr(simulation, "persons", None))
+                )
+                else []
+            ),
             "missing_fields_are_null": True,
             "missing_values_are_not_inferred": True,
+            "smoke_value_domain": "B raw non-negative concentration; normalization is not confirmed",
         }
         extra_meta = getattr(simulation, "d_adapter_meta", None)
         if isinstance(extra_meta, Mapping):

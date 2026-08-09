@@ -28,7 +28,7 @@ class WebRuntimeServerTests(unittest.TestCase):
                 cells.append({"x": x, "y": y, "type": cell_type})
         map_path = root / "map.json"
         map_path.write_text(
-            json.dumps({"width": width, "height": height, "cell_size": 0.5, "cells": cells}),
+            json.dumps({"name": "d_test_map", "width": width, "height": height, "cell_size": 0.5, "cells": cells}),
             encoding="utf-8",
         )
         population_path = root / "output_people.json"
@@ -84,7 +84,7 @@ class WebRuntimeServerTests(unittest.TestCase):
                     },
                 )["snapshot"]
                 self.assertEqual(2, len(initial["people"]))
-                self.assertEqual("A map + C population + B CA", initial["adapter_meta"]["input_mode"])
+                self.assertEqual("A map + C population + B EvacEngine", initial["adapter_meta"]["input_mode"])
                 stepped = post("/api/session/step", {})["snapshot"]
                 self.assertEqual(1, stepped["step"])
                 self.assertEqual(0.5, stepped["time_s"])

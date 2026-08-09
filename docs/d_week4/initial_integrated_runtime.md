@@ -9,7 +9,7 @@ A 的 JSON/CSV 地图
     -> A loader / D 校验
 C 的 output_people.json（可选 YAML）
     -> D 场景组装
-B 的 CaEvacSimulation.step()
+B 的 EvacEngine.run_one_step(c_step_data)
     -> D 动画、people_log.csv、event_log.csv
 ```
 
@@ -54,7 +54,7 @@ B 当前冲突求解器把冲突失败表示为 `None`，其含义是“原地�
 - A：`scenarios/classroom_corridor.json`（30 x 20，1 个出口）；
 - C：`social/output_people.json`（40 人、160 条关系）与
   `control/config_template.yaml`；
-- B：`simulation.evac_simulation.CaEvacSimulation.step()`；
+- B：`simulation.evac_simulation.EvacEngine.run_one_step(c_step_data)`；
 - D：第 0 到第 20 步均生成每步 40 行的 `people_log.csv`，并在第 12 步
   正确显示 10/40 人已撤离。
 

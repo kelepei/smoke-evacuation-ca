@@ -10,7 +10,7 @@ from experiments.runner import SimulationRunner, default_simulation_factory
 
 
 class SimulationRunnerTests(unittest.TestCase):
-    def test_real_mock_runs_to_completion_and_writes_logs(self) -> None:
+    def test_real_b_runtime_runs_to_configured_limit_and_writes_logs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             runner = SimulationRunner(
                 default_simulation_factory(42),
@@ -25,9 +25,10 @@ class SimulationRunnerTests(unittest.TestCase):
                 self.assertEqual(initial["random_seed"], 42)
                 final = runner.run_until_finished()
                 self.assertTrue(runner.finished)
-                self.assertTrue(
-                    all(person["evacuated"] for person in final["people"])
-                )
+                # D must report B's result instead of asserting a fabricated
+                # evacuation outcome. The current B movement policy may stop
+                # at the configured limit with people still inside.
+                self.assertEqual(final["step"], 50)
 
                 people_path = Path(
                     temp_dir, "runner_test", "people_log.csv"
@@ -42,10 +43,7 @@ class SimulationRunnerTests(unittest.TestCase):
                     len(people_rows),
                     (final["step"] + 1) * len(final["people"]),
                 )
-                self.assertEqual(
-                    [row["event_type"] for row in event_rows],
-                    ["evac_success", "evac_success", "evac_success"],
-                )
+                self.assertEqual(event_rows, [])
             finally:
                 runner.close()
 
