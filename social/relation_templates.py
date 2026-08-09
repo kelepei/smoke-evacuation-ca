@@ -25,50 +25,49 @@ SCENE_CONFIG = {
     "classroom": {
         "profiles": {"student": 0.9, "teacher": 0.1},
         "group_size": [2, 8],
-        "count": [30, 40],
+        "count": [50, 80],
     },
     "corridor": {
         "profiles": {"student": 0.7, "teacher": 0.2, "staff": 0.1},
         "group_size": [1, 3],
-        "count": [25, 35],
+        "count": [50, 70],
     },
     "stair": {
         "profiles": {"student": 0.6, "teacher": 0.2, "staff": 0.2},
         "group_size": [1, 2],
-        "count": [30, 40],
+        "count": [50, 80],
     },
     "shop": {
         "profiles": {"customer": 0.7, "staff": 0.2, "security": 0.05, "child": 0.03, "elderly": 0.02},
         "group_size": [1, 5],
-        "count": [40, 50],
+        "count": [60, 100],
     },
     "hall": {
         "profiles": {"customer": 0.55, "staff": 0.2, "security": 0.1, "child": 0.08, "elderly": 0.07},
         "group_size": [1, 4],
-        "count": [40, 50],
+        "count": [60, 100],
     },
     "canteen": {
         "profiles": {"student": 0.8, "staff": 0.15, "teacher": 0.05},
         "group_size": [1, 4],
-        "count": [40, 50],
+        "count": [50, 90],
     },
     "dorm": {
         "profiles": {"student": 1.0},
         "group_size": [2, 6],
-        "count": [36, 48],
+        "count": [48, 96],          #  [48, 96]（6人间倍数）
     },
     "library": {
         "profiles": {"student": 0.8, "teacher": 0.1, "staff": 0.1},
         "group_size": [1, 3],
-        "count": [40, 50],
+        "count": [50, 80],
     },
     "hospital": {
         "profiles": {"patient": 0.35, "family_member": 0.25, "doctor": 0.15, "staff": 0.15, "security": 0.1},
         "group_size": [1, 3],
-        "count": [30, 40],
+        "count": [50, 80],
     },
 }
-
 
 # ============================================================
 # 关系默认参数
