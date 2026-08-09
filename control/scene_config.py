@@ -536,8 +536,8 @@ if __name__ == "__main__":
         print(f"❌ 配置加载失败: {e}")
         sys.exit(1)
 
-    # ✅ 修复：导入 SocialGraphBuilder（从 social 包）
-    # 由于 scene_config.py 在 control/ 下，需要将项目根目录加入路径
+    
+   
     import sys
     import os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -566,4 +566,3 @@ if __name__ == "__main__":
 
     print("\n" + "=" * 70)
     print("✅ 完成！")
-    
