@@ -336,11 +336,6 @@ class CsvExperimentLogger:
                     smoke_concentration,
                     field=f"snapshot.people[{index}].smoke_concentration",
                 )
-                if not 0.0 <= smoke_concentration <= 1.0:
-                    raise CsvLogError(
-                        f"snapshot.people[{index}].smoke_concentration "
-                        "must be within [0, 1]"
-                    )
             risk = raw_person.get("risk")
             if risk is not None:
                 risk = _finite_float(

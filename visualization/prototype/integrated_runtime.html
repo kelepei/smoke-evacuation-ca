@@ -633,7 +633,7 @@
     // editor-only safe-zone marker is exported as a sign so the resulting map
     // remains importable by A/B; its visual meaning is retained in the UI.
     editorCells.forEach((row,y)=>row.forEach((type,x)=>cells.push({x,y,type:type==='safe_zone'?'sign':type})));
-    const payload={schema_version:'0.1-draft',source:'d_map_editor_demo',width:editorCols,height:editorRows,cell_size:readCellSize(),cells};
+    const payload={name:'d_edited_map',schema_version:'0.1-draft',source:'d_map_editor_demo',width:editorCols,height:editorRows,cell_size:readCellSize(),cells};
     const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json;charset=utf-8'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='d_edited_map_demo.json';a.click();URL.revokeObjectURL(a.href);
     addLog('地图编辑导出','d_edited_map_demo.json');

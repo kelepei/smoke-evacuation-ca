@@ -29,7 +29,7 @@ http://127.0.0.1:8765/visualization/prototype/integrated_runtime.html
 - A：`scenarios/classroom_corridor.json`
 - C：`social/output_people.json`
 - 可选 C 配置：`control/config_template.yaml`
-- B：`simulation.evac_simulation.CaEvacSimulation`
+- B：`simulation.evac_simulation.EvacEngine`
 
 ## 已实现链路
 

@@ -28,7 +28,7 @@ class IntegratedRuntimeTests(unittest.TestCase):
         map_path = root / "incoming_map.json"
         map_path.write_text(
             json.dumps(
-                {"width": width, "height": height, "cell_size": 0.5, "cells": cells}
+                {"name": "d_test_map", "width": width, "height": height, "cell_size": 0.5, "cells": cells}
             ),
             encoding="utf-8",
         )
@@ -80,7 +80,7 @@ class IntegratedRuntimeTests(unittest.TestCase):
         self.assertEqual(1, len(scenario.config.relations))
         self.assertIn("deterministic placement", scenario.placement_mode)
 
-    def test_runner_uses_b_ca_with_wait_in_place_compatibility(self) -> None:
+    def test_runner_uses_current_b_evac_engine_without_writing_b_code(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
             map_path, people_path = self._write_inputs(root)
@@ -96,7 +96,7 @@ class IntegratedRuntimeTests(unittest.TestCase):
                 initial = runner.initialize()
                 self.assertEqual(4, len(initial["people"]))
                 self.assertEqual(1, len(initial["relations"]))
-                self.assertEqual("A map + C population + B CA", initial["adapter_meta"]["input_mode"])
+                self.assertEqual("A map + C population + B EvacEngine", initial["adapter_meta"]["input_mode"])
                 final = runner.run_until_finished()
                 self.assertGreater(final["step"], 0)
                 self.assertLessEqual(final["step"], 8)
