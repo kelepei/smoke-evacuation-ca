@@ -5,31 +5,44 @@ C03: 关系图生成 (social_graph.py)
 依赖:
     - C01: person_profiles.json
     - C02: relation_templates.py
-    - C11: scene_config.py
+    - C11: scene_config.py (在 control/ 下)
 
 输出:
     - NetworkX DiGraph (有向图)
     - Person 对象字典 (person_id -> Person)
 """
 
+import sys
+import os
+# 确保项目根目录在 sys.path 中，以便使用绝对导入
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
 import json
 from typing import Dict, List, Tuple
-
 import networkx as nx
 import numpy as np
 
-# 导入 C02 模块
-from social.relation_templates import (
+# 导入 C02 模块（同包，相对导入）
+from .relation_templates import (
     RelationGenerator,
     make_relation,
     generate_profiles,
     get_scene_count,
 )
 
+# ✅ 使用绝对导入（项目根目录下的 control 模块）
+from control.scene_config import SceneConfig
+
+# 导入 C02 生成函数（同包，相对导入）
+from .relation_templates import generate_profiles_from_config, generate_relations_from_config
+
 STRONG_RELATION_TYPES = ["family", "friend", "classmate", "colleague", "staff_to_customer", "doctor_patient"]
 STRONG_RELATION_THRESHOLD = 0.3
+
 # ============================================================
-# 方向性关系权重覆盖表（保持不变）
+# 方向性关系权重覆盖表
 # ============================================================
 DIRECTIONAL_OVERRIDE = {
     ("staff", "customer"): {
@@ -66,7 +79,7 @@ DIRECTIONAL_OVERRIDE = {
 
 
 # ============================================================
-# Person 类（保持不变）
+# Person 类
 # ============================================================
 class Person:
     __slots__ = (
@@ -126,17 +139,38 @@ class SocialGraphBuilder:
     """
 
     def __init__(self, semantic: str, person_count: int = None,
-                 profiles_json_path: str = "person_profiles.json",
+                 profiles_json_path: str = None,  # ✅ 改为 None，自动查找
                  seed: int = None):
         """
-        原有 __init__ 完全保持不变
+        初始化 SocialGraphBuilder
         """
         self.semantic = semantic
         self.seed = seed
         if seed is not None:
             np.random.seed(seed)
 
-        # 加载角色默认属性
+        # ✅ 修复：自动查找 person_profiles.json 路径
+        if profiles_json_path is None:
+            # 获取 social_graph.py 所在目录（即 social/）
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            # 查找顺序：social/ → 项目根目录 → 当前工作目录
+            possible_paths = [
+                os.path.join(current_dir, "person_profiles.json"),  # social/person_profiles.json
+                os.path.join(os.path.dirname(current_dir), "person_profiles.json"),  # 项目根目录
+                "person_profiles.json",  # 当前工作目录
+            ]
+            found = False
+            for path in possible_paths:
+                if os.path.exists(path):
+                    profiles_json_path = path
+                    found = True
+                    print(f"✅ 找到 person_profiles.json: {path}")
+                    break
+            if not found:
+                raise FileNotFoundError(
+                    "未找到 person_profiles.json，请确保文件在 social/ 目录下或项目根目录中"
+                )
+
         with open(profiles_json_path, "r", encoding="utf-8") as f:
             config = json.load(f)
         self.person_defaults = config["person_types"]
@@ -154,9 +188,8 @@ class SocialGraphBuilder:
         self.graph = nx.DiGraph()
         self.persons: Dict[int, Person] = {}
 
-        # ====== 新增：场景配置存储（供 from_config 使用） ======
+        # 场景配置存储（供 from_config 使用）
         self.scene_config = None
-
 
     def build(self) -> Tuple[nx.DiGraph, Dict[int, Person]]:
         """原有构建方法，完全保持不变"""
@@ -166,33 +199,28 @@ class SocialGraphBuilder:
         return self.graph, self.persons
 
     # ============================================================
-    # 新增：从场景配置构建（类方法）
+    # 从场景配置构建（类方法）
     # ============================================================
     @classmethod
-    def from_config(cls, scene_config, profiles_json_path: str = "person_profiles.json"):
+    def from_config(cls, scene_config: 'SceneConfig', profiles_json_path: str = None):
         """
-        从 SceneConfig 构建社会关系图（新增）
+        从 SceneConfig 构建社会关系图
 
         使用方式：
-            from scene_config import SceneConfigGenerator
+            from control.scene_config import SceneConfigGenerator
             config = SceneConfigGenerator.get_preset("classroom")
             builder = SocialGraphBuilder.from_config(config)
             graph, persons = builder.build_with_config()
         """
-        # 导入场景配置模块
-        from control.scene_config import SceneConfig
-
         builder = cls(
             semantic=scene_config.scene_name,
             person_count=scene_config.total_persons,
-            profiles_json_path=profiles_json_path,
+            profiles_json_path=profiles_json_path,  # 传入 None，让 __init__ 自动查找
             seed=scene_config.random_seed
         )
 
-        # 存储场景配置
         builder.scene_config = scene_config
 
-        # 使用场景配置生成角色列表（覆盖原有随机生成）
         from .relation_templates import generate_profiles_from_config
         builder.profiles_list = generate_profiles_from_config(scene_config)
         builder.num_persons = len(builder.profiles_list)
@@ -200,38 +228,29 @@ class SocialGraphBuilder:
         return builder
 
     # ============================================================
-    # 新增：使用场景配置构建关系
+    # 使用场景配置构建关系
     # ============================================================
     def build_with_config(self) -> Tuple[nx.DiGraph, Dict[int, Person]]:
         """
-        使用场景配置构建关系图（新增）
-        如果未设置 scene_config，自动回退到原有 build()
+        使用场景配置构建关系图（不分配位置，x=0, y=0 占位）
+        A 组负责根据地图语义分配位置
         """
-        # 如果没有场景配置，回退到原有逻辑
         if self.scene_config is None:
             return self.build()
 
-        # 创建 Person 对象
         self._create_persons()
 
-        # 使用场景配置生成关系
         from .relation_templates import generate_relations_from_config
-
-        # 生成无向关系边
         raw_relations = generate_relations_from_config(
             self.scene_config,
             self.profiles_list
         )
 
-        # 将无向边转为有向边
         for u, v, rel_type in raw_relations:
             base_params = make_relation(rel_type)
-
-            # u -> v 方向
             params_uv = self._directional_params(u, v, rel_type, base_params)
             self.graph.add_edge(u, v, **params_uv)
 
-            # v -> u 方向
             if self.scene_config.enable_directional_override:
                 params_vu = self._directional_params(v, u, rel_type, base_params)
             else:
@@ -239,17 +258,15 @@ class SocialGraphBuilder:
                 params_vu["relation_type"] = rel_type
             self.graph.add_edge(v, u, **params_vu)
 
-        # 分配群组
         self._assign_groups()
 
         return self.graph, self.persons
 
     # ============================================================
-    # 以下原有方法完全保持不变
+    # 内部方法
     # ============================================================
-
     def _create_persons(self):
-        """创建所有 Person 节点（保持不变）"""
+        """创建所有 Person 节点"""
         for i in range(self.num_persons):
             profile = self.profiles_list[i]
             defaults = self.person_defaults[profile]
@@ -258,7 +275,7 @@ class SocialGraphBuilder:
             self.graph.add_node(i, **person.to_dict())
 
     def _create_relations(self):
-        """生成所有关系边（保持不变）"""
+        """生成所有关系边"""
         gen = RelationGenerator(self.semantic, self.profiles_list)
         raw_relations = gen.generate()
 
@@ -271,7 +288,7 @@ class SocialGraphBuilder:
 
     def _directional_params(self, from_id: int, to_id: int,
                             rel_type: str, base_params: dict) -> dict:
-        """根据方向覆盖表调整关系参数（保持不变）"""
+        """根据方向覆盖表调整关系参数"""
         from_profile = self.persons[from_id].profile
         to_profile = self.persons[to_id].profile
         key = (from_profile, to_profile)
@@ -286,15 +303,14 @@ class SocialGraphBuilder:
             return base_params
 
     def _assign_groups(self):
+        """分配群组 ID"""
         strong_graph = nx.Graph()
         strong_graph.add_nodes_from(range(self.num_persons))
 
-        #  所有关系边都参与群组分配
         for u, v, data in self.graph.edges(data=True):
             if data.get("strength", 0) >= 0.3:
                 strong_graph.add_edge(u, v)
 
-        # 分配 group_id
         group_id = 0
         for comp in nx.connected_components(strong_graph):
             group_str = str(group_id)
@@ -303,7 +319,6 @@ class SocialGraphBuilder:
                 self.graph.nodes[node]["group_id"] = group_str
             group_id += 1
 
-        # 剩余未分配的人单独成组
         for i in range(self.num_persons):
             if self.persons[i].group_id == "":
                 group_str = str(group_id)
@@ -314,9 +329,8 @@ class SocialGraphBuilder:
         self.num_groups = group_id
 
     # ============================================================
-    # 查询与导出接口（保持不变）
+    # 查询与导出接口
     # ============================================================
-
     def get_relation(self, u: int, v: int) -> dict:
         if self.graph.has_edge(u, v):
             return dict(self.graph[u][v])
@@ -371,21 +385,17 @@ class SocialGraphBuilder:
 
 
 # ============================================================
-# 便捷函数（保持不变 + 新增）
+# 便捷函数
 # ============================================================
-
 def build_social_graph(semantic: str, person_count: int = None,
-                       profiles_json: str = "person_profiles.json",
+                       profiles_json: str = None,  # ✅ 改为 None
                        seed: int = None) -> Tuple[nx.DiGraph, Dict[int, Person]]:
-    """原有便捷函数，完全保持不变"""
+    """原有便捷函数"""
     builder = SocialGraphBuilder(semantic, person_count, profiles_json, seed)
     return builder.build()
 
 
-# ============================================================
-# 新增便捷函数：从场景配置构建
-# ============================================================
-def build_social_graph_from_config(scene_config, profiles_json: str = "person_profiles.json"):
+def build_social_graph_from_config(scene_config, profiles_json_path: str = None):
     """新增便捷函数：从场景配置构建"""
-    builder = SocialGraphBuilder.from_config(scene_config, profiles_json)
+    builder = SocialGraphBuilder.from_config(scene_config, profiles_json_path)
     return builder.build_with_config()
