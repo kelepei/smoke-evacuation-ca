@@ -544,7 +544,7 @@ if __name__ == "__main__":
 
     print("\n🔨 生成社会关系图...")
     try:
-        from ..social.social_graph import SocialGraphBuilder
+        from social.social_graph import SocialGraphBuilder
         builder = SocialGraphBuilder.from_config(config)
         graph, persons = builder.build_with_config()
         builder.print_summary()
