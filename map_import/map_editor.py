@@ -1,12 +1,19 @@
+import json
+
 import matplotlib.pyplot as plt
 import matplotlib
 
 from matplotlib.colors import ListedColormap
+from matplotlib.patches import Rectangle
 
-from core.schema import CellType
+from core.schema import (
+    CellType,
+    SemanticType
+)
 
 
-# Mac中文字体
+# Mac中文显示
+
 matplotlib.rcParams["font.sans-serif"] = [
     "PingFang SC"
 ]
@@ -23,18 +30,58 @@ class MapEditor:
         self.grid = grid
 
 
-        # 当前编辑类型
+        # ==========================
+        # 编辑状态
+        # ==========================
+
+        # type / semantic
+        self.edit_mode = "type"
+
+
         self.current_type = CellType.FREE
 
 
+        self.current_semantic = None
+
+
+
+        # ==========================
+        # 语义框选
+        # ==========================
+
+        self.drag_start = None
+
+        self.drag_end = None
+
+
+
+        # ==========================
+        # 窗口
+        # ==========================
+
         self.fig, self.ax = plt.subplots(
-            figsize=(12, 10)
+            figsize=(12,10)
+        )
+
+
+
+        # 鼠标事件
+
+        self.fig.canvas.mpl_connect(
+            "button_press_event",
+            self.on_press
         )
 
 
         self.fig.canvas.mpl_connect(
-            "button_press_event",
-            self.onclick
+            "motion_notify_event",
+            self.on_move
+        )
+
+
+        self.fig.canvas.mpl_connect(
+            "button_release_event",
+            self.on_release
         )
 
 
@@ -48,47 +95,50 @@ class MapEditor:
 
 
 
-    # ==================================
-    # 绘制地图
-    # ==================================
+    # =================================
+    # 绘制
+    # =================================
 
     def draw(self):
+
 
         self.ax.clear()
 
 
-        image = []
+        image=[]
+
 
 
         for y in range(self.grid.height):
 
-            row = []
+            row=[]
 
 
             for x in range(self.grid.width):
 
-                cell = self.grid.get_cell(
+
+                cell=self.grid.get_cell(
                     x,
                     y
                 )
 
 
-                if cell.cell_type == CellType.FREE:
+                if cell.cell_type==CellType.FREE:
 
                     row.append(0)
 
 
-                elif cell.cell_type == CellType.WALL:
+                elif cell.cell_type==CellType.WALL:
 
                     row.append(1)
 
 
-                elif cell.cell_type == CellType.OBSTACLE:
+                elif cell.cell_type==CellType.OBSTACLE:
 
                     row.append(2)
 
 
-                elif cell.cell_type == CellType.EXIT:
+                elif cell.cell_type==CellType.EXIT:
 
                     row.append(3)
 
@@ -102,17 +152,14 @@ class MapEditor:
 
 
 
-        # 固定颜色
-
-        cmap = ListedColormap(
+        cmap=ListedColormap(
             [
-                "white",   # FREE
-                "black",   # WALL
-                "gray",    # OBSTACLE
-                "green"    # EXIT
+                "white",
+                "black",
+                "gray",
+                "green"
             ]
         )
-
 
 
         self.ax.imshow(
@@ -133,6 +180,106 @@ class MapEditor:
 
 
 
+        # ==========================
+        # 显示语义
+        # ==========================
+
+        for cell in self.grid.cells:
+
+
+            if cell.semantic is not None:
+
+
+                if hasattr(
+                    cell.semantic,
+                    "value"
+                ):
+
+                    text=cell.semantic.value[:3]
+
+                else:
+
+                    text=str(
+                        cell.semantic
+                    )[:3]
+
+
+
+                self.ax.text(
+
+                    cell.x,
+
+                    cell.y,
+
+                    text,
+
+                    ha="center",
+
+                    va="center",
+
+                    fontsize=5
+
+                )
+
+
+
+        # ==========================
+        # 显示拖动框
+        # ==========================
+
+        if (
+
+            self.drag_start is not None
+
+            and
+
+            self.drag_end is not None
+
+        ):
+
+
+            x1,y1=self.drag_start
+
+            x2,y2=self.drag_end
+
+
+
+            xmin=min(x1,x2)
+
+            ymin=min(y1,y2)
+
+
+            width=abs(x2-x1)+1
+
+            height=abs(y2-y1)+1
+
+
+
+            rect=Rectangle(
+
+                (
+
+                    xmin-0.5,
+
+                    ymin-0.5
+
+                ),
+
+                width,
+
+                height,
+
+                fill=False,
+
+                linewidth=2
+
+            )
+
+
+            self.ax.add_patch(rect)
+
+
+
         # 网格
 
         self.ax.grid(
@@ -142,18 +289,17 @@ class MapEditor:
 
 
 
-        # 坐标显示优化
-
-        step_x = max(
+        step_x=max(
             1,
-            self.grid.width // 15
+            self.grid.width//15
         )
 
 
-        step_y = max(
+        step_y=max(
             1,
-            self.grid.height // 15
+            self.grid.height//15
         )
+
 
 
         self.ax.set_xticks(
@@ -178,21 +324,28 @@ class MapEditor:
         self.ax.set_title(
 
             "CA Map Editor\n"
-            "1-Free  2-Wall  "
-            "3-Obstacle  4-Exit"
+
+            f"Cell Size={self.grid.cell_size}m\n"
+
+            "类型:1空地 2墙 3障碍 4出口\n"
+
+            "语义:Q教室 W走廊 E楼梯 R商店\n"
+
+            "T大厅 Y食堂 U宿舍 I图书馆 O医院"
 
         )
 
 
-        self.fig.canvas.draw()
+        self.fig.canvas.draw_idle()
 
 
 
-    # ==================================
-    # 点击修改
-    # ==================================
 
-    def onclick(self, event):
+    # =================================
+    # 鼠标按下
+    # =================================
+
+    def on_press(self,event):
 
 
         if event.xdata is None:
@@ -201,75 +354,203 @@ class MapEditor:
 
 
 
-        x = int(event.xdata)
+        x=int(event.xdata)
 
-        y = int(event.ydata)
+        y=int(event.ydata)
 
 
 
-        if (
+        if self.edit_mode=="semantic":
 
-            x < 0
 
-            or x >= self.grid.width
+            self.drag_start=(
 
-            or y < 0
+                x,
 
-            or y >= self.grid.height
+                y
 
-        ):
+            )
+
+
+        else:
+
+
+            self.modify_type(
+                x,
+                y
+            )
+
+
+
+
+    # =================================
+    # 鼠标移动
+    # =================================
+
+    def on_move(self,event):
+
+
+        if self.edit_mode!="semantic":
 
             return
 
 
 
-        cell = self.grid.get_cell(
-            x,
-            y
+        if self.drag_start is None:
+
+            return
+
+
+
+        if event.xdata is None:
+
+            return
+
+
+
+        self.drag_end=(
+
+            int(event.xdata),
+
+            int(event.ydata)
+
         )
 
 
-        cell.cell_type = self.current_type
+        self.draw()
+
+
+
+
+    # =================================
+    # 鼠标释放
+    # =================================
+
+    def on_release(self,event):
+
+
+        if self.edit_mode!="semantic":
+
+            return
+
+
+
+        if self.drag_start is None:
+
+            return
+
+
+
+        if event.xdata is None:
+
+            return
+
+
+
+        self.drag_end=(
+
+            int(event.xdata),
+
+            int(event.ydata)
+
+        )
+
+
+
+        x1,y1=self.drag_start
+
+        x2,y2=self.drag_end
+
+
+
+        xmin=min(x1,x2)
+
+        xmax=max(x1,x2)
+
+        ymin=min(y1,y2)
+
+        ymax=max(y1,y2)
+
+
+
+        for y in range(
+
+            ymin,
+
+            ymax+1
+
+        ):
+
+
+            for x in range(
+
+                xmin,
+
+                xmax+1
+
+            ):
+
+
+
+                if (
+
+                    0<=x<self.grid.width
+
+                    and
+
+                    0<=y<self.grid.height
+
+                ):
+
+
+                    cell=self.grid.get_cell(
+                        x,
+                        y
+                    )
+
+
+                    if cell.cell_type==CellType.FREE:
+
+
+                        cell.semantic=(
+
+                            self.current_semantic
+
+                        )
 
 
 
         print("================")
 
         print(
-            "修改元胞:"
-        )
 
+            "设置区域语义:",
+
+            self.current_semantic.value
+
+        )
 
         print(
-            "x:",
-            x,
-            "y:",
-            y
+
+            "区域:",
+
+            xmin,
+
+            ymin,
+
+            xmax,
+
+            ymax
+
         )
-
-
-        print(
-            "类型:",
-            self.current_type.value
-        )
-
-
-        print(
-            "实际位置:",
-            round(
-                x * self.grid.cell_size,
-                2
-            ),
-            "m ,",
-            round(
-                y * self.grid.cell_size,
-                2
-            ),
-            "m"
-        )
-
 
         print("================")
+
+
+
+        self.drag_start=None
+
+        self.drag_end=None
 
 
 
@@ -277,53 +558,173 @@ class MapEditor:
 
 
 
-    # ==================================
-    # 键盘切换
-    # ==================================
+
+    # =================================
+    # 类型修改
+    # =================================
+
+    def modify_type(
+            self,
+            x,
+            y
+    ):
+
+
+        if (
+
+            x<0
+
+            or x>=self.grid.width
+
+            or y<0
+
+            or y>=self.grid.height
+
+        ):
+
+            return
+
+
+
+        cell=self.grid.get_cell(
+            x,
+            y
+        )
+
+
+        cell.cell_type=self.current_type
+
+
+
+        print(
+
+            "修改类型:",
+
+            self.current_type.value,
+
+            "位置:",
+
+            x,
+
+            y
+
+        )
+
+
+        self.draw()
+
+
+
+
+    # =================================
+    # 键盘
+    # =================================
 
     def keypress(self,event):
 
 
-        if event.key == "1":
+        key=event.key.lower()
 
-            self.current_type = CellType.FREE
+
+        print(
+            "按键:",
+            key
+        )
+
+
+        # 类型
+
+
+        if key=="1":
+
+            self.edit_mode="type"
+
+            self.current_type=CellType.FREE
+
+            print("当前模式:空地")
+
+
+
+        elif key=="2":
+
+            self.edit_mode="type"
+
+            self.current_type=CellType.WALL
+
+            print("当前模式:墙")
+
+
+
+        elif key=="3":
+
+            self.edit_mode="type"
+
+            self.current_type=CellType.OBSTACLE
+
+            print("当前模式:障碍物")
+
+
+
+        elif key=="4":
+
+            self.edit_mode="type"
+
+            self.current_type=CellType.EXIT
+
+            print("当前模式:出口")
+
+
+
+        # semantic
+
+
+        semantic_map={
+
+
+            "q":SemanticType.CLASSROOM,
+
+            "w":SemanticType.CORRIDOR,
+
+            "e":SemanticType.STAIR,
+
+            "r":SemanticType.SHOP,
+
+            "t":SemanticType.HALL,
+
+            "y":SemanticType.CANTEEN,
+
+            "u":SemanticType.DORM,
+
+            "i":SemanticType.LIBRARY,
+
+            "o":SemanticType.HOSPITAL
+
+        }
+
+
+
+        if key in semantic_map:
+
+
+            self.edit_mode="semantic"
+
+            self.current_semantic=semantic_map[key]
+
 
             print(
-                "当前模式: 空地"
+
+                "当前语义:",
+
+                self.current_semantic.value
+
             )
 
 
-        elif event.key == "2":
-
-            self.current_type = CellType.WALL
-
-            print(
-                "当前模式: 墙"
-            )
 
 
-        elif event.key == "3":
-
-            self.current_type = CellType.OBSTACLE
-
-            print(
-                "当前模式: 障碍物"
-            )
-
-
-        elif event.key == "4":
-
-            self.current_type = CellType.EXIT
-
-            print(
-                "当前模式: 出口"
-            )
-
-
-
-    # ==================================
+    # =================================
     # 显示
-    # ==================================
+    # =================================
 
     def show(self):
 
@@ -331,26 +732,28 @@ class MapEditor:
 
 
 
-    # ==================================
+
+    # =================================
     # 保存JSON
-    # ==================================
+    # =================================
 
-    def save_json(self, filename):
+    def save_json(
+            self,
+            filename
+    ):
 
-        import json
 
+        data={
 
-        data = {
+            "name":"edited_map",
 
-            "name": "edited_map",
+            "width":self.grid.width,
 
-            "width": self.grid.width,
+            "height":self.grid.height,
 
-            "height": self.grid.height,
+            "cell_size":self.grid.cell_size,
 
-            "cell_size": self.grid.cell_size,
-
-            "cells": []
+            "cells":[]
 
         }
 
@@ -359,28 +762,45 @@ class MapEditor:
         for cell in self.grid.cells:
 
 
-            item = {
+            item={
 
-                "x": cell.x,
 
-                "y": cell.y,
+                "x":cell.x,
 
-                "type": cell.cell_type.value,
+                "y":cell.y,
 
-                "room_id": cell.room_id,
+                "type":cell.cell_type.value,
 
-                "smoke": cell.smoke,
+                "room_id":cell.room_id,
 
-                "risk": cell.risk,
+                "smoke":cell.smoke,
 
-                "guidance": cell.guidance
+                "risk":cell.risk,
+
+                "guidance":cell.guidance
 
             }
 
 
+
             if cell.semantic is not None:
 
-                item["semantic"] = cell.semantic.value
+
+                if hasattr(
+                    cell.semantic,
+                    "value"
+                ):
+
+                    item["semantic"]=(
+                        cell.semantic.value
+                    )
+
+                else:
+
+                    item["semantic"]=str(
+                        cell.semantic
+                    )
+
 
 
             data["cells"].append(item)
@@ -411,7 +831,11 @@ class MapEditor:
             )
 
 
+
         print(
+
             "JSON保存成功:",
+
             filename
+
         )
