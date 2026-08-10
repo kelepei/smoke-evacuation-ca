@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>人员配置 - 疏散仿真平台</title>
+  <style>
+    :root { --ink:#17243a; --muted:#5c6b80; --line:#d9e2ef; --panel:#fff; --bg:#f4f7fb; --brand:#2563eb; --good:#087443; --bad:#bb2133; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--bg); font:14px/1.5 "Microsoft YaHei", system-ui, sans-serif; }
+    header { padding:24px max(24px, calc((100vw - 1180px) / 2)); background:#10213d; color:#fff; }
+    header h1 { margin:0 0 5px; font-size:22px; }
+    header p { margin:0; color:#cbd8ea; }
+    main { max-width:1180px; margin:24px auto 42px; padding:0 20px; display:grid; grid-template-columns:minmax(280px, .8fr) minmax(430px, 1.2fr); gap:20px; }
+    .card { padding:20px; background:var(--panel); border:1px solid var(--line); border-radius:14px; box-shadow:0 2px 8px rgba(28,45,78,.04); }
+    h2 { margin:0 0 12px; font-size:17px; }
+    .hint, .contract { color:var(--muted); font-size:13px; }
+    .scene-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; }
+    .scene { min-height:60px; padding:8px; text-align:left; cursor:pointer; color:var(--ink); background:#f8fbff; border:1px solid var(--line); border-radius:8px; }
+    .scene:hover { border-color:#8fb4ff; }
+    .scene[aria-pressed="true"] { color:#123e98; background:#edf4ff; border-color:var(--brand); box-shadow:inset 0 0 0 1px var(--brand); }
+    .scene small { display:block; color:var(--muted); }
+    .form-section { margin-top:22px; padding-top:18px; border-top:1px solid var(--line); }
+    .form-section h3 { margin:0 0 6px; font-size:15px; }
+    label { display:block; margin:12px 0 5px; font-weight:600; }
+    input[type="number"] { width:100%; padding:8px 9px; border:1px solid #bfcde0; border-radius:7px; font:inherit; }
+    input[type="range"] { width:100%; accent-color:var(--brand); }
+    .row { display:grid; grid-template-columns:1fr 92px; align-items:center; gap:12px; }
+    .ratio-row { display:grid; grid-template-columns:minmax(96px, 1fr) 125px; align-items:center; gap:12px; margin:8px 0; }
+    .sum { padding:9px 10px; font-weight:700; border-radius:7px; background:#eef5ff; color:#164191; }
+    .sum.invalid { color:var(--bad); background:#fff0f1; }
+    .value { min-width:45px; text-align:right; color:var(--brand); font-variant-numeric:tabular-nums; }
+    .probability { display:grid; grid-template-columns:minmax(140px, 1fr) 1fr 48px; gap:10px; align-items:center; margin:9px 0; }
+    .seed-note { margin:5px 0 0; color:var(--muted); font-size:12px; }
+    .right { display:flex; flex-direction:column; gap:20px; }
+    pre { min-height:300px; max-height:500px; margin:0; padding:16px; overflow:auto; color:#dfeaff; background:#101c30; border-radius:9px; font:12px/1.55 ui-monospace, Consolas, monospace; white-space:pre; }
+    .toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:9px; margin:12px 0 0; }
+    button { font:inherit; }
+    .button { padding:9px 13px; cursor:pointer; color:#fff; background:var(--brand); border:1px solid var(--brand); border-radius:7px; }
+    .button.secondary { color:#204067; background:#fff; border-color:#bfcde0; }
+    .button:disabled { cursor:not-allowed; opacity:.5; }
+    #status { min-height:20px; margin:0; color:var(--good); font-size:13px; }
+    #status.error { color:var(--bad); }
+    .contract { margin:0; padding:13px 14px; border-left:4px solid #71a1ff; background:#f3f7ff; border-radius:0 8px 8px 0; }
+    @media (max-width:850px) { main { grid-template-columns:1fr; } .scene-grid { grid-template-columns:repeat(2, 1fr); } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>用户定义人员配置</h1>
+    <p>选择场景后，只编辑 C 允许的人员比例及 C 配置参数。</p>
+  </header>
+  <main>
+    <section class="card" aria-labelledby="editor-title">
+      <h2 id="editor-title">1. 场景与人员</h2>
+      <p class="hint">人员类型和人数范围来自 <code>social.relation_templates.SCENE_CONFIG</code>。</p>
+      <div class="scene-grid" id="sceneGrid" aria-label="场景选择"></div>
+
+      <div class="form-section">
+        <h3>人员比例</h3>
+        <p class="hint">仅显示当前场景允许的类型；比例之和必须严格为 1.0000。</p>
+        <div id="ratios"></div>
+        <div id="ratioSum" class="sum" role="status">合计：1.0000</div>
+        <label for="totalPersons">总人数 <span id="countRange" class="hint"></span></label>
+        <input id="totalPersons" data-testid="total-persons" type="number" step="1" required>
+      </div>
+
+      <div class="form-section">
+        <h3>关系与随机性</h3>
+        <label for="intensity">关系强度</label>
+        <div class="row"><input id="intensity" data-testid="relation-intensity" type="range" min="0" max="1" step="0.01"><output id="intensityValue" class="value"></output></div>
+        <label>群体存在概率</label>
+        <p class="hint">只显示当前场景可用的关系群体；未显示的群体将以 0 导出。</p>
+        <div id="probabilities"></div>
+        <label for="seed">随机种子</label>
+        <input id="seed" data-testid="random-seed" type="number" min="0" step="1" inputmode="numeric" placeholder="留空则随机">
+        <p class="seed-note">使用相同种子与相同 C 版本可复现 C 的生成结果；留空会导出 <code>null</code>。</p>
+      </div>
+    </section>
+
+    <section class="right" aria-label="配置预览与导出">
+      <div class="card">
+        <h2>2. C 可读取配置预览</h2>
+        <p class="hint">输出字段与 C 的 <code>SceneConfigGenerator.load_config_from_yaml/load_config_from_json</code> 对齐。</p>
+        <pre id="preview" data-testid="config-preview"></pre>
+        <div class="toolbar">
+          <button class="button secondary" id="formatJson" type="button">预览 JSON</button>
+          <button class="button secondary" id="formatYaml" type="button">预览 YAML</button>
+          <button class="button" id="downloadJson" data-testid="download-json" type="button">导出 JSON</button>
+          <button class="button" id="downloadYaml" data-testid="download-yaml" type="button">导出 YAML</button>
+        </div>
+        <p id="status" aria-live="polite"></p>
+      </div>
+      <p class="contract"><strong>职责边界：</strong>本页只导出 C 的人员与社会关系生成输入；不生成 <code>persons</code>、<code>relations</code>、初始位置或仿真结果。初始位置由 A 按地图房间语义分配，仿真由 B 运行。</p>
+    </section>
+  </main>
+  <script>
+    'use strict';
+
+    // This is a D-side mirror of C's public SCENE_CONFIG. It intentionally
+    // contains only UI metadata and never creates people or relation edges.
+    const SCENES = {
+      classroom: { label:'教室', profiles:{student:.9, teacher:.1}, count:[50,80], groups:{friend:.7, classmate:.95} },
+      corridor:  { label:'走廊', profiles:{student:.7, teacher:.2, staff:.1}, count:[50,70], groups:{friend:.5, classmate:.4, colleague:.5} },
+      stair:     { label:'楼梯', profiles:{student:.6, teacher:.2, staff:.2}, count:[50,80], groups:{friend:.5, classmate:.4, colleague:.5} },
+      shop:      { label:'商店', profiles:{customer:.7, staff:.2, security:.05, child:.03, elderly:.02}, count:[60,100], groups:{family:.7, friend:.6, colleague:.8, staff_customer:.9} },
+      hall:      { label:'大厅', profiles:{customer:.55, staff:.2, security:.1, child:.08, elderly:.07}, count:[60,100], groups:{family:.7, friend:.6, colleague:.7, staff_customer:.8} },
+      canteen:   { label:'食堂', profiles:{student:.8, staff:.15, teacher:.05}, count:[50,90], groups:{friend:.6, classmate:.5, colleague:.5} },
+      dorm:      { label:'宿舍', profiles:{student:1}, count:[48,96], groups:{friend:.98} },
+      library:   { label:'图书馆', profiles:{student:.8, teacher:.1, staff:.1}, count:[50,80], groups:{friend:.4, classmate:.5, colleague:.3} },
+      hospital:  { label:'医院', profiles:{patient:.35, family_member:.25, doctor:.15, staff:.15, security:.1}, count:[50,80], groups:{family:.8, colleague:.7, doctor_patient:.9} }
+    };
+    const GROUP_FIELDS = {
+      family:'has_family_prob', friend:'has_friend_prob', classmate:'has_classmate_prob', colleague:'has_colleague_prob',
+      staff_customer:'has_staff_customer_prob', doctor_patient:'has_doctor_patient_prob'
+    };
+    const GROUP_LABELS = { family:'家庭组', friend:'朋友组', classmate:'同学组', colleague:'同事组', staff_customer:'员工-顾客关系', doctor_patient:'医生-病人关系' };
+    const GROUP_SIZES = { family:[2,5], friend:[2,6], classmate:[3,8], colleague:[2,5] };
+    const $ = (selector) => document.querySelector(selector);
+    let state = {};
+    let previewFormat = 'yaml';
+
+    function defaultState(sceneName) {
+      const scene = SCENES[sceneName];
+      return { sceneName, ratios:{...scene.profiles}, total:Math.round((scene.count[0] + scene.count[1]) / 2), intensity:.7, seed:42, groups:{...scene.groups} };
+    }
+    function fixed(value) { return Number(value).toFixed(4); }
+    function slug() { return state.sceneName + '_population_config'; }
+    function validRatios() { return Math.abs(Object.values(state.ratios).reduce((sum, value) => sum + Number(value), 0) - 1) < 1e-9; }
+    function validSeed() { return state.seed === '' || (Number.isInteger(Number(state.seed)) && Number(state.seed) >= 0); }
+    function validTotal() { const range = SCENES[state.sceneName].count; return Number.isInteger(Number(state.total)) && state.total >= range[0] && state.total <= range[1]; }
+    function isValid() { return validRatios() && validSeed() && validTotal() && state.intensity >= 0 && state.intensity <= 1; }
+    function setStatus(message, error=false) { const node = $('#status'); node.textContent = message; node.classList.toggle('error', error); }
+
+    function renderScenes() {
+      const grid = $('#sceneGrid'); grid.replaceChildren();
+      Object.entries(SCENES).forEach(([name, scene]) => {
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'scene'; button.dataset.scene = name;
+        button.setAttribute('aria-pressed', String(name === state.sceneName)); button.innerHTML = `<strong>${scene.label}</strong><small>${name} · ${scene.count[0]}-${scene.count[1]} 人</small>`;
+        button.addEventListener('click', () => { state = defaultState(name); render(); setStatus(`已切换到「${scene.label}」场景。`); }); grid.append(button);
+      });
+    }
+    function renderRatios() {
+      const container = $('#ratios'); container.replaceChildren();
+      Object.entries(state.ratios).forEach(([profile, value]) => {
+        const row = document.createElement('div'); row.className = 'ratio-row';
+        const label = document.createElement('label'); label.htmlFor = `ratio-${profile}`; label.textContent = profile;
+        const input = document.createElement('input'); input.id = `ratio-${profile}`; input.dataset.profile = profile; input.type = 'number'; input.min = '0'; input.max = '1'; input.step = '0.0001'; input.value = fixed(value); input.setAttribute('aria-label', `${profile} 比例`);
+        input.addEventListener('input', () => { state.ratios[profile] = Number(input.value); refreshPreview(); }); row.append(label, input); container.append(row);
+      });
+    }
+    function renderProbabilities() {
+      const container = $('#probabilities'); container.replaceChildren();
+      Object.entries(state.groups).forEach(([group, value]) => {
+        const row = document.createElement('div'); row.className = 'probability';
+        const label = document.createElement('label'); label.htmlFor = `group-${group}`; label.textContent = GROUP_LABELS[group];
+        const input = document.createElement('input'); input.id = `group-${group}`; input.type = 'range'; input.min = '0'; input.max = '1'; input.step = '.01'; input.value = value; input.setAttribute('aria-label', `${GROUP_LABELS[group]}存在概率`);
+        const output = document.createElement('output'); output.className = 'value'; output.textContent = Number(value).toFixed(2);
+        input.addEventListener('input', () => { state.groups[group] = Number(input.value); output.textContent = Number(input.value).toFixed(2); refreshPreview(); }); row.append(label, input, output); container.append(row);
+      });
+    }
+    function render() {
+      renderScenes(); renderRatios(); renderProbabilities();
+      const scene = SCENES[state.sceneName];
+      $('#countRange').textContent = `（允许 ${scene.count[0]}-${scene.count[1]} 人）`;
+      $('#totalPersons').min = scene.count[0]; $('#totalPersons').max = scene.count[1]; $('#totalPersons').value = state.total;
+      $('#intensity').value = state.intensity; $('#intensityValue').textContent = Number(state.intensity).toFixed(2); $('#seed').value = state.seed;
+      refreshPreview();
+    }
+    function buildConfig() {
+      const groupConfig = {
+        has_family_prob:0, family_size_range:GROUP_SIZES.family,
+        has_friend_prob:0, friend_size_range:GROUP_SIZES.friend,
+        has_classmate_prob:0, classmate_size_range:GROUP_SIZES.classmate,
+        has_colleague_prob:0, colleague_size_range:GROUP_SIZES.colleague,
+        has_staff_customer_prob:0, has_doctor_patient_prob:0, stranger_ratio:.05
+      };
+      Object.entries(state.groups).forEach(([group, value]) => { groupConfig[GROUP_FIELDS[group]] = Number(value); });
+      return { scene_name:state.sceneName, description:`D 用户定义 ${SCENES[state.sceneName].label} 人员配置`, total_persons:Number(state.total), relation_intensity:Number(state.intensity), random_seed:state.seed === '' ? null : Number(state.seed), profile_ratios:{...state.ratios}, group_config:groupConfig };
+    }
+    function yamlScalar(value) { return value === null ? 'null' : typeof value === 'string' ? JSON.stringify(value) : String(value); }
+    function toYaml(config) {
+      const lines = ['# D 导出：供 C SceneConfigGenerator 读取', `scene_name: ${yamlScalar(config.scene_name)}`, `description: ${yamlScalar(config.description)}`, `total_persons: ${config.total_persons}`, `relation_intensity: ${config.relation_intensity}`, `random_seed: ${yamlScalar(config.random_seed)}`, '', 'profile_ratios:'];
+      Object.entries(config.profile_ratios).forEach(([key, value]) => lines.push(`  ${key}: ${value}`));
+      lines.push('', 'group_config:'); Object.entries(config.group_config).forEach(([key, value]) => lines.push(`  ${key}: ${Array.isArray(value) ? `[${value.join(', ')}]` : value}`));
+      return lines.join('\n') + '\n';
+    }
+    function refreshPreview() {
+      const sum = Object.values(state.ratios).reduce((total, value) => total + Number(value), 0);
+      const sumNode = $('#ratioSum'); sumNode.textContent = `合计：${fixed(sum)}`; sumNode.classList.toggle('invalid', !validRatios());
+      if (!validRatios()) setStatus('人员比例合计必须为 1.0000，当前不能导出。', true); else if (!validTotal()) setStatus('总人数必须在当前场景允许范围内。', true); else if (!validSeed()) setStatus('随机种子应为非负整数，或留空。', true); else setStatus('配置有效，可导出给 C。');
+      const config = buildConfig(); $('#preview').textContent = previewFormat === 'json' ? JSON.stringify(config, null, 2) : toYaml(config);
+      $('#downloadJson').disabled = !isValid(); $('#downloadYaml').disabled = !isValid();
+    }
+    function download(filename, text, type) { const blob = new Blob([text], {type}); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = filename; document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(link.href); }
+    $('#totalPersons').addEventListener('input', (event) => { state.total = Number(event.target.value); refreshPreview(); });
+    $('#intensity').addEventListener('input', (event) => { state.intensity = Number(event.target.value); $('#intensityValue').textContent = Number(state.intensity).toFixed(2); refreshPreview(); });
+    $('#seed').addEventListener('input', (event) => { state.seed = event.target.value; refreshPreview(); });
+    $('#formatJson').addEventListener('click', () => { previewFormat = 'json'; refreshPreview(); });
+    $('#formatYaml').addEventListener('click', () => { previewFormat = 'yaml'; refreshPreview(); });
+    $('#downloadJson').addEventListener('click', () => { if (isValid()) download(`${slug()}.json`, JSON.stringify(buildConfig(), null, 2) + '\n', 'application/json;charset=utf-8'); });
+    $('#downloadYaml').addEventListener('click', () => { if (isValid()) download(`${slug()}.yaml`, toYaml(buildConfig()), 'text/yaml;charset=utf-8'); });
+    state = defaultState('classroom'); render();
+    window.populationConfigPage = { buildConfig, toYaml, isValid, scenes:SCENES };
+  </script>
+</body>
+</html>
