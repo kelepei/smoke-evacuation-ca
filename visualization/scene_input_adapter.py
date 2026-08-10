@@ -2,7 +2,7 @@
 
 The adapters deliberately keep ownership with the upstream modules:
 
-* A remains responsible for parsing JSON/CSV into ``core.grid.Grid``.
+* A remains responsible for parsing JSON/CSV/PNG into ``core.grid.Grid``.
 * C remains responsible for parsing YAML into ``SceneConfig``.
 * D validates the contracts it consumes and converts only the data needed by
   the visualizer.  It does not create people, relations, smoke sources, or
@@ -27,35 +27,9 @@ class SceneInputError(ValueError):
     """Raised when an upstream input cannot be represented safely by D."""
 
 
-CANONICAL_CELL_TYPES = {
-    "free",
-    "wall",
-    "obstacle",
-    "exit",
-    "smoke_source",
-    "sign",
-    "guide_zone",
-}
-
-CANONICAL_INFO_STATES = {
-    "UNKNOWN",
-    "ALERTED",
-    "CONFIRMED",
-    "MISINFORMED",
-    "GUIDED",
-}
-
-
 def _enum_storage_value(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
-    return value
-
-
-def _cell_type_value(cell: Any) -> str:
-    value = _enum_storage_value(getattr(cell, "cell_type", None))
-    if not isinstance(value, str) or value not in CANONICAL_CELL_TYPES:
-        raise SceneInputError(f"unsupported cell type: {value!r}")
     return value
 
 
@@ -105,13 +79,14 @@ def validate_grid(grid: Any) -> Any:
                 "grid.cells must use dense row-major order: "
                 "grid.cells[y * width + x]"
             )
-        _cell_type_value(cell)
+        if not hasattr(cell, "cell_type"):
+            raise SceneInputError(f"grid.cells[{index}].cell_type is required")
 
     return grid
 
 
 def load_map_grid(path: str | Path) -> Any:
-    """Load and validate a JSON or CSV map through A's public loader."""
+    """Load and validate a JSON, CSV, or PNG map through A's public loader."""
 
     map_path = Path(path)
     if not map_path.is_file():
@@ -122,12 +97,23 @@ def load_map_grid(path: str | Path) -> Any:
             from map_import.map_loader_grid import load_grid
         elif suffix == ".csv":
             from map_import.csv_loader_grid import load_csv_grid as load_grid
+        elif suffix == ".png":
+            from map_import.binary_to_grid import binary_to_grid
+            from map_import.map_loader_image import load_image
+
+            image_map = load_image(str(map_path))
+            grid = binary_to_grid(image_map.binary)
+            return validate_grid(grid)
         else:
-            raise SceneInputError("D map input supports only .json and .csv")
+            raise SceneInputError("D map input supports only .json, .csv, and .png")
         grid = load_grid(str(map_path))
     except SceneInputError:
         raise
-    except (OSError, KeyError, TypeError, ValueError) as exc:
+    except ValueError as exc:
+        # Preserve A's validation message so callers can see whether the
+        # input was sparse, malformed, or otherwise invalid.
+        raise SceneInputError(str(exc)) from exc
+    except (OSError, KeyError, TypeError) as exc:
         raise SceneInputError(f"A map loader failed for {map_path}") from exc
     return validate_grid(grid)
 
@@ -140,7 +126,7 @@ def grid_to_snapshot_grid(grid: Any) -> dict[str, Any]:
     height = int(grid.height)
     cell_type = [
         [
-            _cell_type_value(grid.cells[y * width + x])
+            _enum_storage_value(grid.cells[y * width + x].cell_type)
             for x in range(width)
         ]
         for y in range(height)
@@ -151,66 +137,6 @@ def grid_to_snapshot_grid(grid: Any) -> dict[str, Any]:
         "cell_size": float(grid.cell_size),
         "cell_type": cell_type,
     }
-
-
-def _connected_components(cells: set[tuple[int, int]]) -> list[list[tuple[int, int]]]:
-    """Return deterministic 4-neighbour components for static map features."""
-
-    remaining = set(cells)
-    components: list[list[tuple[int, int]]] = []
-    while remaining:
-        start = min(remaining, key=lambda point: (point[1], point[0]))
-        remaining.remove(start)
-        component = [start]
-        queue = [start]
-        while queue:
-            x, y = queue.pop(0)
-            for neighbour in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
-                if neighbour in remaining:
-                    remaining.remove(neighbour)
-                    queue.append(neighbour)
-                    component.append(neighbour)
-        components.append(sorted(component, key=lambda point: (point[1], point[0])))
-    return components
-
-
-def _derive_static_features(grid: Any) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Derive compatibility metadata when A supplies only cell types.
-
-    This is deliberately limited to static information that is unambiguous
-    from the grid.  D never invents dynamic queue lengths or smoke values.
-    """
-
-    exit_cells: set[tuple[int, int]] = set()
-    smoke_cells: set[tuple[int, int]] = set()
-    for cell in grid.cells:
-        cell_type = _cell_type_value(cell)
-        if cell_type == "exit":
-            exit_cells.add((int(cell.x), int(cell.y)))
-        elif cell_type == "smoke_source":
-            smoke_cells.add((int(cell.x), int(cell.y)))
-
-    exits = [
-        {
-            "exit_id": f"exit_{index:02d}",
-            "cells": [{"x": x, "y": y} for x, y in component],
-            "queue_length": 0,
-            "derived_from_cell_type": True,
-        }
-        for index, component in enumerate(_connected_components(exit_cells), start=1)
-    ]
-    smoke_sources = [
-        {
-            "source_id": f"smoke_source_{index:02d}",
-            "x": x,
-            "y": y,
-            "derived_from_cell_type": True,
-        }
-        for index, (x, y) in enumerate(
-            sorted(smoke_cells, key=lambda point: (point[1], point[0])), start=1
-        )
-    ]
-    return exits, smoke_sources
 
 
 def grid_to_static_snapshot(
@@ -228,8 +154,6 @@ def grid_to_static_snapshot(
 
     if not run_id or not str(run_id).strip():
         raise SceneInputError("run_id must not be empty")
-    grid_snapshot = grid_to_snapshot_grid(grid)
-    exits, smoke_sources = _derive_static_features(grid)
     return {
         "schema_version": schema_version,
         "run_id": str(run_id),
@@ -238,17 +162,9 @@ def grid_to_static_snapshot(
         "step": 0,
         "time_step": 0.5,
         "time_s": 0.0,
-        # Keep the nested preview shape for the current visualizer while also
-        # exposing the canonical top-level initialization fields from the
-        # shared interface table.
-        "grid": grid_snapshot,
-        "grid_width": grid_snapshot["width"],
-        "grid_height": grid_snapshot["height"],
-        "cell_size": grid_snapshot["cell_size"],
-        "cell_type": grid_snapshot["cell_type"],
-        "exits": exits,
-        "smoke_sources": smoke_sources,
+        "grid": grid_to_snapshot_grid(grid),
         "people": [],
+        "exits": [],
         "fields": {"smoke_field": [], "risk_field": [], "congestion_field": []},
         "relations": [],
         "events": [],
@@ -279,7 +195,7 @@ class PopulationConfigView:
 
 @dataclass(frozen=True)
 class PopulationOutputView:
-    """Canonical, validated view of C's optional people/relation JSON output."""
+    """D's validated view of C's optional people/relation JSON output."""
 
     source_path: Path
     source_id_base: int
@@ -289,8 +205,6 @@ class PopulationOutputView:
 
 
 def _source_person_id(value: Any, field: str, source_id_base: int) -> tuple[int, int]:
-    """Validate a source ID and convert it to D's positive-ID convention."""
-
     if isinstance(value, bool) or not isinstance(value, int):
         raise SceneInputError(f"{field} must be an integer")
     if source_id_base == 0 and value < 0:
@@ -300,29 +214,24 @@ def _source_person_id(value: Any, field: str, source_id_base: int) -> tuple[int,
     return int(value), int(value) + (1 if source_id_base == 0 else 0)
 
 
-def _canonical_relation_endpoint(
+def _relation_endpoint(
     item: Mapping[str, Any], canonical: str, alias: str, source_id_base: int
 ) -> tuple[int, int]:
-    value = item.get(canonical, item.get(alias))
-    return _source_person_id(value, canonical, source_id_base)
+    return _source_person_id(item.get(canonical, item.get(alias)), canonical, source_id_base)
 
 
 def load_population_output(
     path: str | Path, *, source_id_base: int = 0
 ) -> PopulationOutputView:
-    """Read C's optional output_people.json without changing its model data.
+    """Load C's output_people.json and map source IDs to D's positive IDs.
 
-    ``id`` and ``from``/``to`` are accepted as compatibility aliases for the
-    current C prototype, but the returned records always use the unified D
-    names ``person_id`` and ``person_a_id``/``person_b_id``.  C's current
-    output is zero-based, so the default maps source IDs ``0...N-1`` to D IDs
-    ``1...N`` while retaining the original IDs for traceability.  A future
-    one-based producer can pass ``source_id_base=1`` explicitly.
+    C's current generator emits zero-based IDs.  D maps them to 1-based IDs
+    while preserving source IDs for traceability.  A future one-based source
+    can pass ``source_id_base=1`` explicitly.
     """
 
     if source_id_base not in (0, 1):
         raise SceneInputError("source_id_base must be 0 or 1")
-
     output_path = Path(path)
     if not output_path.is_file():
         raise SceneInputError(f"C population output does not exist: {output_path}")
@@ -342,7 +251,7 @@ def load_population_output(
     for index, raw in enumerate(raw_persons):
         if not isinstance(raw, Mapping):
             raise SceneInputError(f"persons[{index}] must be an object")
-        source_person_id, person_id = _source_person_id(
+        source_id, person_id = _source_person_id(
             raw.get("person_id", raw.get("id")), "person_id", source_id_base
         )
         if person_id in person_ids:
@@ -350,11 +259,8 @@ def load_population_output(
         person_ids.add(person_id)
         item = dict(raw)
         item.pop("id", None)
-        item["source_person_id"] = source_person_id
+        item["source_person_id"] = source_id
         item["person_id"] = person_id
-        if "info_state" in item and item["info_state"] is not None:
-            if item["info_state"] not in CANONICAL_INFO_STATES:
-                raise SceneInputError(f"unsupported info_state: {item['info_state']!r}")
         persons.append(item)
 
     relations: list[dict[str, Any]] = []
@@ -362,15 +268,11 @@ def load_population_output(
         if not isinstance(raw, Mapping):
             raise SceneInputError(f"relations[{index}] must be an object")
         item = dict(raw)
-        source_person_a_id, person_a_id = _canonical_relation_endpoint(
-            item, "person_a_id", "from", source_id_base
-        )
-        source_person_b_id, person_b_id = _canonical_relation_endpoint(
-            item, "person_b_id", "to", source_id_base
-        )
-        if person_a_id not in person_ids or person_b_id not in person_ids:
+        source_a, person_a = _relation_endpoint(item, "person_a_id", "from", source_id_base)
+        source_b, person_b = _relation_endpoint(item, "person_b_id", "to", source_id_base)
+        if person_a not in person_ids or person_b not in person_ids:
             raise SceneInputError(f"relations[{index}] references an unknown person_id")
-        for field in ("strength", "trust"):
+        for field in ("strength", "trust", "wait_probability", "follow_probability"):
             if field in item and item[field] is not None:
                 value = float(item[field])
                 if not 0.0 <= value <= 1.0:
@@ -378,10 +280,10 @@ def load_population_output(
                 item[field] = value
         item.pop("from", None)
         item.pop("to", None)
-        item["source_person_a_id"] = source_person_a_id
-        item["source_person_b_id"] = source_person_b_id
-        item["person_a_id"] = person_a_id
-        item["person_b_id"] = person_b_id
+        item["source_person_a_id"] = source_a
+        item["source_person_b_id"] = source_b
+        item["person_a_id"] = person_a
+        item["person_b_id"] = person_b
         relations.append(item)
 
     metadata = payload.get("metadata", {})
@@ -402,10 +304,6 @@ def _load_module_from_path(module_path: Path) -> types.ModuleType:
     if spec is None or spec.loader is None:
         raise SceneInputError(f"cannot import C scene module: {module_path}")
     module = importlib.util.module_from_spec(spec)
-    # C's current module performs a default YAML read and prints a status
-    # message at import time.  Import it from its own directory and suppress
-    # that side-effect output so D can call the public loader reliably from
-    # the repository root on Windows.  No C source is modified here.
     previous_cwd = Path.cwd()
     try:
         os.chdir(module_path.parent)
@@ -440,7 +338,7 @@ def load_population_config(
         try:
             module = _load_module_from_path(module_path)
             SceneConfigGenerator = module.SceneConfigGenerator
-        except (AttributeError, ImportError, OSError, ValueError) as exc:
+        except (AttributeError, ImportError, OSError) as exc:
             raise SceneInputError("C module lacks SceneConfigGenerator") from exc
 
     loader = getattr(SceneConfigGenerator, "load_config_from_yaml", None)

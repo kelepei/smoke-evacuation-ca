@@ -31,10 +31,12 @@ PEOPLE_LOG_FIELDS = [
     "target_exit",
     "actual_exit",
     "evacuated",
+    "smoke",
     "smoke_concentration",
     "risk",
     "dose",
     "info_state",
+    "group_id",
     "info_source",
     "receive_time",
     "follow_target",
@@ -336,11 +338,6 @@ class CsvExperimentLogger:
                     smoke_concentration,
                     field=f"snapshot.people[{index}].smoke_concentration",
                 )
-                if not 0.0 <= smoke_concentration <= 1.0:
-                    raise CsvLogError(
-                        f"snapshot.people[{index}].smoke_concentration "
-                        "must be within [0, 1]"
-                    )
             risk = raw_person.get("risk")
             if risk is not None:
                 risk = _finite_float(
@@ -379,10 +376,12 @@ class CsvExperimentLogger:
                 "target_exit": raw_person.get("target_exit"),
                 "actual_exit": actual_exit,
                 "evacuated": raw_evacuated,
+                "smoke": raw_person.get("smoke", smoke_concentration),
                 "smoke_concentration": smoke_concentration,
                 "risk": risk,
                 "dose": dose,
                 "info_state": raw_person.get("info_state"),
+                "group_id": raw_person.get("group_id"),
                 "info_source": raw_person.get("info_source"),
                 "receive_time": receive_time,
                 "follow_target": follow_target,

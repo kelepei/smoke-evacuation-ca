@@ -23,19 +23,20 @@ SimulationFactory = Callable[[], Any]
 
 
 def default_simulation_factory(random_seed: int | None = 42) -> SimulationFactory:
-    """Return a factory for B's current safer mock entry point."""
+    """Return a factory for B's current published ``EvacEngine`` entry."""
 
     def create_simulation() -> Any:
         if random_seed is not None:
             random.seed(random_seed)
             np.random.seed(random_seed)
 
+        from experiments.b_runtime_adapter import EvacEngineRuntimeAdapter
         from scenarios.mock_data import build_base_scene
+        from simulation.evac_simulation import EvacEngine
         # B 最新版本将可运行仿真实现放在 simulation.evac_simulation；
         # ca_model 仅保留 Grid/简单模型接口。D 只适配导入路径，不修改 B。
-        from simulation.evac_simulation import CaEvacSimulation
 
-        return CaEvacSimulation(build_base_scene())
+        return EvacEngineRuntimeAdapter(EvacEngine(build_base_scene()))
 
     setattr(create_simulation, "_d_random_seed", random_seed)
     return create_simulation

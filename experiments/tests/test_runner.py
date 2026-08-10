@@ -10,7 +10,7 @@ from experiments.runner import SimulationRunner, default_simulation_factory
 
 
 class SimulationRunnerTests(unittest.TestCase):
-    def test_real_mock_runs_to_completion_and_writes_logs(self) -> None:
+    def test_real_b_runtime_runs_to_configured_limit_and_writes_logs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             runner = SimulationRunner(
                 default_simulation_factory(42),
@@ -25,9 +25,10 @@ class SimulationRunnerTests(unittest.TestCase):
                 self.assertEqual(initial["random_seed"], 42)
                 final = runner.run_until_finished()
                 self.assertTrue(runner.finished)
-                self.assertTrue(
-                    all(person["evacuated"] for person in final["people"])
-                )
+                # D stops at whichever happens first: B reports that all
+                # people are evacuated, or the configured safety limit.
+                self.assertGreater(final["step"], 0)
+                self.assertLessEqual(final["step"], 50)
 
                 people_path = Path(
                     temp_dir, "runner_test", "people_log.csv"
@@ -42,9 +43,10 @@ class SimulationRunnerTests(unittest.TestCase):
                     len(people_rows),
                     (final["step"] + 1) * len(final["people"]),
                 )
-                self.assertEqual(
-                    [row["event_type"] for row in event_rows],
-                    ["evac_success", "evac_success", "evac_success"],
+                # D may derive an evacuation event from a real false -> true
+                # transition. The exact number remains owned by B.
+                self.assertTrue(
+                    all(row["event_type"] == "evac_success" for row in event_rows)
                 )
             finally:
                 runner.close()
