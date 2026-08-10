@@ -78,7 +78,7 @@ def save_smoke_matrix(step, smoke_grid, save_dir="smoke_log"):
 
 # ---------------------- 场景加载函数（新增Y轴坐标对齐修复） ----------------------
 def load_A_scene() -> ScenarioConfig:
-    grid_path = project_root / "scenarios/classroom_corridor.json"
+    grid_path = project_root / "maps/edited_map.json"
     grid = load_grid(str(grid_path))
     print(f"地图加载完成：宽{grid.width} × 高{grid.height}")
 
