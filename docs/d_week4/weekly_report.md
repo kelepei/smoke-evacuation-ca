@@ -1,63 +1,62 @@
-# D 第 4 周工作进度
+# D 第四周工作进度
 
-## 本次集成结果
+## 本周完成
 
-1. 已合并 `smoke-evacuation-ca-main (4).zip` 中的 A/B/C 最新源码与示例输入。
-2. D 新增 `visualization/integrated_runtime.py`，支持一键 demo，也支持传入真实 A 地图、C 人员/关系输出和 C YAML 配置后进行 A+B+C+D 联调。
-3. A 地图接入：JSON/CSV 继续走 A loader；PNG 走 A 的 `map_loader_image.load_image()` + `binary_to_grid()` 转 Grid。
-4. C 配置接入：真实联调时读取 `control/config_template.yaml` 和 `control/output_people_position.json`；无完整输入时 D 使用 fallback 配置保证演示可运行。
-5. B 接入：真实联调优先调用新版 `simulation.evac_simulation.EvacEngine`，由 `experiments.b_runtime_adapter.EvacEngineRuntimeAdapter` 暴露给 D 的 snapshot/logging。
-6. D 输出：生成 `people_log.csv`、`event_log.csv`、`metrics.json`、`metrics_summary.csv`、`config_used.json`、`final_frame.png`。
+1. 将 D 的运行器和网页入口适配到 B 当前公开的 `EvacEngine`：初始化后调用
+   `run_one_step(c_step_data)`，读取 `current_step`、`grid`、`person_map` 与
+   `smoke_matrix`。
+2. 新增 D 侧运行时适配层。它只在当前内存对象补齐 B 已读取但共享对象未创建的
+   中性字段，并记录在适配元数据中；未修改 A/B/C 源码或 B 的移动规则。
+3. 更新快照与 CSV 记录，使烟雾浓度按 B 当前的非负原始值记录，不擅自假定为 0–1。
+4. 新增 `people_log.csv` 只读适配器，支持 B 给出的 11 列格式；空字段、人员重叠和
+   坐标会原样保留，不用演示数据补齐。
+5. 更新统一网页：可加载 A 地图、C 人员数据与 B 当前运行状态；页面明确显示
+   “真实运行”或“演示数据”，不把演示模式说成完整联调。
+6. 更新 D 测试和接口说明，并保留第二、三、四周网页版本归档。
 
-## 已验证命令
+## 验证结果
 
-默认 D demo：
+在当前最新仓库上运行：
 
-```powershell
-python visualization/integrated_runtime.py --max-steps 3 --persons 5
+```text
+PYTHONIOENCODING=utf-8 python -B -m unittest discover -q
+Ran 34 tests ... OK
 ```
 
-真实 A+B+C+D smoke test：
+网页可完成真实加载、单步、导出、关闭会话的自动验证。运行时看到的中文字体缺失警告来自 B 的 Matplotlib 窗口，不影响 D 的快照、CSV 和结果包验证。
 
-```powershell
-python visualization/integrated_runtime.py `
-  --map maps/edited_map.json `
-  --population control/output_people_position.json `
-  --config control/config_template.yaml `
-  --max-steps 2 `
-  --run-id d_week4_abc_smoke_test
+### 本次最新仓库复核
+
+使用仓库当前真实输入完成了无界面联调：
+
+```text
+A 地图：maps/edited_map.json
+C/A 人群位置：control/output_people_position.json（40 人）
+B 运行入口：simulation.evac_simulation.EvacEngine
+D 入口：experiments.integrated_runner
+运行结果：成功运行至第 50 步，并生成 D 的 people_log.csv 与 event_log.csv。
 ```
 
-真实 integrated runner：
+新增 `visualization.runtime_entry.DVisualizationEntry`，作为统一主程序的 D 可视化接入点：A 在创建 B 的 `EvacEngine` 后于第 0 步调用 `start()`，每次 B 完成一步后调用 `capture()`，即可得到网页/图表可用快照并写入真实日志；D 不改变 A、B、C 的运行逻辑。
 
-```powershell
-python -m experiments.integrated_runner `
-  --map maps/edited_map.json `
-  --population control/output_people_position.json `
-  --yaml control/config_template.yaml `
-  --max-steps 2 `
-  --run-id d_integrated_runner_smoke_2 `
-  --headless
-```
+## 当前接口结论
 
-关键单测：
+- 直接接入：A 的地图、C 的人员/关系输入、B 当前 `EvacEngine` 的公开状态；
+- 需要 D 适配：B 所需的运行时字段及 `people_log.csv` 的只读解析；
+- 仍需团队确认：C 的逐步行为字典字段、烟雾浓度单位、出口编号，以及冲突和出口切换
+  的事件语义。
 
-```powershell
-python -m unittest experiments.tests.test_csv_logger visualization.tests.test_ca_snapshot_adapter visualization.tests.test_runtime_entry visualization.tests.test_scene_input_adapter
-```
+当前没有 C 的逐步行为输出时，D 只向 B 传空字典，不生成策略数据，也不把这称为
+完整 A+B+C 行为联调。
 
-结果：通过。
+## 已观察到的问题
 
-## 当前结论
+B 提供的 `people_log.csv` 在示例步中存在多人同坐标、整体同步往返的情况。D 的网页
+按实际坐标显示，所以画面会出现重叠或同步跳动；这不是 D 把坐标画错。D 不会通过
+自行打散人员来掩盖该模型/初始位置问题。
 
-- A 最新地图导入成果已接入到 D adapter。
-- B 最新 `EvacEngine` 已真实接入。
-- C 最新 YAML 和 `output_people_position.json` 已真实接入。
-- 默认无输入 demo 仍保留 fallback，方便没有完整 A/C 输入时快速演示。
+## 后续待 B/C 确认
 
-## 待确认
-
-1. B 当前无烟源示例时，D 会使用 fallback smoke heatmap 做展示；正式烟源/烟雾场语义仍待 B/A 确认。
-2. C 的逐步行为字典暂未提供，D 向 B 传空行为映射，不伪造策略数据。
-3. B 的 Matplotlib 中文字体 warning 不影响 CSV、snapshot、结果包；Windows 控制台 emoji 编码问题已做最小兼容修复。
-
+1. B：初始化时为每位人员提供有效且可区分的位置，并确认是否需要同格冲突/占用处理；
+2. B：统一 `person.evacuated`、`person.dose`、`grid.get_cell()` 的正式归属；
+3. C：提供正式的每步行为参数及其字段说明。

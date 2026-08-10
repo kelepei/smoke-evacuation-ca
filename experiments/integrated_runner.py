@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import random
-import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -329,12 +328,6 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
-    if args.headless:
-        import matplotlib
-
-        matplotlib.use("Agg")
-        warnings.filterwarnings("ignore", message="Glyph .* missing from font")
-        warnings.filterwarnings("ignore", message="FigureCanvasAgg is non-interactive.*")
     runner = create_integrated_runner(
         map_path=args.map,
         population_path=args.population,
