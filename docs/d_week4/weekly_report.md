@@ -16,14 +16,28 @@
 
 ## 验证结果
 
-在 GitHub `main` 提交 `40832cbd0e0b828c0cf93e10c1f106f6869f1d5e` 基线上运行：
+在当前最新仓库上运行：
 
 ```text
-python -B -m unittest discover -q
-Ran 25 tests ... OK
+PYTHONIOENCODING=utf-8 python -B -m unittest discover -q
+Ran 34 tests ... OK
 ```
 
-网页可完成真实加载、单步、导出、关闭会话的自动验证。
+网页可完成真实加载、单步、导出、关闭会话的自动验证。运行时看到的中文字体缺失警告来自 B 的 Matplotlib 窗口，不影响 D 的快照、CSV 和结果包验证。
+
+### 本次最新仓库复核
+
+使用仓库当前真实输入完成了无界面联调：
+
+```text
+A 地图：maps/edited_map.json
+C/A 人群位置：control/output_people_position.json（40 人）
+B 运行入口：simulation.evac_simulation.EvacEngine
+D 入口：experiments.integrated_runner
+运行结果：成功运行至第 50 步，并生成 D 的 people_log.csv 与 event_log.csv。
+```
+
+新增 `visualization.runtime_entry.DVisualizationEntry`，作为统一主程序的 D 可视化接入点：A 在创建 B 的 `EvacEngine` 后于第 0 步调用 `start()`，每次 B 完成一步后调用 `capture()`，即可得到网页/图表可用快照并写入真实日志；D 不改变 A、B、C 的运行逻辑。
 
 ## 当前接口结论
 
