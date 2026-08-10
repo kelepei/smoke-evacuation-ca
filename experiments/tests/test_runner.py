@@ -25,10 +25,10 @@ class SimulationRunnerTests(unittest.TestCase):
                 self.assertEqual(initial["random_seed"], 42)
                 final = runner.run_until_finished()
                 self.assertTrue(runner.finished)
-                # D must report B's result instead of asserting a fabricated
-                # evacuation outcome. The current B movement policy may stop
-                # at the configured limit with people still inside.
-                self.assertEqual(final["step"], 50)
+                # D stops at whichever happens first: B reports that all
+                # people are evacuated, or the configured safety limit.
+                self.assertGreater(final["step"], 0)
+                self.assertLessEqual(final["step"], 50)
 
                 people_path = Path(
                     temp_dir, "runner_test", "people_log.csv"
@@ -43,7 +43,11 @@ class SimulationRunnerTests(unittest.TestCase):
                     len(people_rows),
                     (final["step"] + 1) * len(final["people"]),
                 )
-                self.assertEqual(event_rows, [])
+                # D may derive an evacuation event from a real false -> true
+                # transition. The exact number remains owned by B.
+                self.assertTrue(
+                    all(row["event_type"] == "evac_success" for row in event_rows)
+                )
             finally:
                 runner.close()
 
