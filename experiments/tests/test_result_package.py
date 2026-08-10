@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import csv
+import io
 import json
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 
-from experiments.result_package import create_result_package
+from experiments.result_package import build_result_package
 
 
 class ResultPackageTests(unittest.TestCase):
@@ -26,15 +27,24 @@ class ResultPackageTests(unittest.TestCase):
             (run_dir / "event_log.csv").write_text("event_type\nevac_success\n", encoding="utf-8")
             map_path = root / "map.json"; map_path.write_text("{}", encoding="utf-8")
             population_path = root / "population.json"; population_path.write_text("{}", encoding="utf-8")
-            package = create_result_package(
-                run_directory=run_dir, destination_directory=root / "packages",
-                map_path=map_path, population_path=population_path,
+            package = build_result_package(
+                output_dir=run_dir,
+                final_snapshot={
+                    "run_id": "run_01",
+                    "scenario_id": "actual_input_test",
+                    "schema_version": "0.1",
+                    "time_step": 0.5,
+                    "step": 1,
+                    "grid": {"width": 4, "height": 3},
+                },
+                input_files={"map": map_path, "population": population_path},
+                max_steps=10,
             )
-            with zipfile.ZipFile(package) as archive:
+            with zipfile.ZipFile(io.BytesIO(package.content)) as archive:
                 self.assertEqual(
                     set(archive.namelist()),
-                    {"people_log.csv", "event_log.csv", "metrics.csv", "evacuation_curve.svg", "occupancy_heatmap.svg", "metadata.json", "inputs/map.json", "inputs/population.json"},
+                    {"run_01/people_log.csv", "run_01/event_log.csv", "run_01/metrics.csv", "run_01/evacuation_curve.svg", "run_01/occupancy_heatmap.svg", "run_01/metadata.json", "run_01/config.json", "run_01/inputs/map.json", "run_01/inputs/population.json"},
                 )
-                metadata = json.loads(archive.read("metadata.json"))
-        self.assertEqual(metadata["metrics"]["evacuated_people"], 1)
-        self.assertEqual(metadata["metrics"]["all_evacuated_time_s"], 0.5)
+                metadata = json.loads(archive.read("run_01/metadata.json"))
+        self.assertEqual(metadata["summary"]["evacuated_count"], 1)
+        self.assertEqual(metadata["summary"]["last_successful_exit_time"], 0.5)

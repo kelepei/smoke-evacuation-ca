@@ -1,0 +1,40 @@
+# ============================================================
+# 行人疏散仿真平台 - 场景配置文件
+# 用户只需修改这个文件，即可自定义人群生成
+# ============================================================
+
+# 1. 基本信息
+scene_name: "my_classroom"          # 场景名称（仅用于标识）
+description: "我的教室场景"          # 场景描述
+total_persons: 40                   # 总人数
+relation_intensity: 0.6             # 关系紧密程度 (0-1)
+random_seed: 42                     # 随机种子（固定后可复现，设为 null 则随机）
+
+# 2. 角色比例（各角色占比，必须和为 1.0）
+profile_ratios:
+  student: 0.9
+  teacher: 0.1
+
+# 3. 群体配置
+group_config:
+  # ---- 家庭组 ----
+  has_family_prob: 0.0              # 存在家庭组的概率 (0-1)
+  family_size_range: [2, 5]         # 家庭组人数范围 [min, max]
+
+  # ---- 朋友组 ----
+  has_friend_prob: 0.5              # 存在朋友组的概率 (0-1)
+  friend_size_range: [2, 4]         # 朋友组人数范围 [min, max]
+
+  # ---- 同学组 ----
+  has_classmate_prob: 0.95          # 存在同学组的概率 (0-1)
+  classmate_size_range: [3, 8]      # 同学组人数范围 [min, max]
+
+  # ---- 同事组 ----
+  has_colleague_prob: 0.0           # 存在同事组的概率 (0-1)
+  colleague_size_range: [2, 5]      # 同事组人数范围 [min, max]
+
+  # ---- 员工-顾客关系 ----
+  has_staff_customer_prob: 0.0      # 员工-顾客关系概率 (0-1)
+
+  # ---- 医生-病人关系 ----
+  has_doctor_patient_prob: 0.0      # 医生-病人关系概率 (0-1)

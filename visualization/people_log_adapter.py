@@ -1,8 +1,8 @@
-"""Read B's per-person CSV log without inventing absent state.
+"""Read B's portable ``people_log.csv`` for D-side replay and inspection.
 
-The adapter accepts B's current 11-column interchange format.  It preserves
-empty optional values and same-cell people exactly as logged so D replay can
-show upstream state rather than a repaired demonstration.
+This adapter is intentionally separate from D's richer CSV writer. It accepts
+the exact B columns received in week four and keeps empty optional values as
+``None``. It never alters reported positions or invents events.
 """
 
 from __future__ import annotations
@@ -11,58 +11,18 @@ import csv
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 
-REQUIRED_COLUMNS = ("step", "time_s", "person_id", "x", "y", "evacuated")
-OPTIONAL_COLUMNS = ("heading", "risk", "dose", "conflict", "exit_switch")
+REQUIRED_FIELDS = ("step", "time_s", "person_id", "x", "y", "evacuated")
 
 
 class PeopleLogError(ValueError):
-    """Raised when a B people-log cannot be represented safely by D."""
-
-
-def _int(value: str | None, field: str, *, minimum: int) -> int:
-    if value is None or value.strip() == "":
-        raise PeopleLogError(f"{field} is required")
-    try:
-        result = int(value)
-    except ValueError as exc:
-        raise PeopleLogError(f"{field} must be an integer") from exc
-    if result < minimum:
-        raise PeopleLogError(f"{field} must be at least {minimum}")
-    return result
-
-
-def _float(value: str | None, field: str) -> float:
-    if value is None or value.strip() == "":
-        raise PeopleLogError(f"{field} is required")
-    try:
-        result = float(value)
-    except ValueError as exc:
-        raise PeopleLogError(f"{field} must be numeric") from exc
-    if not math.isfinite(result):
-        raise PeopleLogError(f"{field} must be finite")
-    return result
-
-
-def _bool(value: str | None, field: str) -> bool:
-    if value is None:
-        raise PeopleLogError(f"{field} is required")
-    normalized = value.strip().lower()
-    if normalized in {"true", "1"}:
-        return True
-    if normalized in {"false", "0"}:
-        return False
-    raise PeopleLogError(f"{field} must be true/false or 1/0")
+    """Raised when a B people log cannot be safely replayed."""
 
 
 @dataclass(frozen=True)
-class PeopleLogRow:
-    """One B-provided person state; optional values stay ``None`` when empty."""
-
-    step: int
-    time_s: float
+class LoggedPerson:
     person_id: int
     x: int
     y: int
@@ -73,89 +33,115 @@ class PeopleLogRow:
     conflict: str | None
     exit_switch: str | None
 
-    def as_person_snapshot(self) -> dict[str, Any]:
-        """Expose only fields explicitly present in B's interchange record."""
 
-        return {
-            "person_id": self.person_id,
-            "x": self.x,
-            "y": self.y,
-            "evacuated": self.evacuated,
-            "heading": self.heading,
-            "risk": self.risk,
-            "dose": self.dose,
-            "conflict": self.conflict,
-            "exit_switch": self.exit_switch,
-        }
+@dataclass(frozen=True)
+class PeopleLogFrame:
+    step: int
+    time_s: float
+    people: tuple[LoggedPerson, ...]
+
+    @property
+    def evacuated_count(self) -> int:
+        return sum(person.evacuated for person in self.people)
 
 
-def _optional_float(value: str | None, field: str) -> float | None:
-    if value is None or value.strip() == "":
-        return None
-    return _float(value, field)
+@dataclass(frozen=True)
+class PeopleLog:
+    frames: tuple[PeopleLogFrame, ...]
 
 
-def _optional_text(value: str | None) -> str | None:
-    if value is None or value == "":
-        return None
-    return value
-
-
-def load_people_log(path: str | Path) -> tuple[PeopleLogRow, ...]:
-    """Read B's CSV log in source order without changing its movement data."""
-
-    csv_path = Path(path)
-    if not csv_path.is_file():
-        raise PeopleLogError(f"people log does not exist: {csv_path}")
+def _integer(value: Any, *, field: str, row_number: int) -> int:
     try:
-        with csv_path.open("r", encoding="utf-8", newline="") as file_handle:
-            reader = csv.DictReader(file_handle)
-            fieldnames = reader.fieldnames or []
-            missing = [field for field in REQUIRED_COLUMNS if field not in fieldnames]
-            if missing:
-                raise PeopleLogError(
-                    "people log is missing required column(s): " + ", ".join(missing)
-                )
-            rows = []
-            seen_step_person: set[tuple[int, int]] = set()
-            for row_number, raw in enumerate(reader, start=2):
-                try:
-                    row = PeopleLogRow(
-                        step=_int(raw.get("step"), "step", minimum=0),
-                        time_s=_float(raw.get("time_s"), "time_s"),
-                        person_id=_int(raw.get("person_id"), "person_id", minimum=1),
-                        x=_int(raw.get("x"), "x", minimum=0),
-                        y=_int(raw.get("y"), "y", minimum=0),
-                        evacuated=_bool(raw.get("evacuated"), "evacuated"),
-                        heading=_optional_text(raw.get("heading")),
-                        risk=_optional_float(raw.get("risk"), "risk"),
-                        dose=_optional_float(raw.get("dose"), "dose"),
-                        conflict=_optional_text(raw.get("conflict")),
-                        exit_switch=_optional_text(raw.get("exit_switch")),
-                    )
-                except PeopleLogError as exc:
-                    raise PeopleLogError(f"people log row {row_number}: {exc}") from exc
-                identity = (row.step, row.person_id)
-                if identity in seen_step_person:
-                    raise PeopleLogError(
-                        f"people log row {row_number}: duplicate step/person_id {identity}"
-                    )
-                seen_step_person.add(identity)
-                rows.append(row)
+        result = int(str(value).strip())
+    except (TypeError, ValueError) as exc:
+        raise PeopleLogError(f"row {row_number}: {field} must be an integer") from exc
+    if result < 0:
+        raise PeopleLogError(f"row {row_number}: {field} must be non-negative")
+    return result
+
+
+def _number_or_none(value: Any, *, field: str, row_number: int) -> float | None:
+    if value is None or not str(value).strip():
+        return None
+    try:
+        result = float(str(value).strip())
+    except ValueError as exc:
+        raise PeopleLogError(f"row {row_number}: {field} must be numeric") from exc
+    if not math.isfinite(result):
+        raise PeopleLogError(f"row {row_number}: {field} must be finite")
+    return result
+
+
+def _text_or_none(value: Any) -> str | None:
+    result = "" if value is None else str(value).strip()
+    return result or None
+
+
+def _boolean(value: Any, *, row_number: int) -> bool:
+    result = str(value).strip().lower()
+    if result in {"true", "1"}:
+        return True
+    if result in {"false", "0"}:
+        return False
+    raise PeopleLogError(f"row {row_number}: evacuated must be true/false (or 1/0)")
+
+
+def load_people_log(path: str | Path) -> PeopleLog:
+    """Load B CSV frames without inferring missing people or values."""
+
+    source = Path(path)
+    try:
+        stream = source.open(newline="", encoding="utf-8-sig")
     except OSError as exc:
-        raise PeopleLogError(f"cannot read people log: {csv_path}") from exc
-    return tuple(rows)
+        raise PeopleLogError(f"cannot read people log: {source}") from exc
+    with stream:
+        reader = csv.DictReader(stream)
+        if not reader.fieldnames:
+            raise PeopleLogError("people log must include a header row")
+        fields = [field.strip() for field in reader.fieldnames]
+        if len(set(fields)) != len(fields):
+            raise PeopleLogError("people log header contains duplicate fields")
+        missing = [field for field in REQUIRED_FIELDS if field not in fields]
+        if missing:
+            raise PeopleLogError("people log is missing required fields: " + ", ".join(missing))
 
+        grouped: dict[int, dict[str, Any]] = {}
+        for row_number, raw in enumerate(reader, start=2):
+            if None in raw:
+                raise PeopleLogError(f"row {row_number}: more cells than header fields")
+            row = {str(key).strip(): value for key, value in raw.items()}
+            if not any((value or "").strip() for value in row.values()):
+                continue
+            step = _integer(row.get("step"), field="step", row_number=row_number)
+            time_s = _number_or_none(row.get("time_s"), field="time_s", row_number=row_number)
+            if time_s is None or time_s < 0:
+                raise PeopleLogError(f"row {row_number}: time_s must be non-negative")
+            person = LoggedPerson(
+                person_id=_integer(row.get("person_id"), field="person_id", row_number=row_number),
+                x=_integer(row.get("x"), field="x", row_number=row_number),
+                y=_integer(row.get("y"), field="y", row_number=row_number),
+                evacuated=_boolean(row.get("evacuated"), row_number=row_number),
+                heading=_text_or_none(row.get("heading")),
+                risk=_number_or_none(row.get("risk"), field="risk", row_number=row_number),
+                dose=_number_or_none(row.get("dose"), field="dose", row_number=row_number),
+                conflict=_text_or_none(row.get("conflict")),
+                exit_switch=_text_or_none(row.get("exit_switch")),
+            )
+            frame = grouped.setdefault(step, {"time_s": time_s, "people": {}})
+            if not math.isclose(frame["time_s"], time_s, rel_tol=0.0, abs_tol=1e-12):
+                raise PeopleLogError(f"row {row_number}: all rows in step {step} must share time_s")
+            if person.person_id in frame["people"]:
+                raise PeopleLogError(f"row {row_number}: duplicate person_id {person.person_id} in step {step}")
+            frame["people"][person.person_id] = person
 
-def rows_for_step(rows: tuple[PeopleLogRow, ...], step: int) -> tuple[PeopleLogRow, ...]:
-    """Return source-order rows for a step, including intentional overlaps."""
-
-    if isinstance(step, bool) or not isinstance(step, int) or step < 0:
-        raise PeopleLogError("step must be a non-negative integer")
-    return tuple(row for row in rows if row.step == step)
-
-
-def replay_people(rows: tuple[PeopleLogRow, ...], step: int) -> tuple[Mapping[str, Any], ...]:
-    """Return D replay records, retaining B-provided empty optional fields."""
-
-    return tuple(row.as_person_snapshot() for row in rows_for_step(rows, step))
+    if not grouped:
+        raise PeopleLogError("people log does not contain any data rows")
+    previous_time: float | None = None
+    frames: list[PeopleLogFrame] = []
+    for step in sorted(grouped):
+        frame = grouped[step]
+        if previous_time is not None and frame["time_s"] < previous_time:
+            raise PeopleLogError("time_s must not decrease as step increases")
+        previous_time = frame["time_s"]
+        frames.append(PeopleLogFrame(step, frame["time_s"], tuple(frame["people"][key] for key in sorted(frame["people"]))))
+    return PeopleLog(tuple(frames))

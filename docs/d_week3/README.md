@@ -20,7 +20,7 @@
 | 文件 | 作用 |
 |---|---|
 | `visualization/ca_snapshot_adapter.py` | 只读适配 B 当前运行状态，生成 D 标准快照 |
-| `visualization/scene_input_adapter.py` | 只读接入 A 的 JSON/CSV Grid 和 C 的 YAML SceneConfig |
+| `visualization/scene_input_adapter.py` | 只读接入 A 的 JSON/CSV Grid、C 的 YAML SceneConfig 和 C 的人员关系 JSON |
 | `visualization/visualizer.py` | Matplotlib 地图、烟雾、人员动画及控制按钮 |
 | `experiments/csv_logger.py` | 写入逐人逐步日志与事件日志 |
 | `experiments/runner.py` | 创建实验、推进仿真、重置和管理日志 |
@@ -49,8 +49,9 @@ A 的地图文件可以通过 `visualization.scene_input_adapter.load_map_grid()
 绘制的地图预览快照；预览不包含人员、烟雾场或仿真事件。
 
 C 的 YAML 可以通过 `load_population_config()` 调用 C 提供的
-`SceneConfigGenerator.load_config_from_yaml()`。C 当前交付只包含场景参数，
-没有 persons/relations 生成接口，因此 D 不会自行补造人员或关系。
+`SceneConfigGenerator.load_config_from_yaml()`。C 生成的
+`output_people.json` 可以通过 `load_population_output()` 接入 D；当前 C
+输出使用 0-based 编号，D 映射为 1-based 编号并保留 source ID。
 ```
 
 D 只负责读取、适配、显示和记录，不修改 A、B、C 的模型逻辑。
@@ -110,7 +111,7 @@ smoke_concentration,risk,dose,
 info_state,info_source,receive_time,follow_target
 ```
 
-当前上游没有提供的 `heading`、`risk`、`dose`、信息状态等字段保留为空，不填入演示值。
+当前 B 没有提供的 `heading`、`risk`、`dose`、信息状态等字段保留为空，不填入演示值。
 
 已经撤离的行人继续记录到仿真结束。
 
@@ -134,6 +135,7 @@ evac_success
 - A 的 CSV 地图：D 适配器支持并拒绝非稠密、非行优先输入；
 - A 的 `core.grid.Grid` 到 D 地图预览快照；
 - C 的 YAML 到只读 `SceneConfig` 参数视图；
+- C 的 `output_people.json` 到 D 的人员和关系只读适配；
 - B 当前 mock 地图；
 - B 当前人员坐标；
 - B 当前烟雾矩阵；
@@ -148,8 +150,8 @@ evac_success
 
 ### 7.3 仍待团队确认
 
-- B 的正式入口是 `ca_model.py` 还是 `evac_simulation.py`；
-- B 是否提供公开快照和撤离状态 API；
+- 已确认正式入口为 `simulation.ca_model.CaEvacSimulation`，`step` 从 0 开始，`time_s = step × 0.5`；
+- B 暂未提供运行后快照、`people_log.csv` 与公开逐步状态 API；
 - 二维场索引顺序是否最终固定为 `[y][x]`；
 - A 地图的坐标原点与方向；
 - A 的 CSV 行优先保证和 `upload.py` 的正式函数命名；
@@ -163,13 +165,14 @@ evac_success
   `cells[y * width + x]` 读取；接入前必须确认 CSV 已按行优先完整排列，
   或由 A 的 loader 统一排序；
 - C 当前关系图人员编号为 `0...N-1`，而团队 D schema 约定为正整数；
-  在团队决定由 C 改为 `1...N` 或提供统一映射前，D 不擅自重编号；
+  D 已在只读适配层采用显式 `0-based → 1-based` 映射，并保留 source ID；
+  团队后续仍需冻结最终编号口径；
 - C 当前角色比例采用随机抽样，不保证 40 人按 0.9 / 0.1 精确得到
   36 / 4，`relation_intensity` 是否参与关系生成也仍待 C 确认。
 
 ## 8. 临时兼容说明
 
-当前 B 没有公开撤离状态，适配器临时只读：
+当前 B 尚未提供完整公开快照；D 对暂未实现的 `heading`、`risk`、`dose`、`conflict` 与 `exit_switch` 统一保留为空，不填入演示值。撤离状态暂时只读：
 
 ```text
 simulation._evacuated_status
@@ -180,7 +183,7 @@ simulation._evacuated_status
 当前优先使用：
 
 ```text
-simulation.evac_simulation.CaEvacSimulation
+simulation.ca_model.CaEvacSimulation
 ```
 
 原因是该版本会处理冲突求解结果为 `None` 的情况；另一个同名实现仍需 B 确认。
@@ -218,11 +221,9 @@ python -B -m unittest discover -s experiments/tests -p "test_*.py" -v
 ## 10. 当前边界
 
 - A 的 JSON/CSV 已接入 D 地图预览适配层，但尚未组成 B 可运行场景；
-- C 的 YAML 参数已接入 D 只读视图，但 persons/relations 尚未接入；
+- C 的 YAML 参数和 `output_people.json` 已接入 D 只读适配层，但尚未驱动 B 的正式运行场景；
 - 尚未接入 B 的正式公开快照；
 - 当前快照仅部分兼容 `0.1-draft`：B 未提供的必填 `heading`
   暂时为空，并已在日志和说明中明确保留；
 - 没有修改 `core/`、`map_import/`、`simulation/`、`social/` 或其他成员文件；
-- 当前小场景用于验证 D 的第三周动画与日志链路，不代表完整平台联调完成；
-- `docs/d_week3/examples/d_test_population.json` 是明确标记为 `D_TEST` 的临时人员/关系数据，不是 C 正式输出；
-- 使用 40 人 D_TEST 人群进行端到端运行时，发现 B 的冲突消解结果可能为 `None`，而 `simulation/evac_simulation.py` 尚未跳过该结果，D 不绕过或修改 B 的移动逻辑。
+- 当前小场景用于验证 D 的第三周动画与日志链路，不代表完整平台联调完成。

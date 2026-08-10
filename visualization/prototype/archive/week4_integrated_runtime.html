@@ -1,0 +1,1359 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>行人疏散仿真平台</title>
+<style>
+  :root{
+    --bg:#eef3f8;
+    --panel:#ffffff;
+    --ink:#172033;
+    --muted:#6d788a;
+    --line:#dce4ee;
+    --blue:#2764e7;
+    --blue2:#5c89f2;
+    --green:#23a765;
+    --orange:#f19b38;
+    --red:#e14b4b;
+    --purple:#7a62d3;
+    --shadow:0 10px 30px rgba(36,53,79,.09);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Microsoft YaHei","PingFang SC",Arial,sans-serif;background:var(--bg);color:var(--ink);min-width:1180px}
+  button,input,select{font:inherit}
+  .app{height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  header{
+    height:62px;background:#152238;color:#fff;display:flex;align-items:center;gap:18px;
+    padding:0 22px;box-shadow:0 4px 18px rgba(0,0,0,.18);z-index:5
+  }
+  .brand{font-size:20px;font-weight:800;letter-spacing:.5px}
+  .subbrand{font-size:12px;color:#b8c5d8;border-left:1px solid #44536a;padding-left:18px}
+  .header-spacer{flex:1}
+  .badge{display:inline-flex;align-items:center;gap:7px;border:1px solid #52647d;border-radius:999px;padding:7px 12px;font-size:12px}
+  .dot-live{width:8px;height:8px;border-radius:50%;background:#56d58b;box-shadow:0 0 0 4px rgba(86,213,139,.15)}
+  .demo-badge{background:#fff1d6;color:#7a5314;border:1px solid #f0c877;border-radius:6px;padding:7px 10px;font-size:12px;font-weight:700}
+  main{flex:1;min-height:0;display:grid;grid-template-columns:250px minmax(610px,1fr) 305px;gap:12px;padding:12px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);min-height:0}
+  .left,.right{overflow:auto;padding:14px}
+  .section-title{font-size:14px;font-weight:800;margin:2px 0 11px;display:flex;align-items:center;justify-content:space-between}
+  .small{font-size:11px;color:var(--muted)}
+  .divider{height:1px;background:var(--line);margin:14px 0}
+  .field{display:grid;grid-template-columns:86px 1fr;align-items:center;gap:9px;margin:9px 0;font-size:12px}
+  .field label{color:#4f5b6e}
+  input[type=number],select{
+    width:100%;height:34px;border:1px solid #cad5e2;border-radius:7px;background:#fff;padding:0 9px;color:var(--ink)
+  }
+  input[type=range]{width:100%}
+  .inline-value{font-weight:700;color:var(--blue)}
+  .btn{
+    border:1px solid #c7d3e2;background:#fff;color:#33415a;border-radius:8px;padding:8px 11px;cursor:pointer;
+    transition:.15s;box-shadow:0 2px 5px rgba(30,49,78,.04)
+  }
+  .btn:hover{transform:translateY(-1px);border-color:#8da7c9}
+  .btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+  .btn.danger{color:#bd3434;border-color:#efc0c0;background:#fff8f8}
+  .btn.full{width:100%}
+  .toggle-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;margin:10px 0}
+  .switch{position:relative;width:38px;height:21px;display:inline-block}
+  .switch input{display:none}
+  .slider{position:absolute;inset:0;background:#c7d0dc;border-radius:99px;cursor:pointer;transition:.2s}
+  .slider:after{content:"";position:absolute;width:17px;height:17px;left:2px;top:2px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:.2s}
+  .switch input:checked + .slider{background:var(--blue)}
+  .switch input:checked + .slider:after{transform:translateX(17px)}
+  .legend{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px}
+  .legend-item{display:flex;align-items:center;gap:7px;color:#596476}
+  .legend-symbol{width:15px;height:15px;border-radius:4px;border:1px solid rgba(0,0,0,.12)}
+  .people{background:#2b70e8;border-radius:50%}
+  .wall{background:#25334a}
+  .exit{background:#22a764}
+  .smoke{background:linear-gradient(135deg,#999,#383838)}
+  .sign{background:#e8bd38}
+  .guide{background:#7b61d1;border-radius:50%}
+  .scene-list{display:grid;gap:8px}
+  .scene-card{border:1px solid var(--line);border-radius:9px;padding:9px;cursor:pointer;background:#fbfdff}
+  .scene-card.active{border-color:#7ea1ee;background:#eef4ff;box-shadow:0 0 0 2px rgba(39,100,231,.08)}
+  .scene-card b{font-size:12px}.scene-card p{font-size:10px;color:var(--muted);margin:5px 0 0;line-height:1.5}
+  .center{display:flex;flex-direction:column;gap:10px;min-width:0;min-height:0}
+  .viewport{position:relative;flex:1;min-height:380px;overflow:hidden;padding:9px;background:#dfe8f1;display:flex;flex-direction:column;gap:8px}
+  .editor-toolbar{height:40px;display:flex;align-items:center;gap:6px;flex-wrap:nowrap;overflow:auto;padding:2px 3px}
+  .editor-toolbar .toolbar-title{font-size:12px;font-weight:800;margin-right:4px;white-space:nowrap}
+  .editor-toolbar .btn{padding:6px 8px;font-size:10px;white-space:nowrap}
+  .editor-toolbar .btn.editor-tool.active{background:var(--blue);border-color:var(--blue);color:#fff}
+  .editor-toolbar .tool-swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+  .editor-status{margin-left:auto;font-size:10px;color:#53657b;white-space:nowrap}
+  .map-workspace{flex:1;min-height:0;display:grid;grid-template-columns:minmax(250px,.9fr) minmax(310px,1.1fr);gap:8px}
+  .editor-card,.preview-card{position:relative;min-width:0;min-height:0;border:1px solid #c9d5e2;border-radius:9px;background:#fff;overflow:hidden;display:flex;flex-direction:column}
+  .editor-card{background:#111927}
+  .editor-head,.preview-head{height:28px;display:flex;align-items:center;justify-content:space-between;padding:0 8px;font-size:10px;font-weight:800;background:rgba(255,255,255,.92);z-index:2}
+  .editor-head{background:#19253a;color:#fff}.editor-head span{font-weight:500;color:#b8c6d8}
+  .editor-hint{height:25px;padding:5px 8px;font-size:9px;color:#adbad0;background:#19253a;white-space:nowrap}
+  #mapEditorCanvas,#simCanvas{width:100%;height:100%;display:block}
+  #mapEditorCanvas{cursor:crosshair;background:#0e1624}
+  .preview-card #simCanvas{background:linear-gradient(#d9e7f5,#edf3f8);flex:1}
+  .view-toolbar{position:static;display:flex;gap:4px;align-items:center}
+  .view-toolbar .btn{padding:4px 7px;font-size:10px;background:rgba(255,255,255,.9);backdrop-filter:blur(4px)}
+  .view-toolbar .btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+  .overlay-note{
+    position:absolute;right:8px;top:36px;background:rgba(255,248,225,.94);border:1px solid #efcf7f;
+    color:#6c5115;border-radius:7px;padding:5px 7px;font-size:9px;max-width:190px;line-height:1.35
+  }
+  .scene-label{position:absolute;left:9px;bottom:9px;background:rgba(15,27,45,.88);color:#fff;border-radius:7px;padding:6px 8px;font-size:10px}
+  .scene-label span{color:#b9c9dd;margin-left:5px}
+  .controls{height:58px;padding:9px 12px;display:flex;align-items:center;gap:8px}
+  .controls .btn{min-width:72px}
+  .controls .timer{font-variant-numeric:tabular-nums;font-weight:800;margin-left:7px}
+  .progress{height:7px;background:#dfe6ef;border-radius:99px;flex:1;overflow:hidden}
+  .progress > div{height:100%;width:0;background:linear-gradient(90deg,var(--blue),#7aa3ff);border-radius:99px}
+  .speed{width:74px}
+  .analytics{height:250px;display:grid;grid-template-columns:1.25fr .78fr .95fr 1.05fr;gap:10px;min-height:0}
+  .metric-card{padding:12px;overflow:hidden}
+  .metric-title{font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+  .metric-card canvas{width:100%;height:174px;display:block}
+  .util-list{display:grid;gap:10px;margin-top:15px}
+  .util-row{font-size:11px}
+  .util-head{display:flex;justify-content:space-between;margin-bottom:5px}
+  .util-bar{height:9px;background:#e8edf4;border-radius:99px;overflow:hidden}
+  .util-bar div{height:100%;border-radius:99px}
+  .risk-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+  .risk-box{border-radius:9px;padding:10px;border:1px solid var(--line);background:#fafcff}
+  .risk-box .label{font-size:10px;color:var(--muted)}
+  .risk-box .num{font-size:19px;font-weight:900;margin-top:5px}
+  .risk-box.red .num{color:var(--red)}.risk-box.orange .num{color:var(--orange)}
+  .risk-box.blue .num{color:var(--blue)}.risk-box.purple .num{color:var(--purple)}
+  .log-wrap{height:184px;overflow:auto;border:1px solid var(--line);border-radius:7px}
+  table{border-collapse:collapse;width:100%;font-size:10px}
+  th,td{text-align:left;border-bottom:1px solid #edf1f6;padding:7px 6px;white-space:nowrap}
+  th{position:sticky;top:0;background:#f5f8fb;color:#536074}
+  .right .tabs{display:flex;border-bottom:1px solid var(--line);margin:-2px -2px 13px}
+  .tab{flex:1;text-align:center;padding:9px;font-size:12px;cursor:pointer;color:var(--muted);border:0;background:transparent}
+  .tab.active{color:var(--blue);font-weight:800;border-bottom:2px solid var(--blue)}
+  .tab:focus-visible{outline:2px solid rgba(39,100,231,.45);outline-offset:-2px}
+  .settings-panel[hidden]{display:none}
+  .setting-group{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px;background:#fbfdff}
+  .group-head{font-size:12px;font-weight:800;margin-bottom:8px}
+  .range-line{display:grid;grid-template-columns:85px 1fr 38px;gap:7px;align-items:center;font-size:11px;margin:9px 0}
+  .status-card{background:#f0f7ff;border:1px solid #bcd4f4;border-radius:10px;padding:10px;font-size:11px;line-height:1.6;color:#3c5575}
+  .footer-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+  .pill{font-size:10px;border-radius:999px;padding:3px 7px;background:#eef3fb;color:#52647f}
+  .strategy-copy{font-size:11px;line-height:1.6;color:var(--muted);margin:0 0 10px}
+  .strategy-list{display:grid;gap:8px}
+  .strategy-choice{width:100%;text-align:left;padding:10px;border:1px solid var(--line);border-radius:9px;background:#fbfdff;cursor:pointer;color:var(--ink)}
+  .strategy-choice:hover{border-color:#8da7c9;background:#f4f8ff}
+  .strategy-choice.active{border-color:var(--blue);background:#edf4ff;box-shadow:0 0 0 2px rgba(39,100,231,.08)}
+  .strategy-choice b{display:block;font-size:12px;margin-bottom:3px}
+  .strategy-choice span{display:block;font-size:10px;line-height:1.45;color:var(--muted)}
+  .strategy-state{margin-top:10px;padding:9px;border-radius:8px;background:#fff8e7;border:1px solid #f0d188;color:#715719;font-size:11px;line-height:1.55}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">烟雾风险感知与社会信息传播耦合的行人疏散仿真平台</div>
+    <div class="header-spacer"></div>
+    <div class="badge"><span class="dot-live"></span><span id="headerStatus">系统就绪</span></div>
+    <div class="demo-badge" id="dataModeBadge">演示数据 · schema 0.1-draft · 未接入真实模型</div>
+  </header>
+
+  <main>
+    <aside class="panel left">
+      <div class="section-title">场景与地图 <span class="small">MVP 原型</span></div>
+      <button class="btn primary full" id="importBtn">＋ 导入 A 地图（JSON / CSV）</button>
+      <button class="btn full" id="importPeopleBtn" style="margin-top:7px">＋ 导入 C 人群（output_people.json）</button>
+      <button class="btn full" id="importYamlBtn" style="margin-top:7px">＋ 导入 C 配置（YAML，可选）</button>
+      <button class="btn primary full" id="runIntegratedBtn" style="margin-top:7px">▶ 初始化真实 A+B+C 联调</button>
+      <button class="btn full" id="runRepositorySampleBtn" style="margin-top:7px">加载仓库真实示例（A+B+C）</button>
+      <input id="mapFileInput" type="file" accept=".json,.csv,application/json,text/csv" hidden>
+      <input id="populationFileInput" type="file" accept=".json,application/json" hidden>
+      <input id="yamlFileInput" type="file" accept=".yaml,.yml,text/yaml,application/x-yaml" hidden>
+      <div class="small" id="inputFileStatus" style="margin-top:7px;line-height:1.5">默认示例使用仓库已有 A 地图、C 人群和 B 的当前 CA。也可导入任意符合接口的 A/C 文件。</div>
+
+      <div class="divider"></div>
+      <div class="section-title">示例场景</div>
+      <div class="scene-list">
+        <div class="scene-card active" data-scene="classroom"><b>教学楼：教室—走廊—双出口</b><p>突出同学关系、走廊瓶颈、出口分流。</p></div>
+        <div class="scene-card" data-scene="hall"><b>食堂 / 开放大厅</b><p>突出多出口、从众行为与动态指示。</p></div>
+        <div class="scene-card" data-scene="mall"><b>商场局部</b><p>突出烟雾扩散、家庭组与引导员策略。</p></div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="section-title">图层显示</div>
+      <div class="toggle-row"><span>行人位置与朝向</span><label class="switch"><input id="layerPeople" type="checkbox" checked><span class="slider"></span></label></div>
+      <div class="toggle-row"><span>烟雾风险场</span><label class="switch"><input id="layerSmoke" type="checkbox" checked><span class="slider"></span></label></div>
+      <div class="toggle-row"><span>拥堵热力图</span><label class="switch"><input id="layerHeat" type="checkbox" checked><span class="slider"></span></label></div>
+      <div class="toggle-row"><span>疏散路径</span><label class="switch"><input id="layerPath" type="checkbox" checked><span class="slider"></span></label></div>
+      <div class="toggle-row"><span>社会关系连线</span><label class="switch"><input id="layerRelation" type="checkbox"><span class="slider"></span></label></div>
+
+      <div class="divider"></div>
+      <div class="section-title">图例</div>
+      <div class="legend">
+        <div class="legend-item"><i class="legend-symbol people"></i>行人</div>
+        <div class="legend-item"><i class="legend-symbol wall"></i>墙体</div>
+        <div class="legend-item"><i class="legend-symbol exit"></i>安全出口</div>
+        <div class="legend-item"><i class="legend-symbol smoke"></i>烟雾</div>
+        <div class="legend-item"><i class="legend-symbol sign"></i>指示牌</div>
+        <div class="legend-item"><i class="legend-symbol guide"></i>引导员</div>
+      </div>
+    </aside>
+
+    <section class="center">
+      <div class="panel viewport">
+        <div class="editor-toolbar">
+          <span class="toolbar-title">地图编辑器</span>
+          <button class="btn editor-tool active" data-editor-tool="select">选择</button>
+          <button class="btn editor-tool" data-editor-tool="wall"><i class="tool-swatch" style="background:#29384f"></i>墙体</button>
+          <button class="btn editor-tool" data-editor-tool="free"><i class="tool-swatch" style="background:#f6f8fb;border:1px solid #cad5e2"></i>可通行</button>
+          <button class="btn editor-tool" data-editor-tool="exit"><i class="tool-swatch" style="background:#23a765"></i>出口</button>
+          <button class="btn editor-tool" data-editor-tool="smoke_source"><i class="tool-swatch" style="background:#ef8b2f"></i>烟源</button>
+          <button class="btn editor-tool" data-editor-tool="obstacle"><i class="tool-swatch" style="background:#8f98a5"></i>障碍物</button>
+          <button class="btn editor-tool" data-editor-tool="sign"><i class="tool-swatch" style="background:#2e6edb"></i>标识牌</button>
+          <button class="btn editor-tool" data-editor-tool="safe_zone"><i class="tool-swatch" style="background:#8a5fd3"></i>安全区</button>
+          <button class="btn" id="editorUndo">撤销</button>
+          <button class="btn" id="editorClear">清除</button>
+          <button class="btn primary" id="editorExport">导出地图</button>
+          <span class="editor-status" id="editorStatus">已选：选择 · 点击网格进行标注</span>
+        </div>
+        <div class="map-workspace">
+          <div class="editor-card">
+            <div class="editor-head">二维地图标注 <span id="editorSelected">网格 24 × 14</span></div>
+            <canvas id="mapEditorCanvas"></canvas>
+            <div class="editor-hint">点击或拖动网格标注；二维地图是编辑数据的唯一来源</div>
+          </div>
+          <div class="preview-card">
+            <div class="preview-head"><span>三维仿真预览</span><div class="view-toolbar">
+              <button class="btn" id="view2d">2D</button>
+              <button class="btn primary" id="view25d">2.5D</button>
+              <button class="btn" id="fitView">适应窗口</button>
+            </div></div>
+            <canvas id="simCanvas"></canvas>
+            <div class="overlay-note" id="overlayNote"><b>说明：</b>左侧标注会以墙体、障碍物、出口和烟源方块同步显示在右侧三维预览中。人物运动、烟雾、曲线与指标仍为前端演示数据。</div>
+            <div class="scene-label"><b id="sceneName">教学楼示例场景</b><span id="sceneMeta">80 × 52 网格 · 双出口</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel controls">
+        <button class="btn primary" id="startBtn">▶ 开始</button>
+        <button class="btn" id="pauseBtn">⏸ 暂停</button>
+        <button class="btn" id="stepBtn">⏭ 单步</button>
+        <button class="btn danger" id="resetBtn">↻ 重置</button>
+        <span class="timer" id="timeText">00:00 / 06:00</span>
+        <div class="progress"><div id="progressBar"></div></div>
+        <select class="speed" id="speedSelect">
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1.0×</option>
+          <option value="1.5">1.5×</option>
+          <option value="2">2.0×</option>
+        </select>
+      </div>
+
+      <section class="analytics">
+        <div class="panel metric-card">
+          <div class="metric-title">疏散人数—时间曲线 <span class="pill">实时演示</span></div>
+          <canvas id="curveCanvas"></canvas>
+        </div>
+        <div class="panel metric-card">
+          <div class="metric-title">出口利用率</div>
+          <div class="util-list">
+            <div class="util-row"><div class="util-head"><span>出口 A</span><b id="exitAValue">58%</b></div><div class="util-bar"><div id="exitABar" style="width:58%;background:#2764e7"></div></div></div>
+            <div class="util-row"><div class="util-head"><span>出口 B</span><b id="exitBValue">42%</b></div><div class="util-bar"><div id="exitBBar" style="width:42%;background:#23a765"></div></div></div>
+          </div>
+          <div class="divider"></div>
+          <div class="small">后续由 B 模块提供实际出口编号和撤离事件，D 模块进行汇总。</div>
+        </div>
+        <div class="panel metric-card">
+          <div class="metric-title">风险与拥堵统计</div>
+          <div class="risk-grid">
+            <div class="risk-box red"><div class="label">高风险人数</div><div class="num" id="highRisk">0</div></div>
+            <div class="risk-box orange"><div class="label">峰值拥堵（0–1）</div><div class="num" id="peakDensity">0.00</div></div>
+            <div class="risk-box blue"><div class="label">已疏散人数</div><div class="num" id="evacuated">0</div></div>
+            <div class="risk-box purple"><div class="label">平均风险值</div><div class="num" id="avgRisk">0.00</div></div>
+          </div>
+        </div>
+        <div class="panel metric-card">
+          <div class="metric-title">实验日志 / 指标表 <button class="btn" id="exportBtn" style="padding:4px 7px;font-size:10px">导出结果</button></div>
+          <div class="log-wrap">
+            <table>
+              <thead><tr><th>时间</th><th>事件/指标</th><th>值</th></tr></thead>
+              <tbody id="logBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <aside class="panel right">
+      <div class="tabs" role="tablist" aria-label="右侧设置面板">
+        <button class="tab active" id="parameterTab" role="tab" aria-selected="true" aria-controls="parameterPanel">参数设置</button>
+        <button class="tab" id="strategyTab" role="tab" aria-selected="false" aria-controls="strategyPanel">策略方案</button>
+      </div>
+
+      <div class="settings-panel" id="parameterPanel" role="tabpanel" aria-labelledby="parameterTab">
+
+      <div class="setting-group">
+        <div class="group-head">基础仿真参数</div>
+        <div class="field"><label>场景人数</label><input id="populationInput" type="number" min="20" max="1000" value="180"></div>
+        <div class="field"><label>随机种子</label><input id="seedInput" type="number" value="20260719"></div>
+        <div class="field"><label>时间步长</label><select id="dtInput"><option value="0.1">0.1 s</option><option value="0.5" selected>0.5 s</option><option value="1">1.0 s</option></select></div>
+        <div class="field"><label>元胞尺寸 (m)</label><input id="cellSizeInput" type="number" min="0.01" step="0.01" value="0.50"></div>
+      </div>
+
+      <div class="setting-group">
+        <div class="group-head">烟雾风险</div>
+        <div class="field"><label>烟源位置</label><select id="smokeSource"><option>西侧教室</option><option>主走廊中段</option><option>出口 A 附近</option></select></div>
+        <div class="range-line"><span>烟雾浓度（0–1）</span><input id="diffusion" type="range" min="0" max="1" step="0.01" value="0.62"><b id="diffusionValue">0.62</b></div>
+        <div class="range-line"><span>风险敏感度</span><input id="riskSensitivity" type="range" min="0" max="1" step="0.01" value="0.70"><b id="riskValue">0.70</b></div>
+        <div class="toggle-row"><span>启用烟雾图层</span><label class="switch"><input id="smokeEnabled" type="checkbox" checked><span class="slider"></span></label></div>
+      </div>
+
+      <div class="setting-group">
+        <div class="group-head">社会信息与关系</div>
+        <div class="range-line"><span>强关系比例</span><input id="relationRatio" type="range" min="0" max="1" step="0.01" value="0.38"><b id="relationValue">0.38</b></div>
+        <div class="toggle-row"><span>广播警报</span><label class="switch"><input id="broadcastEnabled" type="checkbox" checked><span class="slider"></span></label></div>
+        <div class="toggle-row"><span>局部口头传播</span><label class="switch"><input id="localInfoEnabled" type="checkbox" checked><span class="slider"></span></label></div>
+        <div class="toggle-row"><span>从众行为</span><label class="switch"><input id="herdingEnabled" type="checkbox" checked><span class="slider"></span></label></div>
+      </div>
+
+      <div class="setting-group">
+        <div class="group-head">疏散策略</div>
+        <div class="toggle-row"><span>静态指示牌</span><label class="switch"><input id="signEnabled" type="checkbox" checked><span class="slider"></span></label></div>
+        <div class="toggle-row"><span>动态引导</span><label class="switch"><input id="dynamicGuide" type="checkbox"><span class="slider"></span></label></div>
+        <div class="toggle-row"><span>出口 A 开放</span><label class="switch"><input id="exitAEnabled" type="checkbox" checked><span class="slider"></span></label></div>
+        <div class="toggle-row"><span>出口 B 开放</span><label class="switch"><input id="exitBEnabled" type="checkbox" checked><span class="slider"></span></label></div>
+      </div>
+
+      <div class="status-card" id="interfaceStatus">
+        <b>接口状态：</b><br>
+        A 地图接口：编辑器原型已支持 JSON 导出<br>
+        B 运行入口：已确认，当前页面仍使用演示数据<br>
+        C 人群接口：可读取输出 JSON，待真实运行联调<br>
+        D 日志与指标：逐步日志链路已完成
+      </div>
+      <div class="footer-actions">
+        <button class="btn" id="applyBtn">应用参数</button>
+        <button class="btn primary" id="saveConfigBtn">导出配置</button>
+      </div>
+
+      </div>
+
+      <div class="settings-panel" id="strategyPanel" role="tabpanel" aria-labelledby="strategyTab" hidden>
+        <div class="setting-group">
+          <div class="group-head">预设策略方案</div>
+          <p class="strategy-copy">预设会同步更新本页的静态指示牌、动态引导与出口开关；演示模式会立即反映在画面中。</p>
+          <div class="strategy-list">
+            <button class="strategy-choice active" data-strategy-preset="baseline" type="button"><b>基准策略</b><span>不启用静态指示牌和动态引导；出口 A、B 均开放。</span></button>
+            <button class="strategy-choice" data-strategy-preset="static_signs" type="button"><b>静态标识强化</b><span>启用静态指示牌；不启用动态引导；出口 A、B 均开放。</span></button>
+            <button class="strategy-choice" data-strategy-preset="dynamic_guidance" type="button"><b>动态引导</b><span>启用静态指示牌和动态引导；出口 A、B 均开放。</span></button>
+          </div>
+        </div>
+        <div class="setting-group">
+          <div class="group-head">当前方案</div>
+          <div class="toggle-row"><span>静态指示牌</span><b id="strategySignsValue">开启</b></div>
+          <div class="toggle-row"><span>动态引导</span><b id="strategyGuideValue">关闭</b></div>
+          <div class="toggle-row"><span>出口 A / B</span><b id="strategyExitsValue">均开放</b></div>
+        </div>
+        <div class="strategy-state" id="strategyState">演示模式：方案会实时更新当前页面的演示行为和导出配置。</div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const canvas = $('simCanvas');
+  const ctx = canvas.getContext('2d');
+  const editorCanvas = $('mapEditorCanvas');
+  const editorCtx = editorCanvas.getContext('2d');
+  const curve = $('curveCanvas');
+  const cctx = curve.getContext('2d');
+
+  let running = false;
+  let simTime = 0;
+  let maxTime = 360;
+  let speed = 1;
+  let perspective = true;
+  let agents = [];
+  let totalPopulation = 180;
+  let last = performance.now();
+  let smokePhase = 0;
+  let logRows = [];
+  let scene = 'classroom';
+  let editorCols = 24;
+  let editorRows = 14;
+  let liveSnapshot = null;
+  let liveHistory = [];
+  let liveTimer = null;
+  let liveRequestPending = false;
+  const uploadedFiles = {map:null, population:null, yaml:null};
+  const editorColors = {
+    free:'#f6f8fb', wall:'#29384f', exit:'#23a765', smoke_source:'#ef8b2f',
+    obstacle:'#8f98a5', sign:'#2e6edb', safe_zone:'#8a5fd3'
+  };
+  const editorLabels = {select:'选择', free:'可通行', wall:'墙体', exit:'出口', smoke_source:'烟源', obstacle:'障碍物', sign:'标识牌', safe_zone:'安全区'};
+  let editorTool = 'select';
+  let editorCells = [];
+  let editorHistory = [];
+  let editorDrawing = false;
+  let editorLastCell = null;
+
+  function createEditorMap(){
+    editorCells=Array.from({length:editorRows},()=>Array(editorCols).fill('free'));
+    for(let x=0;x<editorCols;x++){editorCells[0][x]='wall';editorCells[editorRows-1][x]='wall';}
+    for(let y=0;y<editorRows;y++){editorCells[y][0]='wall';editorCells[y][editorCols-1]='wall';}
+    for(let x=3;x<9;x++)editorCells[4][x]='wall';
+    for(let x=12;x<18;x++)editorCells[8][x]='wall';
+    editorCells[2][5]='smoke_source';editorCells[editorRows-2][2]='exit';editorCells[editorRows-2][editorCols-3]='exit';
+    editorCells[6][10]='obstacle';editorCells[6][11]='obstacle';editorCells[10][16]='obstacle';
+    editorCells[3][14]='sign';editorCells[9][7]='safe_zone';
+    editorHistory=[];
+  }
+
+  const sceneDefs = {
+    classroom:{name:'教学楼示例场景', meta:'80 × 52 网格 · 双出口', rooms:6, scenarioId:'classroom_demo_001', gridWidth:80, gridHeight:52},
+    hall:{name:'食堂 / 开放大厅场景', meta:'72 × 48 网格 · 三出口', rooms:3, scenarioId:'hall_demo_001', gridWidth:72, gridHeight:48},
+    mall:{name:'商场局部示例场景', meta:'90 × 58 网格 · 双出口', rooms:7, scenarioId:'mall_demo_001', gridWidth:90, gridHeight:58}
+  };
+
+  function readTimeStep(){
+    const value=parseFloat($('dtInput').value);
+    return Number.isFinite(value) && value>0 ? value : .5;
+  }
+
+  function readCellSize(){
+    const value=parseFloat($('cellSizeInput').value);
+    return Number.isFinite(value) && value>0 ? value : .5;
+  }
+
+  function clamp01(value){
+    return Math.min(1,Math.max(0,Number(value)||0));
+  }
+
+  function round3(value){
+    return Math.round(value*1000)/1000;
+  }
+
+  function isLiveMode(){
+    return liveSnapshot !== null;
+  }
+
+  function liveGrid(){
+    return liveSnapshot && liveSnapshot.grid ? liveSnapshot.grid : null;
+  }
+
+  function displayCellType(type){
+    const value=String(type||'free').toLowerCase();
+    return value==='guide_zone'?'safe_zone':(editorColors[value]?value:'free');
+  }
+
+  function addLiveLog(label,value,snapshot=liveSnapshot){
+    const seconds=snapshot && Number.isFinite(Number(snapshot.time_s)) ? Number(snapshot.time_s) : simTime;
+    logRows.unshift({time:fmt(seconds),label,value});
+    logRows=logRows.slice(0,14);
+    $('logBody').innerHTML=logRows.map(r=>`<tr><td>${r.time}</td><td>${r.label}</td><td>${r.value}</td></tr>`).join('');
+  }
+
+  function updateInputFileStatus(){
+    const mapName=uploadedFiles.map?uploadedFiles.map.name:'未选择 A 地图';
+    const peopleName=uploadedFiles.population?uploadedFiles.population.name:'未选择 C 人群';
+    const yamlName=uploadedFiles.yaml?`；YAML：${uploadedFiles.yaml.name}`:'';
+    $('inputFileStatus').textContent=`A：${mapName}；C：${peopleName}${yamlName}`;
+  }
+
+  function readUpload(file){
+    return new Promise((resolve,reject)=>{
+      if(!file){resolve(null);return;}
+      const reader=new FileReader();
+      reader.onerror=()=>reject(new Error(`无法读取文件：${file.name}`));
+      reader.onload=()=>resolve({name:file.name,text:String(reader.result||'')});
+      reader.readAsText(file,'utf-8');
+    });
+  }
+
+  async function apiRequest(path,payload={}){
+    const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const data=await response.json().catch(()=>({ok:false,error:'本地服务返回了无法识别的数据'}));
+    if(!response.ok || !data.ok)throw new Error(data.error||`请求失败：${response.status}`);
+    return data;
+  }
+
+  function applyLiveSnapshot(snapshot,{resetHistory=false}={}){
+    if(!snapshot || !snapshot.grid)throw new Error('快照缺少 grid 数据');
+    liveSnapshot=snapshot;
+    const grid=snapshot.grid;
+    editorCols=Number(grid.width);editorRows=Number(grid.height);
+    editorCells=(grid.cell_type||[]).map(row=>row.map(displayCellType));
+    totalPopulation=(snapshot.people||[]).length;
+    $('populationInput').value=totalPopulation;
+    if(Number.isFinite(Number(grid.cell_size)))$('cellSizeInput').value=Number(grid.cell_size).toFixed(2);
+    if(Number.isFinite(Number(snapshot.time_step)))$('dtInput').value=String(snapshot.time_step);
+    simTime=Number(snapshot.time_s)||0;
+    maxTime=Math.max(maxTime,simTime||0.5);
+    $('sceneName').textContent=`真实联调：${snapshot.scenario_id||'未命名场景'}`;
+    $('sceneMeta').textContent=`${editorCols} × ${editorRows} 网格 · A 地图 + C 人群 + B CA`;
+    $('dataModeBadge').textContent=`真实联调 · ${snapshot.schema_version||'schema 草案'} · A+B+C`;
+    $('overlayNote').innerHTML='<b>真实联调：</b>地图、人员、撤离状态与烟雾场来自当前 A+B+C 快照。B 未提供的字段按空值显示，D 不编造数据。';
+    $('interfaceStatus').innerHTML='<b>接口状态：</b><br>A 地图：已从导入文件读取<br>B CA：本地服务逐步调用<br>C 人群/关系：已从导入 JSON 读取<br>右侧策略开关：保留，待 B 接入策略参数<br>D：按真实快照渲染、记录与统计';
+    const previous=liveHistory[liveHistory.length-1];
+    if(resetHistory || !previous || previous.step!==snapshot.step){
+      if(resetHistory)liveHistory=[];
+      liveHistory.push(snapshot);
+      if(liveHistory.length>600)liveHistory.shift();
+    }
+    drawEditor();draw();drawCurve();computeStats();refreshStrategyPanel();
+  }
+
+  async function initializeIntegratedRuntime(){
+    if(!uploadedFiles.map || !uploadedFiles.population){
+      alert('请先选择 A 的 JSON/CSV 地图和 C 的 output_people.json。');
+      return;
+    }
+    if(location.protocol==='file:'){
+      alert('真实联调需要从本地 D 服务打开页面。请按说明运行 python -m experiments.web_runtime_server，再访问 http://127.0.0.1:8765/visualization/prototype/integrated_runtime.html');
+      return;
+    }
+    try{
+      const [mapFile,populationFile,yamlFile]=await Promise.all([readUpload(uploadedFiles.map),readUpload(uploadedFiles.population),readUpload(uploadedFiles.yaml)]);
+      const result=await apiRequest('/api/session',{map_file:mapFile,population_file:populationFile,yaml_file:yamlFile,max_steps:500});
+      running=false;stopLiveTimer();logRows=[];applyLiveSnapshot(result.snapshot,{resetHistory:true});
+      refreshStrategyPanel();
+      addLiveLog('真实联调初始化',`${(result.snapshot.people||[]).length} 人；step ${result.snapshot.step}`,result.snapshot);
+      $('headerStatus').textContent='真实联调已就绪';
+    }catch(error){
+      alert(`无法初始化真实联调：${error.message}\n请确认本地 D 服务已启动，且 A/C 文件符合当前接口格式。`);
+    }
+  }
+
+  async function initializeRepositorySample(){
+    if(location.protocol==='file:'){
+      alert('你现在是直接双击 HTML 打开的（file 页面）。这种方式可以预览编辑器，但浏览器不能直接启动 Python 的 B 模型。\n\n请在仓库根目录运行：\npython -m experiments.web_runtime_server\n\n再在浏览器打开：\nhttp://127.0.0.1:8765/visualization/prototype/integrated_runtime.html\n\n随后再点击“加载仓库真实示例（A+B+C）”。');
+      return;
+    }
+    try{
+      const result=await apiRequest('/api/session/sample',{});
+      running=false;stopLiveTimer();logRows=[];applyLiveSnapshot(result.snapshot,{resetHistory:true});
+      refreshStrategyPanel();
+      addLiveLog('仓库真实示例初始化',`${(result.snapshot.people||[]).length} 人；A 地图 + C 人群 + B CA`,result.snapshot);
+      $('headerStatus').textContent='真实联调已就绪';
+      $('inputFileStatus').textContent='当前为仓库真实示例：A classroom_corridor.json；C output_people.json；B 当前 CA。';
+    }catch(error){
+      alert(`无法启动仓库真实示例：${error.message}`);
+    }
+  }
+
+  function stopLiveTimer(){
+    if(liveTimer!==null)window.clearInterval(liveTimer);
+    liveTimer=null;
+  }
+
+  async function liveStep(){
+    if(!isLiveMode() || liveRequestPending)return;
+    liveRequestPending=true;
+    try{
+      const result=await apiRequest('/api/session/step');
+      applyLiveSnapshot(result.snapshot);
+      const evacuated=(result.snapshot.people||[]).filter(person=>person.evacuated).length;
+      addLiveLog('真实 CA 单步',`step ${result.snapshot.step}；已疏散 ${evacuated} 人`,result.snapshot);
+      if(result.finished){running=false;stopLiveTimer();$('headerStatus').textContent='真实联调已结束';}
+    }catch(error){
+      running=false;stopLiveTimer();$('headerStatus').textContent='真实联调错误';alert(`真实联调运行失败：${error.message}`);
+    }finally{liveRequestPending=false;}
+  }
+
+  function startLiveTimer(){
+    stopLiveTimer();running=true;$('headerStatus').textContent='真实 CA 运行中';
+    const delay=Math.max(90,450/Math.max(.25,speed));
+    liveTimer=window.setInterval(liveStep,delay);
+    liveStep();
+  }
+
+  async function resetLiveRuntime(){
+    if(!isLiveMode())return;
+    try{
+      running=false;stopLiveTimer();
+      const result=await apiRequest('/api/session/reset');
+      logRows=[];applyLiveSnapshot(result.snapshot,{resetHistory:true});
+      addLiveLog('真实联调重置','已回到 step 0',result.snapshot);
+      $('headerStatus').textContent='真实联调已就绪';
+    }catch(error){alert(`无法重置真实联调：${error.message}`);}
+  }
+
+  function editorGeometry(){
+    const w=editorCanvas.clientWidth,h=editorCanvas.clientHeight;
+    const cell=Math.max(8,Math.min((w-24)/editorCols,(h-24)/editorRows));
+    return {cell,ox:(w-cell*editorCols)/2,oy:(h-cell*editorRows)/2};
+  }
+
+  function drawEditor(){
+    const w=editorCanvas.clientWidth,h=editorCanvas.clientHeight;
+    editorCtx.clearRect(0,0,w,h);editorCtx.fillStyle='#0e1624';editorCtx.fillRect(0,0,w,h);
+    const g=editorGeometry();
+    editorCtx.font='9px Microsoft YaHei';editorCtx.textAlign='center';editorCtx.textBaseline='middle';
+    for(let y=0;y<editorRows;y++)for(let x=0;x<editorCols;x++){
+      const type=editorCells[y][x];
+      const px=g.ox+x*g.cell,py=g.oy+y*g.cell;
+      editorCtx.fillStyle=editorColors[type]||editorColors.free;editorCtx.fillRect(px+1,py+1,g.cell-2,g.cell-2);
+      if(type==='exit'||type==='smoke_source'||type==='sign'||type==='safe_zone'){
+        editorCtx.fillStyle='#fff';editorCtx.fillText(type==='exit'?'出':type==='smoke_source'?'烟':type==='sign'?'牌':'安',px+g.cell/2,py+g.cell/2);
+      }
+      editorCtx.strokeStyle='rgba(130,151,177,.28)';editorCtx.lineWidth=1;editorCtx.strokeRect(px,py,g.cell,g.cell);
+    }
+    editorCtx.fillStyle='#aebdd0';editorCtx.font='10px Microsoft YaHei';editorCtx.textAlign='left';editorCtx.textBaseline='alphabetic';
+    editorCtx.fillText('x →',g.ox+g.cell*editorCols-27,g.oy+g.cell*editorRows+17);
+    editorCtx.save();editorCtx.translate(g.ox-14,g.oy+22);editorCtx.rotate(-Math.PI/2);editorCtx.fillText('y ↓',0,0);editorCtx.restore();
+  }
+
+  function editorCellAt(event){
+    const rect=editorCanvas.getBoundingClientRect(),g=editorGeometry();
+    const x=Math.floor((event.clientX-rect.left-g.ox)/g.cell),y=Math.floor((event.clientY-rect.top-g.oy)/g.cell);
+    return x>=0&&x<editorCols&&y>=0&&y<editorRows?{x,y}:null;
+  }
+
+  function setEditorCell(cell){
+    if(!cell||editorTool==='select')return;
+    if(editorLastCell&&editorLastCell.x===cell.x&&editorLastCell.y===cell.y)return;
+    editorCells[cell.y][cell.x]=editorTool;editorLastCell=cell;drawEditor();draw();
+    $('editorSelected').textContent=`(${cell.x}, ${cell.y}) · ${editorLabels[editorTool]}`;
+  }
+
+  function undoEditor(){
+    const last=editorHistory.pop();
+    if(last){editorCells=last.cells;drawEditor();draw();$('editorSelected').textContent='已撤销上一步';}
+  }
+
+  function clearEditor(){
+    editorHistory.push({cells:editorCells.map(row=>row.slice())});
+    editorCells=Array.from({length:editorRows},()=>Array(editorCols).fill('free'));
+    drawEditor();draw();$('editorSelected').textContent='已清除标注';
+  }
+
+  function exportEditorMap(){
+    const cells=[];
+    // A's current loader supports the six shared CellType values.  The
+    // editor-only safe-zone marker is exported as a sign so the resulting map
+    // remains importable by A/B; its visual meaning is retained in the UI.
+    editorCells.forEach((row,y)=>row.forEach((type,x)=>cells.push({x,y,type:type==='safe_zone'?'sign':type})));
+    const payload={schema_version:'0.1-draft',source:'d_map_editor_demo',width:editorCols,height:editorRows,cell_size:readCellSize(),cells};
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json;charset=utf-8'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='d_edited_map_demo.json';a.click();URL.revokeObjectURL(a.href);
+    addLog('地图编辑导出','d_edited_map_demo.json');
+  }
+
+  function resize(){
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.max(1, rect.width*dpr);
+    canvas.height = Math.max(1, rect.height*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    const er=editorCanvas.getBoundingClientRect();
+    editorCanvas.width=Math.max(1,er.width*dpr);
+    editorCanvas.height=Math.max(1,er.height*dpr);
+    editorCtx.setTransform(dpr,0,0,dpr,0,0);
+    const cr = curve.getBoundingClientRect();
+    curve.width = Math.max(1,cr.width*dpr);
+    curve.height = Math.max(1,cr.height*dpr);
+    cctx.setTransform(dpr,0,0,dpr,0,0);
+    drawEditor();
+    draw();
+    drawCurve();
+  }
+  window.addEventListener('resize',resize);
+
+  function project(x,y,z=0){
+    const w=canvas.clientWidth,h=canvas.clientHeight;
+    if(!perspective) return {x:w*.10+x*w*.80,y:h*.09+y*h*.78-z};
+    return {
+      x:w*.50+(x-.5)*w*.78+(y-.5)*w*.16,
+      y:h*.14+y*h*.69-(x-.5)*h*.10-z
+    };
+  }
+
+  function poly(points, fill, stroke='#ffffff', lw=2){
+    ctx.beginPath();
+    points.forEach((p,i)=>{const q=project(p[0],p[1],p[2]||0); i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y)});
+    ctx.closePath();ctx.fillStyle=fill;ctx.fill();ctx.strokeStyle=stroke;ctx.lineWidth=lw;ctx.stroke();
+  }
+
+  function line(a,b,stroke,lw=1,dash=[]){
+    const p=project(...a),q=project(...b);
+    ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);
+    ctx.strokeStyle=stroke;ctx.lineWidth=lw;ctx.setLineDash(dash);ctx.stroke();ctx.setLineDash([]);
+  }
+
+  function drawFloor(){
+    const grad=ctx.createLinearGradient(0,0,canvas.clientWidth,canvas.clientHeight);
+    grad.addColorStop(0,'#f3efe7');grad.addColorStop(1,'#d8e0e6');
+    poly([[.05,.05],[.95,.05],[.95,.95],[.05,.95]],grad,'#ffffff',4);
+    for(let i=.1;i<.95;i+=.05){
+      line([i,.05],[i,.95],'rgba(90,108,130,.13)',1);
+      line([.05,i],[.95,i],'rgba(90,108,130,.13)',1);
+    }
+  }
+
+  function drawWalls(){
+    if(isLiveMode()) return;
+    const walls = scene==='hall'
+      ? [[[.22,.12],[.22,.75]],[[.22,.75],[.48,.75]],[[.70,.18],[.70,.74]]]
+      : scene==='mall'
+      ? [[[.22,.08],[.22,.42]],[[.22,.58],[.22,.90]],[[.42,.08],[.42,.36]],[[.42,.64],[.42,.90]],[[.68,.08],[.68,.42]],[[.68,.58],[.68,.90]],[[.22,.50],[.68,.50]]]
+      : [[[.27,.08],[.27,.38]],[[.27,.56],[.27,.90]],[[.50,.08],[.50,.38]],[[.50,.56],[.50,.90]],[[.73,.08],[.73,.38]],[[.73,.56],[.73,.90]],[[.06,.47],[.94,.47]]];
+
+    walls.forEach(w=>{
+      line([w[0][0],w[0][1],0],[w[1][0],w[1][1],0],'#2d3c52',9);
+      if(perspective){
+        line([w[0][0],w[0][1],0],[w[0][0],w[0][1],28],'#44546b',6);
+        line([w[1][0],w[1][1],0],[w[1][0],w[1][1],28],'#44546b',6);
+        line([w[0][0],w[0][1],28],[w[1][0],w[1][1],28],'#65758a',6);
+      }
+    });
+
+    drawExit(.06,.50,'A');
+    drawExit(.94,.50,'B');
+    if(scene==='hall') drawExit(.50,.94,'C');
+  }
+
+  function drawExit(x,y,label){
+    const p=project(x,y,5);
+    // Keep the label visible even when an exit is on the outer map boundary.
+    const px=Math.max(28,Math.min(canvas.clientWidth-28,p.x));
+    const py=Math.max(14,Math.min(canvas.clientHeight-14,p.y));
+    ctx.save();ctx.translate(px,py);
+    ctx.fillStyle='#23a765';ctx.strokeStyle='#fff';ctx.lineWidth=2;
+    ctx.fillRect(-24,-9,48,18);ctx.strokeRect(-24,-9,48,18);
+    ctx.fillStyle='#fff';ctx.font='700 11px Microsoft YaHei';ctx.textAlign='center';ctx.fillText('出口 '+label,0,4);
+    ctx.restore();
+  }
+
+  function drawSigns(){
+    if(isLiveMode()) return;
+    if(!$('signEnabled').checked) return;
+    [[.42,.44,'←'],[.60,.44,'→']].forEach(s=>{
+      const p=project(s[0],s[1],12);
+      ctx.fillStyle='#f0c23e';ctx.strokeStyle='#7e671d';ctx.lineWidth=1.5;
+      ctx.fillRect(p.x-13,p.y-9,26,18);ctx.strokeRect(p.x-13,p.y-9,26,18);
+      ctx.fillStyle='#253147';ctx.font='900 14px Arial';ctx.textAlign='center';ctx.fillText(s[2],p.x,p.y+5);
+    });
+  }
+
+  function drawSmoke(){
+    if(!$('layerSmoke').checked || !$('smokeEnabled').checked) return;
+    if(isLiveMode()){
+      const grid=liveGrid(),field=(liveSnapshot.fields||{}).smoke_field||[];
+      if(!grid || !field.length)return;
+      field.forEach((row,y)=>row.forEach((raw,x)=>{
+        const value=clamp01(raw);
+        if(value<=0)return;
+        const p=project(.08+((x+.5)/grid.width)*.84,.08+((y+.5)/grid.height)*.84,4+value*9);
+        const radius=8+value*28;
+        const g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,radius);
+        g.addColorStop(0,`rgba(45,48,52,${.12+value*.38})`);
+        g.addColorStop(1,'rgba(70,74,78,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,radius,0,Math.PI*2);ctx.fill();
+      }));
+      return;
+    }
+    const intensity=+$('diffusion').value;
+    const cx=scene==='mall'?.72:.22, cy=scene==='hall'?.32:.27;
+    const base=40+intensity*75+Math.sin(smokePhase)*5;
+    for(let i=7;i>=0;i--){
+      const p=project(cx+(i%3-.8)*.018,cy+(i%2-.5)*.018,2+i*3);
+      const r=base*(.42+i*.08);
+      const g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r);
+      g.addColorStop(0,`rgba(42,47,53,${.11+intensity*.05})`);
+      g.addColorStop(.55,`rgba(72,78,83,${.09+intensity*.04})`);
+      g.addColorStop(1,'rgba(110,116,120,0)');
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();
+    }
+    const q=project(cx,cy,3);
+    ctx.fillStyle='#e14b4b';ctx.beginPath();ctx.arc(q.x,q.y,6,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#fff';ctx.font='700 9px Microsoft YaHei';ctx.textAlign='center';ctx.fillText('烟源',q.x,q.y-10);
+  }
+
+  function drawHeat(){
+    if(!$('layerHeat').checked) return;
+    if(isLiveMode()){
+      const grid=liveGrid(),field=(liveSnapshot.fields||{}).congestion_field||[];
+      if(!grid || !field.length)return;
+      field.forEach((row,y)=>row.forEach((raw,x)=>{
+        const value=clamp01(raw);if(value<=0)return;
+        const p=project(.08+((x+.5)/grid.width)*.84,.08+((y+.5)/grid.height)*.84,3);
+        const radius=7+value*22;const g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,radius);
+        g.addColorStop(0,`rgba(225,75,75,${.10+value*.28})`);g.addColorStop(1,'rgba(241,155,56,0)');
+        ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,radius,0,Math.PI*2);ctx.fill();
+      }));
+      return;
+    }
+    const evacRatio=simTime/maxTime;
+    const hotspots=[[.48,.48,.18],[.18,.49,.12],[.82,.49,.14]];
+    hotspots.forEach((h,i)=>{
+      const p=project(h[0],h[1],1);
+      const r=24+h[2]*120+(1-evacRatio)*15;
+      const g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r);
+      g.addColorStop(0,i===0?'rgba(225,75,75,.32)':'rgba(241,155,56,.22)');
+      g.addColorStop(1,'rgba(241,155,56,0)');
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();
+    });
+  }
+
+  function makeAgents(){
+    agents=[];
+    totalPopulation=Math.max(20,Math.min(1000,+$('populationInput').value||180));
+    for(let i=0;i<totalPopulation;i++){
+      const group=i%5===0?Math.floor(i/5):-1;
+      const side=i%2;
+      const sy=.16+Math.random()*.65;
+      const sx=.30+Math.random()*.40;
+      agents.push({
+        personId:i+1,
+        x:sx,y:sy,side,progress:Math.random()*.06,offset:(Math.random()-.5)*.025,
+        speed:.025+Math.random()*.02,group,evacuated:false,hue:i%7
+      });
+    }
+  }
+
+  function pathPoint(a){
+    const t=Math.min(1,a.progress);
+    const targetX=a.side? .94:.06;
+    const p1={x:a.x,y:a.y};
+    const p2={x:a.side?.76:.24,y:.50+a.offset};
+    const p3={x:targetX,y:.50+a.offset};
+    let x,y;
+    if(t<.45){
+      const u=t/.45;x=p1.x+(p2.x-p1.x)*u;y=p1.y+(p2.y-p1.y)*u;
+    }else{
+      const u=(t-.45)/.55;x=p2.x+(p3.x-p2.x)*u;y=p2.y+(p3.y-p2.y)*u;
+    }
+    return {x,y};
+  }
+
+  function drawPaths(){
+    if(!$('layerPath').checked) return;
+    if(isLiveMode()){
+      const grid=liveGrid();
+      if(!grid || liveHistory.length<2)return;
+      const recent=liveHistory.slice(-12);
+      const ids=(liveSnapshot.people||[]).filter(person=>!person.evacuated).slice(0,18).map(person=>person.person_id);
+      ids.forEach(id=>{
+        const points=recent.map(snapshot=>(snapshot.people||[]).find(person=>person.person_id===id)).filter(Boolean);
+        if(points.length<2)return;
+        ctx.beginPath();points.forEach((person,index)=>{
+          const p=project(.08+((person.x+.5)/grid.width)*.84,.08+((person.y+.5)/grid.height)*.84,3);
+          index?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y);
+        });ctx.strokeStyle='rgba(39,100,231,.35)';ctx.lineWidth=1.2;ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);
+      });
+      return;
+    }
+    line([.48,.22,1],[.24,.50,1],'rgba(39,100,231,.55)',2,[6,5]);
+    line([.52,.72,1],[.76,.50,1],'rgba(35,167,101,.55)',2,[6,5]);
+  }
+
+  function drawRelations(){
+    if(!$('layerRelation').checked) return;
+    if(isLiveMode()){
+      const grid=liveGrid();if(!grid)return;
+      const peopleById=new Map((liveSnapshot.people||[]).map(person=>[person.person_id,person]));
+      ctx.strokeStyle='rgba(122,98,211,.32)';ctx.lineWidth=1;
+      (liveSnapshot.relations||[]).slice(0,120).forEach(relation=>{
+        const a=peopleById.get(relation.person_a_id),b=peopleById.get(relation.person_b_id);
+        if(!a||!b||a.evacuated||b.evacuated)return;
+        const p=project(.08+((a.x+.5)/grid.width)*.84,.08+((a.y+.5)/grid.height)*.84,7);
+        const q=project(.08+((b.x+.5)/grid.width)*.84,.08+((b.y+.5)/grid.height)*.84,7);
+        ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.stroke();
+      });
+      return;
+    }
+    const groups={};
+    agents.filter(a=>!a.evacuated && a.group>=0).forEach(a=>(groups[a.group]??=[]).push(a));
+    ctx.strokeStyle='rgba(122,98,211,.35)';ctx.lineWidth=1;
+    Object.values(groups).forEach(g=>{
+      if(g.length<2)return;
+      const pts=g.slice(0,3).map(a=>project(pathPoint(a).x,pathPoint(a).y,9));
+      for(let i=1;i<pts.length;i++){ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);ctx.lineTo(pts[i].x,pts[i].y);ctx.stroke();}
+    });
+  }
+
+  function drawAgents(){
+    if(!$('layerPeople').checked)return;
+    if(isLiveMode()){
+      const grid=liveGrid();if(!grid)return;
+      const colors=['#2764e7','#23a765','#e77f2f','#7a62d3','#1c9cb0','#d14a78','#6c7a8b'];
+      (liveSnapshot.people||[]).filter(person=>!person.evacuated).slice(0,180).forEach((person,index)=>{
+        const x=.08+((person.x+.5)/grid.width)*.84,y=.08+((person.y+.5)/grid.height)*.84;
+        const p=project(x,y,7),scale=perspective?.52+y*.31:.70;
+        ctx.save();ctx.translate(p.x,p.y);ctx.scale(scale,scale);
+        ctx.fillStyle='rgba(0,0,0,.16)';ctx.beginPath();ctx.ellipse(0,7,6,2.5,0,0,Math.PI*2);ctx.fill();
+        ctx.strokeStyle='#223047';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(-2,3);ctx.lineTo(-4,9);ctx.moveTo(2,3);ctx.lineTo(4,9);ctx.stroke();
+        ctx.fillStyle=colors[index%colors.length];ctx.fillRect(-3.5,-4,7,10);
+        ctx.fillStyle='#e7b18d';ctx.beginPath();ctx.arc(0,-8,3.4,0,Math.PI*2);ctx.fill();
+        if(person.info_state && person.info_state!=='UNKNOWN'){ctx.strokeStyle='#8a6de3';ctx.lineWidth=1.3;ctx.beginPath();ctx.arc(0,-8,5,0,Math.PI*2);ctx.stroke();}
+        ctx.restore();
+      });
+      return;
+    }
+    agents.filter(a=>!a.evacuated).slice(0,96).forEach(a=>{
+      const q=pathPoint(a),p=project(q.x,q.y,7);
+      const scale=perspective ? .52+q.y*.31 : .70;
+      const colors=['#2764e7','#23a765','#e77f2f','#7a62d3','#1c9cb0','#d14a78','#6c7a8b'];
+      ctx.save();ctx.translate(p.x,p.y);ctx.scale(scale,scale);
+      ctx.fillStyle='rgba(0,0,0,.16)';ctx.beginPath();ctx.ellipse(0,7,6,2.5,0,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle='#223047';ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(-2,3);ctx.lineTo(-4,9);ctx.moveTo(2,3);ctx.lineTo(4,9);ctx.stroke();
+      ctx.fillStyle=colors[a.hue];ctx.fillRect(-3.5,-4,7,10);
+      ctx.fillStyle='#e7b18d';ctx.beginPath();ctx.arc(0,-8,3.4,0,Math.PI*2);ctx.fill();
+      if(a.group>=0){ctx.strokeStyle='#8a6de3';ctx.lineWidth=1.3;ctx.beginPath();ctx.arc(0,-8,5,0,Math.PI*2);ctx.stroke();}
+      ctx.restore();
+    });
+  }
+
+  function drawGuide(){
+    if(!$('dynamicGuide').checked)return;
+    const p=project(.53,.47,9);
+    ctx.fillStyle='#7a62d3';ctx.beginPath();ctx.arc(p.x,p.y,7,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(122,98,211,.35)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(p.x,p.y,30,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle='#fff';ctx.font='700 9px Microsoft YaHei';ctx.textAlign='center';ctx.fillText('引导',p.x,p.y-12);
+  }
+
+  function drawEditorPreview(){
+    const cw=1/editorCols,ch=1/editorRows;
+    const prismColors={
+      wall:{top:'#40536e',front:'#26364c',side:'#1b2a3d'},
+      obstacle:{top:'#aab4c1',front:'#818d9d',side:'#657184'},
+      exit:{top:'#46bf7b',front:'#249957',side:'#15743d'},
+      smoke_source:{top:'#f5a94c',front:'#cf7426',side:'#9e5318'},
+      sign:{top:'#5a90ef',front:'#2863bd',side:'#1b478c'}
+    };
+    function drawPrism(x0,y0,x1,y1,height,colors){
+      if(!perspective){
+        poly([[x0,y0,0],[x1,y0,0],[x1,y1,0],[x0,y1,0]],colors.top,'rgba(255,255,255,.3)',1);
+        return;
+      }
+      // Draw the two visible vertical faces before the top face to create a real 2.5D block.
+      poly([[x0,y1,0],[x1,y1,0],[x1,y1,height],[x0,y1,height]],colors.front,'rgba(20,35,54,.35)',1);
+      poly([[x1,y0,0],[x1,y1,0],[x1,y1,height],[x1,y0,height]],colors.side,'rgba(20,35,54,.35)',1);
+      poly([[x0,y0,height],[x1,y0,height],[x1,y1,height],[x0,y1,height]],colors.top,'rgba(255,255,255,.35)',1);
+    }
+    editorCells.forEach((row,y)=>row.forEach((type,x)=>{
+      if(type==='free')return;
+      const x0=.08+x*cw*.84,y0=.08+y*ch*.84,x1=x0+cw*.84,y1=y0+ch*.84;
+      if(type==='safe_zone'){
+        const p=project((x0+x1)/2,(y0+y1)/2,type==='smoke_source'?5:2);
+        ctx.fillStyle=editorColors.safe_zone;ctx.globalAlpha=.28;ctx.fillRect(p.x-9,p.y-9,18,18);ctx.globalAlpha=1;
+        return;
+      }
+      const style=prismColors[type]||prismColors.obstacle;
+      const height=type==='wall'?20:type==='obstacle'?11:type==='exit'?9:type==='smoke_source'?12:8;
+      drawPrism(x0,y0,x1,y1,height,style);
+      if(type==='exit'||type==='smoke_source'||type==='sign'){
+        const p=project((x0+x1)/2,(y0+y1)/2,height+2);
+        ctx.fillStyle='#fff';ctx.font='700 8px Microsoft YaHei';ctx.textAlign='center';
+        ctx.fillText(type==='exit'?'出口':type==='smoke_source'?'烟源':'标识',p.x,p.y-4);
+      }
+    }));
+  }
+
+  function draw(){
+    const w=canvas.clientWidth,h=canvas.clientHeight;
+    ctx.clearRect(0,0,w,h);
+    const sky=ctx.createLinearGradient(0,0,0,h);
+    sky.addColorStop(0,'#cfdfef');sky.addColorStop(.55,'#e8eff5');sky.addColorStop(1,'#c6d0d8');
+    ctx.fillStyle=sky;ctx.fillRect(0,0,w,h);
+    // Editor blocks first, then exit labels/walls so the labels remain above
+    // the grid rather than being visually hidden by it.
+    drawFloor();drawHeat();drawPaths();drawEditorPreview();drawWalls();drawSigns();drawSmoke();drawRelations();drawAgents();drawGuide();
+  }
+
+  function updateSimulation(dt,timeAdvance=dt*26*speed){
+    const guideBoost=$('dynamicGuide').checked?1.15:1;
+    const smokePenalty=$('smokeEnabled').checked?(1-+$('diffusion').value*.12):1;
+    agents.forEach(a=>{
+      if(a.evacuated)return;
+      a.progress=Math.min(.999,a.progress+dt*a.speed*guideBoost*smokePenalty*(speed*.95));
+    });
+    simTime=Math.min(maxTime,simTime+timeAdvance);
+    smokePhase+=dt*1.5;
+    if(simTime>=maxTime) running=false;
+  }
+
+  function fmt(sec){
+    sec=Math.floor(sec);return `${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;
+  }
+
+  function getDemoEvacuatedCount(){
+    const ratio=Math.min(1,simTime/maxTime);
+    const logistic=1/(1+Math.exp(-(ratio-.46)*9));
+    return Math.min(totalPopulation,Math.round(totalPopulation*logistic*.98));
+  }
+
+  function syncDemoEvacuatedState(evacuatedCount){
+    const count=Math.max(0,Math.min(agents.length,evacuatedCount));
+    agents.forEach((agent,index)=>{
+      agent.evacuated=index<count;
+      if(agent.evacuated)agent.progress=1;
+      else agent.progress=Math.min(agent.progress,.999);
+    });
+  }
+
+  function computeStats(){
+    if(isLiveMode()){
+      const people=liveSnapshot.people||[];
+      const evacuated=people.filter(person=>person.evacuated).length;
+      const reportedRisk=people.map(person=>person.risk).filter(value=>Number.isFinite(Number(value))).map(Number);
+      const high=reportedRisk.filter(value=>value>=.7).length;
+      const avg=reportedRisk.length?(reportedRisk.reduce((sum,value)=>sum+value,0)/reportedRisk.length).toFixed(2):'—';
+      const congestion=(liveSnapshot.fields||{}).congestion_field||[];
+      const maxCongestion=congestion.length?Math.max(0,...congestion.flat().map(clamp01)):null;
+      $('evacuated').textContent=evacuated;
+      $('highRisk').textContent=reportedRisk.length?high:'—';
+      $('peakDensity').textContent=maxCongestion===null?'—':maxCongestion.toFixed(2);
+      $('avgRisk').textContent=avg;
+      $('exitAValue').textContent='—';$('exitBValue').textContent='—';
+      $('exitABar').style.width='0%';$('exitBBar').style.width='0%';
+      $('timeText').textContent=`${fmt(Number(liveSnapshot.time_s)||0)} / 真实 CA`;
+      const ratio=people.length?evacuated/people.length:0;$('progressBar').style.width=(ratio*100)+'%';
+      if(!running)$('headerStatus').textContent=liveSnapshot.step>0?'真实联调已暂停':'真实联调已就绪';
+      return {evacuated,high,congestion:maxCongestion,avg,aRatio:0,bRatio:0};
+    }
+    const ratio=Math.min(1,simTime/maxTime);
+    const evacuated=getDemoEvacuatedCount();
+    syncDemoEvacuatedState(evacuated);
+    const riskEnabled=$('smokeEnabled').checked;
+    const diff=+$('diffusion').value;
+    const high=riskEnabled?Math.max(0,Math.round(totalPopulation*(.02+diff*.14)*(1-ratio*.55))):0;
+    const density=(1.2+(1-ratio)*3.1+Math.sin(simTime/20)*.18);
+    const congestion=clamp01(density/5);
+    const avg=riskEnabled?(diff*(.22+.30*ratio)).toFixed(2):'0.00';
+    let aRatio=$('exitAEnabled').checked?($('dynamicGuide').checked?.48:.58):0;
+    let bRatio=$('exitBEnabled').checked?1-aRatio:0;
+    if(!$('exitAEnabled').checked && $('exitBEnabled').checked)bRatio=1;
+    if($('exitAEnabled').checked && !$('exitBEnabled').checked)aRatio=1;
+    $('evacuated').textContent=evacuated;
+    $('highRisk').textContent=high;
+    $('peakDensity').textContent=congestion.toFixed(2);
+    $('avgRisk').textContent=avg;
+    $('exitAValue').textContent=Math.round(aRatio*100)+'%';
+    $('exitBValue').textContent=Math.round(bRatio*100)+'%';
+    $('exitABar').style.width=(aRatio*100)+'%';
+    $('exitBBar').style.width=(bRatio*100)+'%';
+    $('timeText').textContent=`${fmt(simTime)} / ${fmt(maxTime)}`;
+    $('progressBar').style.width=(ratio*100)+'%';
+    $('headerStatus').textContent=running?'仿真运行中':simTime>0?'仿真已暂停':'系统就绪';
+    return {evacuated,high,congestion,avg,aRatio,bRatio};
+  }
+
+  function drawCurve(){
+    const w=curve.clientWidth,h=curve.clientHeight;
+    cctx.clearRect(0,0,w,h);
+    const pad={l:33,r:12,t:13,b:24};
+    cctx.strokeStyle='#e2e8f0';cctx.lineWidth=1;
+    for(let i=0;i<=4;i++){
+      const y=pad.t+(h-pad.t-pad.b)*i/4;
+      cctx.beginPath();cctx.moveTo(pad.l,y);cctx.lineTo(w-pad.r,y);cctx.stroke();
+    }
+    cctx.strokeStyle='#9aa8ba';cctx.beginPath();cctx.moveTo(pad.l,pad.t);cctx.lineTo(pad.l,h-pad.b);cctx.lineTo(w-pad.r,h-pad.b);cctx.stroke();
+    if(isLiveMode()){
+      const snapshots=liveHistory.length?liveHistory:[liveSnapshot];
+      const population=(liveSnapshot.people||[]).length||1;
+      const maxStep=Math.max(1,...snapshots.map(snapshot=>Number(snapshot.step)||0));
+      cctx.strokeStyle='#2764e7';cctx.lineWidth=2.5;cctx.beginPath();
+      snapshots.forEach((snapshot,index)=>{
+        const evacuated=(snapshot.people||[]).filter(person=>person.evacuated).length;
+        const x=pad.l+(w-pad.l-pad.r)*((Number(snapshot.step)||0)/maxStep);
+        const y=h-pad.b-(h-pad.t-pad.b)*(evacuated/population);
+        index?cctx.lineTo(x,y):cctx.moveTo(x,y);
+      });cctx.stroke();
+      const latestEvacuated=(liveSnapshot.people||[]).filter(person=>person.evacuated).length;
+      cctx.fillStyle='#6d788a';cctx.font='10px Microsoft YaHei';cctx.fillText('0',10,h-pad.b+3);cctx.fillText(population,4,pad.t+4);
+      cctx.fillText('step',w-28,h-5);cctx.fillStyle='#2764e7';cctx.fillText('真实已疏散人数',pad.l+4,12);
+      cctx.fillStyle='#2764e7';cctx.fillText(`${latestEvacuated}/${population}`,w-48,pad.t+12);
+      return;
+    }
+    const pts=[];
+    for(let i=0;i<=50;i++){
+      const r=i/50;
+      const evac=1/(1+Math.exp(-(r-.46)*9))*.98;
+      pts.push([pad.l+(w-pad.l-pad.r)*r,h-pad.b-(h-pad.t-pad.b)*evac]);
+    }
+    cctx.strokeStyle='#2764e7';cctx.lineWidth=2.5;cctx.beginPath();
+    pts.forEach((p,i)=>i?cctx.lineTo(p[0],p[1]):cctx.moveTo(p[0],p[1]));cctx.stroke();
+    const x=pad.l+(w-pad.l-pad.r)*(simTime/maxTime);
+    cctx.strokeStyle='#e14b4b';cctx.setLineDash([4,4]);cctx.beginPath();cctx.moveTo(x,pad.t);cctx.lineTo(x,h-pad.b);cctx.stroke();cctx.setLineDash([]);
+    cctx.fillStyle='#6d788a';cctx.font='10px Microsoft YaHei';cctx.fillText('0',10,h-pad.b+3);cctx.fillText(totalPopulation,4,pad.t+4);
+    cctx.fillText('时间',w-34,h-5);cctx.fillStyle='#2764e7';cctx.fillText('已疏散人数',pad.l+4,12);
+  }
+
+  function addLog(label,value){
+    logRows.unshift({time:fmt(simTime),label,value});
+    logRows=logRows.slice(0,14);
+    $('logBody').innerHTML=logRows.map(r=>`<tr><td>${r.time}</td><td>${r.label}</td><td>${r.value}</td></tr>`).join('');
+  }
+
+  function reset(){
+    running=false;simTime=0;smokePhase=0;makeAgents();logRows=[];
+    addLog('系统状态','已重置');
+    addLog('场景人数',totalPopulation+' 人');
+    addLog('时间步长',readTimeStep().toFixed(1)+' s');
+    computeStats();draw();drawCurve();
+  }
+
+  function stepOnce(){
+    const timeStep=readTimeStep();
+    updateSimulation(timeStep/26,timeStep);const s=computeStats();draw();drawCurve();
+    addLog('单步更新','已疏散 '+s.evacuated+' 人');
+  }
+
+  function exportSnapshot(){
+    const timeStep=readTimeStep();
+    const step=Math.max(0,Math.floor(simTime/timeStep));
+    const timeS=round3(step*timeStep);
+    const def=sceneDefs[scene];
+    const smokeLevel=clamp01($('diffusion').value);
+    const stats=computeStats();
+    const congestionLevel=stats.congestion;
+    const people=agents.map((agent,index)=>{
+      const personId=agent.personId;
+      const point=pathPoint(agent);
+      const infoState=index%7===0?'UNKNOWN':index%11===0?'MISINFORMED':index%5===0?'GUIDED':index%3===0?'CONFIRMED':'ALERTED';
+      const receiveTime=infoState==='UNKNOWN'?null:Math.max(0,step-index%8);
+      const infoSource=infoState==='UNKNOWN'?null:index>0 && index%4===0?1:'broadcast';
+      const followTarget=agent.group>=0 && personId>1?personId-1:null;
+      return {
+        person_id:personId,
+        x:Math.max(0,Math.min(def.gridWidth-1,Math.round(point.x*(def.gridWidth-1)))),
+        y:Math.max(0,Math.min(def.gridHeight-1,Math.round(point.y*(def.gridHeight-1)))),
+        heading:agent.side?'right':'left',
+        target_exit:agent.side?'exit_b':'exit_a',
+        evacuated:Boolean(agent.evacuated),
+        risk:round3(smokeLevel*(.2+(index%5)*.08)),
+        dose:round3(smokeLevel*(step+1)*timeStep*(.006+(index%4)*.002)),
+        info_state:infoState,
+        info_source:infoSource,
+        info_source_history:receiveTime===null?[]:[{info_source:infoSource,receive_time:receiveTime}],
+        receive_time:receiveTime,
+        follow_target:followTarget
+      };
+    });
+    const exitIds=scene==='hall'?['exit_a','exit_b','exit_c']:['exit_a','exit_b'];
+    const snapshot={
+      schema_version:'0.1-draft',
+      run_id:'run_demo_001',
+      scenario_id:def.scenarioId,
+      step,
+      time_step:timeStep,
+      time_s:timeS,
+      people,
+      exits:exitIds.map((exitId,index)=>({
+        exit_id:exitId,
+        queue_length:Math.max(0,Math.round(congestionLevel*(index+1)*3))
+      })),
+      fields:{
+        smoke_field:[
+          [0.0,round3(smokeLevel*.25),round3(smokeLevel*.5)],
+          [0.0,round3(smokeLevel*.6),round3(smokeLevel)]
+        ],
+        risk_field:[
+          [0.0,round3(smokeLevel*.18),round3(smokeLevel*.32)],
+          [0.0,round3(smokeLevel*.28),round3(smokeLevel*.52)]
+        ],
+        congestion_field:[
+          [0.0,round3(congestionLevel*.5),0.0],
+          [0.0,round3(congestionLevel),round3(congestionLevel*.65)]
+        ]
+      },
+      relations:people.length>1?[{
+        person_a_id:1,
+        person_b_id:2,
+        relation_type:'friend',
+        strength:.8,
+        trust:.9
+      }]:[],
+      events:people.length?[{
+        type:'exit_switch',
+        step,
+        person_id:1,
+        x:people[0].x,
+        y:people[0].y,
+        details:{from_exit:'exit_a',to_exit:'exit_b',reason:'demo_congestion'}
+      }]:[],
+      strategy_state:{
+        strategy_name:$('dynamicGuide').checked?'dynamic_guidance_demo':'baseline_demo',
+        control_command:null
+      }
+    };
+    const blob=new Blob([JSON.stringify(snapshot,null,2)],{type:'application/json;charset=utf-8'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='d_snapshot_demo.json';a.click();URL.revokeObjectURL(a.href);
+    addLog('演示快照导出','d_snapshot_demo.json');
+  }
+
+  async function exportLiveResultPackage(){
+    if(location.protocol==='file:'){
+      alert('真实结果包需要从本地 D 服务页面导出。请运行 python -m experiments.web_runtime_server 后重试。');
+      return;
+    }
+    try{
+      const response=await fetch('/api/session/export',{method:'GET'});
+      if(!response.ok){
+        const error=await response.json().catch(()=>({error:'结果包导出失败'}));
+        throw new Error(error.error||'结果包导出失败');
+      }
+      const blob=await response.blob();
+      const disposition=response.headers.get('Content-Disposition')||'';
+      const match=disposition.match(/filename="?([^";]+)"?/i);
+      const filename=match?match[1]:'d_runtime_result_package.zip';
+      const link=document.createElement('a');
+      link.href=URL.createObjectURL(blob);link.download=filename;link.click();
+      URL.revokeObjectURL(link.href);
+      addLiveLog('真实结果包导出',filename,liveSnapshot);
+    }catch(error){
+      alert(`无法导出真实结果包：${error.message}`);
+    }
+  }
+
+  function exportConfig(){
+    const cfg={
+      prototype:true, data_source:'frontend_demo', scene,
+      population:totalPopulation, random_seed:+$('seedInput').value,
+      time_step:readTimeStep(), cell_size:readCellSize(),
+      smoke:{enabled:$('smokeEnabled').checked,source:$('smokeSource').value,diffusion:+$('diffusion').value,risk_sensitivity:+$('riskSensitivity').value},
+      information:{broadcast:$('broadcastEnabled').checked,local_spread:$('localInfoEnabled').checked,herding:$('herdingEnabled').checked,strong_relation_ratio:+$('relationRatio').value},
+      control:{signs:$('signEnabled').checked,dynamic_guide:$('dynamicGuide').checked,exit_a_open:$('exitAEnabled').checked,exit_b_open:$('exitBEnabled').checked}
+    };
+    const blob=new Blob([JSON.stringify(cfg,null,2)],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='evacuation_demo_config.json';a.click();URL.revokeObjectURL(a.href);
+    addLog('配置导出','evacuation_demo_config.json');
+  }
+
+  function setRightPanel(panel){
+    const showParameters=panel==='parameters';
+    $('parameterPanel').hidden=!showParameters;
+    $('strategyPanel').hidden=showParameters;
+    $('parameterTab').classList.toggle('active',showParameters);
+    $('strategyTab').classList.toggle('active',!showParameters);
+    $('parameterTab').setAttribute('aria-selected',String(showParameters));
+    $('strategyTab').setAttribute('aria-selected',String(!showParameters));
+    if(!showParameters)refreshStrategyPanel();
+  }
+
+  function activeStrategyPreset(){
+    if($('dynamicGuide').checked)return 'dynamic_guidance';
+    return $('signEnabled').checked?'static_signs':'baseline';
+  }
+
+  function refreshStrategyPanel(){
+    const exits=[];
+    if($('exitAEnabled').checked)exits.push('A');
+    if($('exitBEnabled').checked)exits.push('B');
+    $('strategySignsValue').textContent=$('signEnabled').checked?'开启':'关闭';
+    $('strategyGuideValue').textContent=$('dynamicGuide').checked?'开启':'关闭';
+    $('strategyExitsValue').textContent=exits.length?`出口 ${exits.join('、')} 开放`:'均关闭';
+    const preset=activeStrategyPreset();
+    document.querySelectorAll('[data-strategy-preset]').forEach(button=>button.classList.toggle('active',button.dataset.strategyPreset===preset));
+    $('strategyState').textContent=isLiveMode()
+      ? '真实联调：当前 B CA 尚无策略参数入口；这里会记录和展示方案选择，但不会改写 B 的移动决策。'
+      : '演示模式：方案会实时更新当前页面的演示行为和导出配置。';
+  }
+
+  function applyStrategyPreset(preset){
+    if(preset==='baseline'){
+      $('signEnabled').checked=false;$('dynamicGuide').checked=false;
+    }else if(preset==='static_signs'){
+      $('signEnabled').checked=true;$('dynamicGuide').checked=false;
+    }else if(preset==='dynamic_guidance'){
+      $('signEnabled').checked=true;$('dynamicGuide').checked=true;
+    }
+    $('exitAEnabled').checked=true;$('exitBEnabled').checked=true;
+    refreshStrategyPanel();draw();computeStats();
+    const label={baseline:'基准策略',static_signs:'静态标识强化',dynamic_guidance:'动态引导'}[preset];
+    if(isLiveMode())addLiveLog('策略方案',`${label}：已记录，待 B 接入策略参数` ,liveSnapshot);
+    else addLog('策略方案',label);
+  }
+
+  $('startBtn').onclick=()=>{if(isLiveMode())startLiveTimer();else{running=true;addLog('控制事件','开始仿真')}};
+  $('pauseBtn').onclick=()=>{running=false;if(isLiveMode())stopLiveTimer();addLog(isLiveMode()?'真实 CA 控制':'控制事件','暂停仿真')};
+  $('resetBtn').onclick=()=>{if(isLiveMode())resetLiveRuntime();else reset();};
+  $('stepBtn').onclick=()=>{if(isLiveMode())liveStep();else stepOnce();};
+  $('speedSelect').onchange=e=>{speed=+e.target.value;if(isLiveMode()&&running)startLiveTimer();};
+  $('exportBtn').onclick=()=>{if(isLiveMode())exportLiveResultPackage();else exportSnapshot();};
+  $('saveConfigBtn').onclick=exportConfig;
+  $('applyBtn').onclick=()=>{
+    if(isLiveMode()){addLiveLog('参数面板','真实联调参数由导入的 A/C 文件和 B 当前模型决定；修改后请重新初始化。');return;}
+    totalPopulation=+$('populationInput').value;makeAgents();addLog('参数更新','已应用，time_step '+readTimeStep().toFixed(1)+' s');draw();drawCurve();
+  };
+  $('importBtn').onclick=()=>$('mapFileInput').click();
+  $('importPeopleBtn').onclick=()=>$('populationFileInput').click();
+  $('importYamlBtn').onclick=()=>$('yamlFileInput').click();
+  $('runIntegratedBtn').onclick=initializeIntegratedRuntime;
+  $('runRepositorySampleBtn').onclick=initializeRepositorySample;
+  $('parameterTab').onclick=()=>setRightPanel('parameters');
+  $('strategyTab').onclick=()=>setRightPanel('strategy');
+  document.querySelectorAll('[data-strategy-preset]').forEach(button=>{
+    button.onclick=()=>applyStrategyPreset(button.dataset.strategyPreset);
+  });
+  $('mapFileInput').onchange=e=>{uploadedFiles.map=e.target.files&&e.target.files[0]||null;updateInputFileStatus();};
+  $('populationFileInput').onchange=e=>{uploadedFiles.population=e.target.files&&e.target.files[0]||null;updateInputFileStatus();};
+  $('yamlFileInput').onchange=e=>{uploadedFiles.yaml=e.target.files&&e.target.files[0]||null;updateInputFileStatus();};
+  document.querySelectorAll('[data-editor-tool]').forEach(button=>{
+    button.onclick=()=>{
+      document.querySelectorAll('[data-editor-tool]').forEach(x=>x.classList.remove('active'));
+      button.classList.add('active');editorTool=button.dataset.editorTool;
+      $('editorStatus').textContent=`已选：${editorLabels[editorTool]} · 点击网格进行标注`;
+    };
+  });
+  editorCanvas.addEventListener('pointerdown',event=>{
+    editorDrawing=true;editorLastCell=null;editorCanvas.setPointerCapture(event.pointerId);
+    if(editorTool!=='select'){editorHistory.push({cells:editorCells.map(row=>row.slice())});if(editorHistory.length>20)editorHistory.shift();}
+    setEditorCell(editorCellAt(event));
+  });
+  editorCanvas.addEventListener('pointermove',event=>{if(editorDrawing)setEditorCell(editorCellAt(event));});
+  editorCanvas.addEventListener('pointerup',()=>{editorDrawing=false;editorLastCell=null;});
+  editorCanvas.addEventListener('pointercancel',()=>{editorDrawing=false;editorLastCell=null;});
+  $('editorUndo').onclick=undoEditor;
+  $('editorClear').onclick=clearEditor;
+  $('editorExport').onclick=exportEditorMap;
+
+  $('view2d').onclick=()=>{perspective=false;$('view2d').classList.add('primary');$('view25d').classList.remove('primary');draw()};
+  $('view25d').onclick=()=>{perspective=true;$('view25d').classList.add('primary');$('view2d').classList.remove('primary');draw()};
+  $('fitView').onclick=()=>{resize();addLog('视图操作','适应窗口')};
+
+  ['diffusion','riskSensitivity','relationRatio'].forEach(id=>{
+    const output=id==='diffusion'?'diffusionValue':id==='riskSensitivity'?'riskValue':'relationValue';
+    $(id).oninput=e=>{$(output).textContent=(+e.target.value).toFixed(2);draw()};
+  });
+  $('smokeEnabled').onchange=e=>{$('layerSmoke').checked=e.target.checked;draw()};
+  $('layerSmoke').onchange=draw;$('layerPeople').onchange=draw;$('layerHeat').onchange=draw;$('layerPath').onchange=draw;$('layerRelation').onchange=draw;
+  $('signEnabled').onchange=()=>{draw();refreshStrategyPanel();};
+  $('dynamicGuide').onchange=()=>{draw();refreshStrategyPanel();};
+  $('exitAEnabled').onchange=()=>{computeStats();refreshStrategyPanel();};
+  $('exitBEnabled').onchange=()=>{computeStats();refreshStrategyPanel();};
+
+  document.querySelectorAll('.scene-card').forEach(card=>{
+    card.onclick=()=>{
+      if(isLiveMode()){
+        addLiveLog('场景切换','真实联调模式请通过左侧导入新的 A 地图后重新初始化。');
+        return;
+      }
+      document.querySelectorAll('.scene-card').forEach(x=>x.classList.remove('active'));card.classList.add('active');
+      scene=card.dataset.scene;const d=sceneDefs[scene];$('sceneName').textContent=d.name;$('sceneMeta').textContent=d.meta;
+      reset();addLog('场景切换',d.name);
+    };
+  });
+
+  function loop(now){
+    const dt=Math.min(.05,(now-last)/1000);last=now;
+    if(running && !isLiveMode())updateSimulation(dt);
+    computeStats();draw();drawCurve();
+    if(running && Math.floor(simTime)%35===0 && Math.floor(simTime)!==0){
+      const mark='m'+Math.floor(simTime);
+      if(!loop[mark]){loop[mark]=true;const s=computeStats();addLog('周期指标','已疏散 '+s.evacuated+' 人');}
+    }
+    requestAnimationFrame(loop);
+  }
+
+  createEditorMap();
+  makeAgents();
+  addLog('原型说明','演示数据，未接入模型');
+  addLog('系统状态','界面加载完成');
+  resize();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

@@ -1,130 +1,146 @@
-"""D's guarded A + C input to B runtime entry point.
+"""D-side initial runtime for real A map, B CA, and C population inputs.
 
-This module deliberately assembles only already-produced upstream data.  It
-does not generate people or relations (C), and it does not allocate initial
-positions (A).  A population record therefore must already contain a valid,
-unique position before D will start B's cellular automaton.
+This module owns only the integration boundary.  It never edits A/B/C source
+files: it reads A's public map loaders, C's exported JSON/YAML, and B's
+existing CA class, then records the normal D snapshots and CSV logs.
+
+Supported inputs are deliberately contract-based rather than hard-coded to a
+demo scenario:
+
+* Any dense row-major JSON/CSV map accepted by A's loader;
+* Any C ``output_people.json`` with ``persons`` and ``relations``;
+* Optional C YAML settings, used for reproducibility validation.
+
+Initial positions are deliberately not generated here: A assigns positions
+according to map-room semantics before this D-side runtime is started.
 """
 
 from __future__ import annotations
 
 import argparse
-import copy
-from collections import deque
-from datetime import datetime
+import random
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Callable, Mapping
 
-from core.schema import Exit, Person, ScenarioConfig, SmokeSource
+from core.schema import CellType, Exit, Person, Relation, ScenarioConfig, SmokeSource
+from experiments.b_runtime_adapter import EvacEngineRuntimeAdapter
 from experiments.runner import SimulationRunner
 from visualization.scene_input_adapter import (
+    PopulationConfigView,
     PopulationOutputView,
     SceneInputError,
     load_map_grid,
+    load_population_config,
     load_population_output,
 )
 
 
-class IntegrationInputError(ValueError):
-    """Raised when A/C input is not ready for B's existing runtime."""
+class IntegratedRuntimeError(ValueError):
+    """Raised when real A/B/C inputs cannot form one safe runtime scenario."""
 
 
-def _cell_type(cell: Any) -> str:
+PASSABLE_CELL_TYPES = {"free", "sign", "guide_zone"}
+
+
+def _cell_type_value(cell: Any) -> str:
     value = getattr(cell, "cell_type", None)
-    return str(getattr(value, "value", value))
+    return str(getattr(value, "value", value)).strip().lower()
 
 
-def _walkable_initial_cells(grid: Any) -> set[tuple[int, int]]:
-    return {
-        (int(cell.x), int(cell.y))
-        for cell in grid.cells
-        if _cell_type(cell) in {"free", "sign", "guide_zone"}
-    }
-
-
-def _connected_components(points: Iterable[tuple[int, int]]) -> list[list[tuple[int, int]]]:
-    """Return deterministic components for A-provided static exit cells."""
-
-    remaining = set(points)
-    components: list[list[tuple[int, int]]] = []
-    while remaining:
-        start = min(remaining, key=lambda point: (point[1], point[0]))
-        remaining.remove(start)
-        component = [start]
-        queue: deque[tuple[int, int]] = deque([start])
-        while queue:
-            x, y = queue.popleft()
-            for neighbour in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
-                if neighbour in remaining:
-                    remaining.remove(neighbour)
-                    component.append(neighbour)
-                    queue.append(neighbour)
-        components.append(sorted(component, key=lambda point: (point[1], point[0])))
-    return components
-
-
-def _int_coordinate(record: Mapping[str, Any], field: str, person_id: int) -> int:
-    value = record.get(field)
+def _as_optional_int(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
     if isinstance(value, bool) or not isinstance(value, int):
-        raise IntegrationInputError(
-            f"person {person_id} is missing A-assigned integer {field}"
-        )
+        raise IntegratedRuntimeError("C person coordinates must be integers when present")
     return int(value)
 
 
-def _make_person(record: Mapping[str, Any], *, grid: Any, occupied: set[tuple[int, int]]) -> Person:
-    person_id = record.get("person_id")
-    if isinstance(person_id, bool) or not isinstance(person_id, int) or person_id <= 0:
-        raise IntegrationInputError("C population person_id must be a positive integer")
-    person_id = int(person_id)
-    x = _int_coordinate(record, "x", person_id)
-    y = _int_coordinate(record, "y", person_id)
-    position = (x, y)
-    if not (0 <= x < int(grid.width) and 0 <= y < int(grid.height)):
-        raise IntegrationInputError(
-            f"person {person_id} A-assigned position {position} is outside the map"
-        )
-    if position not in _walkable_initial_cells(grid):
-        raise IntegrationInputError(
-            f"person {person_id} A-assigned position {position} is not a walkable initial cell"
-        )
-    if position in occupied:
-        raise IntegrationInputError(
-            f"person {person_id} overlaps another A-assigned initial position {position}"
-        )
-    occupied.add(position)
+def _require_a_assigned_positions(
+    people: list[Mapping[str, Any]], grid: Any
+) -> list[tuple[int, int]]:
+    """Validate positions assigned by A; D must never invent them."""
 
-    # Current shared Person accepts only id/x/y in its dataclass constructor.
-    # Preserve C's supplied attributes on the runtime instance without
-    # inventing a value for any absent upstream field.
-    person = Person(id=person_id, x=x, y=y)
-    for source, target in (
-        ("profile", "profile"),
-        ("speed", "speed"),
-        ("risk_sensitivity", "risk_sensitivity"),
-        ("familiarity", "familiarity"),
-        ("herding_tendency", "herding_tendency"),
-        ("group_id", "group_id"),
-        ("info_state", "info_state"),
+    width = int(grid.width)
+    height = int(grid.height)
+    positions: list[tuple[int, int]] = []
+    occupied: set[tuple[int, int]] = set()
+    for person in people:
+        person_id = person.get("person_id")
+        x = _as_optional_int(person.get("x"))
+        y = _as_optional_int(person.get("y"))
+        if x is None or y is None:
+            raise IntegratedRuntimeError(
+                f"person {person_id!r} has no A-assigned initial x/y position"
+            )
+        if not (0 <= x < width and 0 <= y < height):
+            raise IntegratedRuntimeError(
+                f"person {person_id!r} A-assigned position ({x}, {y}) is outside the map"
+            )
+        if (x, y) in occupied:
+            raise IntegratedRuntimeError(
+                f"person {person_id!r} overlaps another A-assigned position ({x}, {y})"
+            )
+        cell = grid.cells[y * width + x]
+        if _cell_type_value(cell) not in PASSABLE_CELL_TYPES:
+            raise IntegratedRuntimeError(
+                f"person {person_id!r} A-assigned position ({x}, {y}) is not a passable initial cell"
+            )
+        occupied.add((x, y))
+        positions.append((x, y))
+    return positions
+
+
+def _copy_c_attributes(target: Person, source: Mapping[str, Any]) -> None:
+    """Attach C attributes without requiring changes to the shared schema."""
+
+    for field in (
+        "profile",
+        "speed",
+        "risk_sensitivity",
+        "familiarity",
+        "herding_tendency",
+        "group_id",
+        "info_state",
+        "dose",
     ):
-        if source in record:
-            setattr(person, target, record[source])
-    return person
+        if field in source:
+            setattr(target, field, source[field])
+    target.target_exit_id = source.get("target_exit") or None
+    target.evacuated = bool(source.get("evacuated", False))
+    target.source_person_id = source["source_person_id"]
 
 
-def build_runtime_scene(
+@dataclass(frozen=True)
+class IntegratedScenario:
+    """D's assembled read-only view of a runnable A+B+C scenario."""
+
+    config: ScenarioConfig
+    map_path: Path
+    population_path: Path
+    yaml_path: Path | None
+    placement_mode: str
+    source_id_base: int
+    person_count: int
+    relation_count: int
+    smoke_source_count: int
+
+
+def build_integrated_scenario(
     *,
     map_path: str | Path,
     population_path: str | Path,
+    yaml_path: str | Path | None = None,
+    c_module_path: str | Path = Path("control") / "scene_config.py",
     scenario_id: str | None = None,
     random_seed: int | None = None,
     source_id_base: int = 0,
-) -> ScenarioConfig:
-    """Build B's current ``ScenarioConfig`` from validated A/C artifacts.
+) -> IntegratedScenario:
+    """Read A/C files and assemble B's existing ``ScenarioConfig`` input.
 
-    ``population_path`` is expected to be C's persons/relations output after
-    A has attached initial ``x``/``y`` positions.  D never assigns those
-    positions; invalid or incomplete input raises ``IntegrationInputError``.
+    ``population_path`` must contain the C persons/relations output after A
+    has assigned valid, distinct initial ``x``/``y`` locations.  Missing or
+    invalid positions stop the run; this module does not choose locations.
     """
 
     try:
@@ -133,89 +149,137 @@ def build_runtime_scene(
             population_path, source_id_base=source_id_base
         )
     except SceneInputError as exc:
-        raise IntegrationInputError(str(exc)) from exc
-    return _build_scene_from_views(
-        grid=grid,
-        population=population,
-        scenario_id=scenario_id,
-        random_seed=random_seed,
-    )
+        raise IntegratedRuntimeError(str(exc)) from exc
 
+    config_view: PopulationConfigView | None = None
+    if yaml_path is not None:
+        try:
+            config_view = load_population_config(
+                yaml_path, c_module_path=c_module_path
+            )
+        except SceneInputError as exc:
+            raise IntegratedRuntimeError(str(exc)) from exc
+        if config_view.total_persons != len(population.persons):
+            raise IntegratedRuntimeError(
+                "C YAML total_persons does not match output_people.json persons"
+            )
 
-def _build_scene_from_views(
-    *,
-    grid: Any,
-    population: PopulationOutputView,
-    scenario_id: str | None,
-    random_seed: int | None,
-) -> ScenarioConfig:
-    exit_cells = {
-        (int(cell.x), int(cell.y)) for cell in grid.cells if _cell_type(cell) == "exit"
-    }
-    if not exit_cells:
-        raise IntegrationInputError("A map must contain at least one exit cell")
-    smoke_sources = [
-        SmokeSource(x=int(cell.x), y=int(cell.y))
-        for cell in grid.cells
-        if _cell_type(cell) == "smoke_source"
-    ]
+    effective_seed = random_seed
+    if effective_seed is None and config_view is not None:
+        effective_seed = config_view.random_seed
+
+    if not population.persons:
+        raise IntegratedRuntimeError("C population output contains no persons")
+    positions = _require_a_assigned_positions(population.persons, grid)
+    placement_mode = "A-assigned positions preserved by D"
+
+    persons: list[Person] = []
+    for source, (x, y) in zip(population.persons, positions, strict=True):
+        person = Person(id=int(source["person_id"]), x=x, y=y)
+        _copy_c_attributes(person, source)
+        persons.append(person)
+
+    relations: list[Relation] = []
+    for source in population.relations:
+        relation = Relation(
+            person_a_id=int(source["person_a_id"]),
+            person_b_id=int(source["person_b_id"]),
+        )
+        for field in (
+            "relation_type",
+            "strength",
+            "trust",
+            "wait_probability",
+            "follow_probability",
+        ):
+            if field in source:
+                setattr(relation, field, source[field])
+        relation.source_person_a_id = source["source_person_a_id"]
+        relation.source_person_b_id = source["source_person_b_id"]
+        relations.append(relation)
+
     exits = [
-        Exit(id=f"a_exit_{index:02d}")
-        for index, _component in enumerate(_connected_components(exit_cells), start=1)
+        Exit(id=f"exit_{index + 1}")
+        for index, cell in enumerate(grid.cells)
+        if _cell_type_value(cell) == CellType.EXIT.value
     ]
-
-    occupied: set[tuple[int, int]] = set()
-    persons = [
-        _make_person(record, grid=grid, occupied=occupied)
-        for record in population.persons
+    smoke_sources = [
+        SmokeSource(x=int(cell.x), y=int(cell.y), intensity=1.0)
+        for cell in grid.cells
+        if _cell_type_value(cell) == CellType.SMOKE_SOURCE.value
     ]
-    if not persons:
-        raise IntegrationInputError("C population output must contain at least one person")
+    if not exits:
+        raise IntegratedRuntimeError("map must contain at least one cell with type=exit")
 
-    # ``PopulationOutputView`` has already checked relation endpoints against
-    # its canonical IDs.  Preserve its records read-only so D never redefines
-    # C relation semantics.
-    relation_records = [dict(relation) for relation in population.relations]
-    actual_scenario_id = scenario_id or Path(map_path_label(population)).stem
-    parameters: dict[str, Any] = {
-        "random_seed": random_seed,
-        "d_input_contract": "A-assigned positions + C persons/relations",
-        "d_position_policy": "reject_missing_invalid_or_overlapping",
-    }
-    scene = ScenarioConfig(
-        scenario_id=actual_scenario_id,
+    resolved_scenario_id = scenario_id or (
+        config_view.scene_name if config_view is not None else Path(map_path).stem
+    )
+    runtime_config = ScenarioConfig(
+        scenario_id=str(resolved_scenario_id),
         grid=grid,
         exits=exits,
         persons=persons,
-        relations=relation_records,
+        relations=relations,
         smoke_sources=smoke_sources,
     )
-    # The current shared dataclass exposes no ``parameters`` constructor
-    # field.  Store D provenance only on this fresh runtime scene object;
-    # neither A/B/C source nor any upstream artifact is changed.
-    scene.parameters = parameters
-    return scene
+    # ``parameters`` is not yet a constructor field in the shared schema.
+    # Adding an instance attribute here preserves A/B/C code unchanged.
+    runtime_config.parameters = {  # type: ignore[attr-defined]
+        "random_seed": effective_seed,
+        "d_input_sources": {
+            "map": str(Path(map_path)),
+            "population": str(Path(population_path)),
+            "yaml": None if yaml_path is None else str(Path(yaml_path)),
+        },
+        "d_placement_mode": placement_mode,
+    }
+
+    return IntegratedScenario(
+        config=runtime_config,
+        map_path=Path(map_path),
+        population_path=Path(population_path),
+        yaml_path=None if yaml_path is None else Path(yaml_path),
+        placement_mode=placement_mode,
+        source_id_base=source_id_base,
+        person_count=len(persons),
+        relation_count=len(relations),
+        smoke_source_count=len(smoke_sources),
+    )
 
 
-def map_path_label(population: PopulationOutputView) -> str:
-    """Return a stable fallback label without claiming C owns the map path."""
+def integrated_simulation_factory(
+    scenario: IntegratedScenario,
+) -> Callable[[], EvacEngineRuntimeAdapter]:
+    """Return a reset-safe D adapter around B's current public runtime."""
 
-    metadata = population.metadata
-    candidate = metadata.get("scenario_id") or metadata.get("scene_name")
-    return str(candidate or "a_c_input")
+    def create() -> EvacEngineRuntimeAdapter:
+        from simulation.evac_simulation import EvacEngine
 
+        seed = scenario.config.parameters.get("random_seed")  # type: ignore[attr-defined]
+        if seed is not None:
+            random.seed(seed)
+        wrapped = EvacEngineRuntimeAdapter(
+            EvacEngine(scenario.config),
+            adapter_meta={
+                "map_path": str(scenario.map_path),
+                "population_path": str(scenario.population_path),
+                "yaml_path": None
+                if scenario.yaml_path is None
+                else str(scenario.yaml_path),
+                "placement_mode": scenario.placement_mode,
+                "person_count": scenario.person_count,
+                "relation_count": scenario.relation_count,
+                "smoke_source_count": scenario.smoke_source_count,
+            },
+        )
+        return wrapped
 
-def integrated_simulation_factory(scene: ScenarioConfig):
-    """Return fresh B simulations for runner initialization/reset cycles."""
-
-    def create_simulation() -> Any:
-        from simulation.evac_simulation import CaEvacSimulation
-
-        return CaEvacSimulation(copy.deepcopy(scene))
-
-    random_seed = scene.parameters.get("random_seed")
-    setattr(create_simulation, "_d_random_seed", random_seed)
-    return create_simulation
+    setattr(
+        create,
+        "_d_random_seed",
+        scenario.config.parameters.get("random_seed"),  # type: ignore[attr-defined]
+    )
+    return create
 
 
 def create_integrated_runner(
@@ -223,51 +287,41 @@ def create_integrated_runner(
     map_path: str | Path,
     population_path: str | Path,
     output_root: str | Path,
-    scenario_id: str | None = None,
+    yaml_path: str | Path | None = None,
+    c_module_path: str | Path = Path("control") / "scene_config.py",
+    run_id: str = "d_integrated_run",
     random_seed: int | None = None,
-    time_step_s: float = 0.5,
     max_steps: int = 500,
-    source_id_base: int = 0,
 ) -> SimulationRunner:
-    """Create a D runner without starting B or fabricating upstream input."""
-
-    scene = build_runtime_scene(
+    scenario = build_integrated_scenario(
         map_path=map_path,
         population_path=population_path,
-        scenario_id=scenario_id,
+        yaml_path=yaml_path,
+        c_module_path=c_module_path,
         random_seed=random_seed,
-        source_id_base=source_id_base,
     )
     return SimulationRunner(
-        integrated_simulation_factory(scene),
+        integrated_simulation_factory(scenario),
         output_root=output_root,
-        run_id=(
-            f"d_week4_{scene.scenario_id}_"
-            f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
-        ),
-        time_step_s=time_step_s,
+        run_id=run_id,
+        time_step_s=0.5,
         max_steps=max_steps,
-        random_seed=random_seed,
+        random_seed=scenario.config.parameters.get("random_seed"),  # type: ignore[attr-defined]
     )
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run B only after A positions and C population data are supplied."
+        description="Run a D-integrated A-map + B-CA + C-population scenario."
     )
-    parser.add_argument("--map", required=True, type=Path, help="A JSON/CSV map")
-    parser.add_argument(
-        "--population",
-        required=True,
-        type=Path,
-        help="C persons/relations JSON with A-assigned x/y positions",
-    )
-    parser.add_argument("--output-root", type=Path, default=Path("outputs") / "d_week4")
-    parser.add_argument("--scenario-id")
+    parser.add_argument("--map", required=True, type=Path)
+    parser.add_argument("--population", required=True, type=Path)
+    parser.add_argument("--yaml", type=Path)
+    parser.add_argument("--c-module", type=Path, default=Path("control") / "scene_config.py")
+    parser.add_argument("--output-root", type=Path, default=Path("outputs") / "integrated")
+    parser.add_argument("--run-id", default="d_integrated_run")
     parser.add_argument("--random-seed", type=int)
-    parser.add_argument("--time-step", type=float, default=0.5)
     parser.add_argument("--max-steps", type=int, default=500)
-    parser.add_argument("--source-id-base", choices=(0, 1), type=int, default=0)
     parser.add_argument("--headless", action="store_true")
     return parser.parse_args()
 
@@ -277,19 +331,21 @@ def main() -> None:
     runner = create_integrated_runner(
         map_path=args.map,
         population_path=args.population,
+        yaml_path=args.yaml,
+        c_module_path=args.c_module,
         output_root=args.output_root,
-        scenario_id=args.scenario_id,
+        run_id=args.run_id,
         random_seed=args.random_seed,
-        time_step_s=args.time_step,
         max_steps=args.max_steps,
-        source_id_base=args.source_id_base,
     )
     try:
-        initial = runner.initialize()
-        print(f"initialized: {initial['run_id']} step={initial['step']}")
+        runner.initialize()
         if args.headless:
-            final = runner.run_until_finished()
-            print(f"finished: {final['run_id']} step={final['step']}")
+            snapshot = runner.run_until_finished()
+            print(
+                f"integrated run complete: step={snapshot['step']} "
+                f"output={runner.output_root / snapshot['run_id']}"
+            )
         else:
             from visualization.visualizer import MatplotlibSimulationViewer
 

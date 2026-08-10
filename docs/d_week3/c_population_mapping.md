@@ -1,31 +1,36 @@
-# C 人员关系输出到 D 的编号适配
+# C 人群输出接入说明（D 适配层）
 
-## 当前 C 输出
+## 目的
 
-C 当前提供的 `output_people.json` 使用：
+本文件说明 D 如何读取 C 生成的 `output_people.json`。该文件是 C 的人群与关系输出示例，不修改 C 的生成逻辑。
 
-- `persons[].id`，从 `0` 开始；
-- `relations[].from` 和 `relations[].to`，同样从 `0` 开始；
-- 关系包含 `relation_type`、`strength`、`trust`、`wait_probability` 和 `follow_probability`。
+## 当前输入格式
 
-## D 侧处理
+- 人员编号：C 当前使用 `0..N-1`。
+- 关系字段：使用 `from` 和 `to`。
+- 人员字段：包含 `speed`、`group_id`、`profile`、`risk_sensitivity`、`familiarity`、`herding_tendency`、`target_exit`、`info_state`、`evacuated`、`dose` 等。
+- 本次示例：40 名人员、160 条关系。
 
-D 的统一日志和快照使用正整数 `person_id`，因此适配器默认执行：
+## D 侧适配规则
+
+调用 `visualization.scene_input_adapter.load_population_output()` 时，默认按 `source_id_base=0` 读取，并映射为 D 统一使用的正整数编号：
 
 ```text
-D person_id = C source id + 1
+C source_person_id 0  -> D person_id 1
+C source_person_id 39 -> D person_id 40
 ```
 
-同时保留：
+关系端点也使用相同映射。适配后的记录同时保留 `source_person_id`、`source_person_a_id` 和 `source_person_b_id`，便于追溯原始 C 数据。
 
-- `source_person_id`；
-- `source_person_a_id`；
-- `source_person_b_id`。
+## 验证结果
 
-这样既符合 D 的正整数编号规范，又能追溯 C 的原始编号。D 不修改 C 的 JSON 文件，也不修改 C 的关系生成逻辑。
+- 输入 JSON 可正常解析；
+- 40 名人员均被读取；
+- 160 条关系均被读取；
+- 关系端点均能映射到已加载人员；
+- D 侧编号为 1..40；
+- C 的 `output_people.json` 未被修改。
 
-如果 C 后续改为从 `1` 开始，D 调用适配器时传入 `source_id_base=1` 即可。
+## 当前边界
 
-## 已验证内容
-
-C 提供的 40 人、160 条关系文件可按此规则转换；关系端点在转换后仍能正确指向已转换的人员。
+该适配只完成 C 输出到 D 的读取、字段规范化和编号映射，暂不代表已经驱动 B 的正式疏散场景。后续若团队统一 C 改为 1-based 编号，应通过参数或版本规则调整，不应在多个模块重复改写编号。
