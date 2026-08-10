@@ -2,7 +2,7 @@
 
 The adapters deliberately keep ownership with the upstream modules:
 
-* A remains responsible for parsing JSON/CSV into ``core.grid.Grid``.
+* A remains responsible for parsing JSON/CSV/PNG into ``core.grid.Grid``.
 * C remains responsible for parsing YAML into ``SceneConfig``.
 * D validates the contracts it consumes and converts only the data needed by
   the visualizer.  It does not create people, relations, smoke sources, or
@@ -86,7 +86,7 @@ def validate_grid(grid: Any) -> Any:
 
 
 def load_map_grid(path: str | Path) -> Any:
-    """Load and validate a JSON or CSV map through A's public loader."""
+    """Load and validate a JSON, CSV, or PNG map through A's public loader."""
 
     map_path = Path(path)
     if not map_path.is_file():
@@ -97,8 +97,15 @@ def load_map_grid(path: str | Path) -> Any:
             from map_import.map_loader_grid import load_grid
         elif suffix == ".csv":
             from map_import.csv_loader_grid import load_csv_grid as load_grid
+        elif suffix == ".png":
+            from map_import.binary_to_grid import binary_to_grid
+            from map_import.map_loader_image import load_image
+
+            image_map = load_image(str(map_path))
+            grid = binary_to_grid(image_map.binary)
+            return validate_grid(grid)
         else:
-            raise SceneInputError("D map input supports only .json and .csv")
+            raise SceneInputError("D map input supports only .json, .csv, and .png")
         grid = load_grid(str(map_path))
     except SceneInputError:
         raise

@@ -46,14 +46,14 @@ class EvacEngine:
         self.floor_field.compute_distance_field()
 
         if self.floor_field.dist_field is not None:
-            print(f"✅ 距离场计算完成，出口数量: {len(scene.exits)}")
+            print(f"[OK] 距离场计算完成，出口数量: {len(scene.exits)}")
         else:
-            print("⚠️ 距离场计算失败，行人将无法找到出口！")
+            print("[WARN] 距离场计算失败，行人将无法找到出口！")
 
         # 2. 直接使用外部传入行人，不随机修改坐标
         self.person_map: dict[int, Person] = {}
         self.load_external_persons(scene.persons)
-        print(f"✅ 载入外部行人 {len(self.person_map)} 个，使用A模块分配坐标")
+        print(f"[OK] 载入外部行人 {len(self.person_map)} 个，使用A模块分配坐标")
 
         # 3. 初始化烟雾矩阵
         self.smoke_matrix = [[0.0 for _ in range(self.width)] for _ in range(self.height)]
