@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>D ?????</title>
+  <style>
+    :root{--ink:#17243a;--muted:#5c6b80;--line:#d8e1ee;--bg:#f4f7fb;--blue:#2563eb;--bad:#b42332}*{box-sizing:border-box}body{margin:0;background:var(--bg);font:14px/1.5 "Microsoft YaHei",system-ui,sans-serif;color:var(--ink)}header{padding:22px max(22px,calc((100vw - 1160px)/2));background:#10213d;color:#fff}header h1{margin:0;font-size:21px}header p{margin:4px 0 0;color:#cbd8ea}main{max-width:1160px;margin:22px auto;padding:0 18px;display:grid;grid-template-columns:350px 1fr;gap:18px}.card{padding:18px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 2px 8px #243b6110}h2{font-size:16px;margin:0 0 10px}.hint{font-size:12px;color:var(--muted)}label{display:block;font-weight:600;margin:12px 0 4px}input{width:100%;padding:8px;border:1px solid #bdcce0;border-radius:7px;font:inherit}button{padding:8px 11px;border:1px solid var(--blue);border-radius:7px;background:var(--blue);color:#fff;cursor:pointer;font:inherit}button.secondary{background:#fff;color:#24456f;border-color:#bdcce0}button:disabled{opacity:.45;cursor:not-allowed}.buttons{display:flex;flex-wrap:wrap;gap:8px;margin-top:15px}#status{min-height:42px;padding:10px;border-radius:7px;background:#eef5ff;color:#24456f}#status.error{color:var(--bad);background:#fff0f1}.notice{padding:11px;border-left:4px solid #72a3ff;background:#f3f7ff;color:#38516f;border-radius:0 7px 7px 0;font-size:13px}.runtime{min-width:0}.meta{display:flex;flex-wrap:wrap;gap:9px;margin-bottom:12px}.badge{padding:4px 7px;background:#eaf2ff;color:#164191;border-radius:5px;font-size:12px}.grid{display:grid;gap:1px;max-width:760px;padding:6px;background:#d6e0ee;border-radius:6px;overflow:auto}.cell{position:relative;min-width:13px;min-height:13px;background:#f8fbff}.cell.wall,.cell.obstacle{background:#405169}.cell.exit{background:#10a96b}.cell.smoke_source{background:#f97316}.person{position:absolute;inset:15%;display:grid;place-items:center;border-radius:50%;background:#2563eb;color:#fff;font-size:10px;font-weight:700}.person.evacuated{background:#718096}.empty{padding:55px 20px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:8px}a{color:#1d4ed8}@media(max-width:780px){main{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<header><h1>D ?????</h1><p>???? A ??????? C ??/?????? B ?? CA?<a href="/visualization/prototype/population_config.html">?????</a></p></header>
+<main>
+  <section class="card"><h2>????</h2><p class="hint">????????? JSON ???? A ??? <code>x/y</code>?D ???????</p>
+    <label for="mapPath">A ???JSON/CSV?</label><input id="mapPath" placeholder="D:\\...\\map.json">
+    <label for="populationPath">C ???? JSON??? A ???</label><input id="populationPath" placeholder="D:\\...\\output_people_positioned.json">
+    <label for="configPath">C ????????????</label><input id="configPath" placeholder="D:\\...\\config.yaml">
+    <label for="seed">????????</label><input id="seed" type="number" min="0" step="1" placeholder="??">
+    <div class="buttons"><button id="start">?????</button><button id="step" disabled>??</button><button id="export" disabled>??????</button><button id="close" class="secondary" disabled>????</button></div>
+    <p id="status" role="status">??????????????????</p>
+    <p class="notice">???????? B ??????????? A ?????? C ????????????????</p>
+  </section>
+  <section class="card runtime"><h2>??????</h2><div class="meta" id="meta"></div><div id="scene" class="empty">????????</div></section>
+</main>
+<script>
+  const $=s=>document.querySelector(s); let active=false;
+  function status(text,error=false){const node=$('#status');node.textContent=text;node.classList.toggle('error',error)}
+  async function api(path,payload={}){const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const data=await response.json();if(!response.ok)throw new Error(data.error||'????');return data}
+  function render(snapshot){const grid=snapshot.grid, people=snapshot.people||[];const byCell=new Map();people.forEach(person=>{const key=`${person.x},${person.y}`;const list=byCell.get(key)||[];list.push(person);byCell.set(key,list)});const scene=$('#scene');scene.className='grid';scene.replaceChildren();scene.style.gridTemplateColumns=`repeat(${grid.width}, minmax(13px, 1fr))`;grid.cell_type.forEach((row,y)=>row.forEach((type,x)=>{const cell=document.createElement('div');cell.className=`cell ${type}`;cell.title=`(${x}, ${y}) ${type}`;const here=byCell.get(`${x},${y}`)||[];if(here.length){const dot=document.createElement('span');dot.className='person'+(here.every(person=>person.evacuated)?' evacuated':'');dot.textContent=here.length>1?`?${here.length}`:String(here[0].person_id);dot.title=here.map(person=>`person ${person.person_id}${person.evacuated?' (evacuated)':''}`).join(', ');cell.append(dot)}scene.append(cell)}));const evacuated=people.filter(person=>person.evacuated).length;$('#meta').replaceChildren(...[`????`,`step ${snapshot.step}`,`time ${snapshot.time_s.toFixed(2)} s`,`${evacuated}/${people.length} ???`].map(text=>{const span=document.createElement('span');span.className='badge';span.textContent=text;return span}))}
+  function controls(on){active=on;$('#step').disabled=!on;$('#export').disabled=!on;$('#close').disabled=!on;$('#start').disabled=on}
+  $('#start').onclick=async()=>{try{const seed=$('#seed').value;const data=await api('/api/start',{map_path:$('#mapPath').value,population_path:$('#populationPath').value,config_path:$('#configPath').value,random_seed:seed===''?null:Number(seed)});render(data.snapshot);controls(true);status('????? A/C ?????? B?')}catch(error){status(error.message,true)}};
+  $('#step').onclick=async()=>{try{const data=await api('/api/step');render(data.snapshot);status('??? B ?????????')}catch(error){status(error.message,true)}};
+  $('#export').onclick=async()=>{try{const data=await api('/api/export');const link=document.createElement('a');link.href=data.download_url;link.textContent='??????? ZIP';link.download='';$('#status').replaceChildren(link)}catch(error){status(error.message,true)}};
+  $('#close').onclick=async()=>{try{await api('/api/close');controls(false);$('#scene').className='empty';$('#scene').textContent='?????';$('#meta').replaceChildren();status('??????')}catch(error){status(error.message,true)}};
+</script>
+</body></html>
