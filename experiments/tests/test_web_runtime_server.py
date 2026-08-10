@@ -36,8 +36,8 @@ class WebRuntimeServerTests(unittest.TestCase):
             json.dumps(
                 {
                     "persons": [
-                        {"id": 0, "x": 0, "y": 0, "profile": "student"},
-                        {"id": 1, "x": 0, "y": 0, "profile": "student"},
+                        {"id": 0, "x": 2, "y": 3, "profile": "student"},
+                        {"id": 1, "x": 3, "y": 3, "profile": "student"},
                     ],
                     "relations": [
                         {

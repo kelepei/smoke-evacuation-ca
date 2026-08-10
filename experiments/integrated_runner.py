@@ -9,7 +9,10 @@ demo scenario:
 
 * Any dense row-major JSON/CSV map accepted by A's loader;
 * Any C ``output_people.json`` with ``persons`` and ``relations``;
-* Optional C YAML settings, used for reproducible placement validation.
+* Optional C YAML settings, used for reproducibility validation.
+
+Initial positions are deliberately not generated here: A assigns positions
+according to map-room semantics before this D-side runtime is started.
 """
 
 from __future__ import annotations
@@ -18,7 +21,7 @@ import argparse
 import random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any, Callable, Mapping
 
 from core.schema import CellType, Exit, Person, Relation, ScenarioConfig, SmokeSource
 from experiments.b_runtime_adapter import EvacEngineRuntimeAdapter
@@ -53,40 +56,39 @@ def _as_optional_int(value: Any) -> int | None:
     return int(value)
 
 
-def _usable_provided_positions(
-    people: Iterable[Mapping[str, Any]], grid: Any
-) -> bool:
-    """Return true only when C supplied distinct, passable initial positions."""
+def _require_a_assigned_positions(
+    people: list[Mapping[str, Any]], grid: Any
+) -> list[tuple[int, int]]:
+    """Validate positions assigned by A; D must never invent them."""
 
     width = int(grid.width)
     height = int(grid.height)
-    positions: set[tuple[int, int]] = set()
+    positions: list[tuple[int, int]] = []
+    occupied: set[tuple[int, int]] = set()
     for person in people:
+        person_id = person.get("person_id")
         x = _as_optional_int(person.get("x"))
         y = _as_optional_int(person.get("y"))
-        if x is None or y is None or not (0 <= x < width and 0 <= y < height):
-            return False
-        if (x, y) in positions:
-            return False
+        if x is None or y is None:
+            raise IntegratedRuntimeError(
+                f"person {person_id!r} has no A-assigned initial x/y position"
+            )
+        if not (0 <= x < width and 0 <= y < height):
+            raise IntegratedRuntimeError(
+                f"person {person_id!r} A-assigned position ({x}, {y}) is outside the map"
+            )
+        if (x, y) in occupied:
+            raise IntegratedRuntimeError(
+                f"person {person_id!r} overlaps another A-assigned position ({x}, {y})"
+            )
         cell = grid.cells[y * width + x]
         if _cell_type_value(cell) not in PASSABLE_CELL_TYPES:
-            return False
-        positions.add((x, y))
-    return True
-
-
-def _deterministic_positions(grid: Any, count: int, seed: int | None) -> list[tuple[int, int]]:
-    candidates = [
-        (int(cell.x), int(cell.y))
-        for cell in grid.cells
-        if _cell_type_value(cell) in PASSABLE_CELL_TYPES
-    ]
-    if count > len(candidates):
-        raise IntegratedRuntimeError(
-            f"map has only {len(candidates)} passable spawn cells for {count} people"
-        )
-    random.Random(seed).shuffle(candidates)
-    return candidates[:count]
+            raise IntegratedRuntimeError(
+                f"person {person_id!r} A-assigned position ({x}, {y}) is not a passable initial cell"
+            )
+        occupied.add((x, y))
+        positions.append((x, y))
+    return positions
 
 
 def _copy_c_attributes(target: Person, source: Mapping[str, Any]) -> None:
@@ -136,9 +138,9 @@ def build_integrated_scenario(
 ) -> IntegratedScenario:
     """Read A/C files and assemble B's existing ``ScenarioConfig`` input.
 
-    C's current exported sample uses ``(0, 0)`` for every person.  That is not
-    a valid crowd placement, so D deterministically places people on unique
-    passable A-map cells.  Valid future C positions are preserved unchanged.
+    ``population_path`` must contain the C persons/relations output after A
+    has assigned valid, distinct initial ``x``/``y`` locations.  Missing or
+    invalid positions stop the run; this module does not choose locations.
     """
 
     try:
@@ -166,17 +168,10 @@ def build_integrated_scenario(
     if effective_seed is None and config_view is not None:
         effective_seed = config_view.random_seed
 
-    provided_positions = _usable_provided_positions(population.persons, grid)
-    if provided_positions:
-        positions = [
-            (int(person["x"]), int(person["y"])) for person in population.persons
-        ]
-        placement_mode = "C-provided positions"
-    else:
-        positions = _deterministic_positions(
-            grid, len(population.persons), effective_seed
-        )
-        placement_mode = "D deterministic placement from C population + A free cells"
+    if not population.persons:
+        raise IntegratedRuntimeError("C population output contains no persons")
+    positions = _require_a_assigned_positions(population.persons, grid)
+    placement_mode = "A-assigned positions preserved by D"
 
     persons: list[Person] = []
     for source, (x, y) in zip(population.persons, positions, strict=True):

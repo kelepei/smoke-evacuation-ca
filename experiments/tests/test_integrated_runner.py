@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from experiments.integrated_runner import (
+    IntegratedRuntimeError,
     build_integrated_scenario,
     create_integrated_runner,
 )
@@ -40,8 +41,8 @@ class IntegratedRuntimeTests(unittest.TestCase):
                     "persons": [
                         {
                             "id": index,
-                            "x": 0,
-                            "y": 0,
+                            "x": 2 + index,
+                            "y": 3,
                             "profile": "student",
                             "speed": 1.0,
                             "info_state": "UNKNOWN",
@@ -64,7 +65,7 @@ class IntegratedRuntimeTests(unittest.TestCase):
         )
         return map_path, people_path
 
-    def test_build_places_placeholder_people_on_unique_free_cells(self) -> None:
+    def test_build_preserves_a_assigned_positions(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             map_path, people_path = self._write_inputs(Path(raw))
             scenario = build_integrated_scenario(
@@ -78,7 +79,19 @@ class IntegratedRuntimeTests(unittest.TestCase):
         self.assertEqual(1, len(scenario.config.exits))
         self.assertEqual(1, scenario.smoke_source_count)
         self.assertEqual(1, len(scenario.config.relations))
-        self.assertIn("deterministic placement", scenario.placement_mode)
+        self.assertEqual("A-assigned positions preserved by D", scenario.placement_mode)
+
+    def test_rejects_population_without_a_assigned_positions(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            map_path, people_path = self._write_inputs(Path(raw))
+            payload = json.loads(people_path.read_text(encoding="utf-8"))
+            del payload["persons"][0]["x"]
+            people_path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(IntegratedRuntimeError, "A-assigned"):
+                build_integrated_scenario(
+                    map_path=map_path,
+                    population_path=people_path,
+                )
 
     def test_runner_uses_current_b_evac_engine_without_writing_b_code(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
