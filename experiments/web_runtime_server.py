@@ -443,6 +443,10 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         metrics = _snapshot_metrics(snapshot, output_dir)
         _write_json(output_dir / "metrics.json", metrics)
         _write_summary_csv(output_dir / "metrics_summary.csv", metrics)
+        # Keep the web run directory self-contained like the CLI runner output.
+        from visualization.integrated_runtime import save_snapshot_png
+
+        save_snapshot_png(dict(snapshot), output_dir / "final_frame.png")
 
     def _export_session(self) -> None:
         """Return a ZIP built from the active runner's actual CSV output."""
