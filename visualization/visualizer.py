@@ -209,7 +209,7 @@ class MatplotlibSimulationViewer:
                 interpolation="nearest",
                 cmap="Reds",
                 vmin=0,
-                vmax=1,
+                vmax=10,
                 alpha=0.48,
             )
 
@@ -261,7 +261,7 @@ class MatplotlibSimulationViewer:
             Patch(facecolor="#777c84", label="obstacle"),
             Patch(facecolor="#33a65c", label="exit"),
             Patch(facecolor="#bb4d00", label="smoke source"),
-            Patch(facecolor="#ef3b2c", alpha=0.48, label="smoke (0-1)"),
+            Patch(facecolor="#ef3b2c", alpha=0.48, label="smoke (0-10)"),
         ]
         self.map_axes.legend(
             handles=legend_items,

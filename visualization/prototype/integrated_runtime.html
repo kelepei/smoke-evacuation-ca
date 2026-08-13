@@ -223,7 +223,7 @@
     field.forEach((row, y) => {
       if(!Array.isArray(row)) return;
       row.forEach((raw, x) => {
-        const value = Math.max(0, Math.min(1, Number(raw) / max));
+        const value = Math.max(0, Math.min(1, Number(raw) / 10));
         if(value <= 0) return;
         ctx.fillStyle = `rgba(31,41,55,${0.10 + value * .42})`;
         ctx.fillRect(ox + x * cell, oy + y * cell, cell, cell);
@@ -367,7 +367,7 @@
     activeSession = true;
     stopTimer();
     applySnapshot(result.snapshot, {output_dir:result.output_dir});
-    setStatus(`A+B+C 联调已初始化。\nB: 当前通过 EvacEngineRuntimeAdapter 调用真实 EvacEngine.step()\n输出目录：${result.output_dir}`, "真实联调");
+    setStatus(`A+B+C 联调已初始化。\nB: 真实 EvacEngine.run_one_step(c_step_data)，烟雾范围 0~10\n输出目录：${result.output_dir}`, "真实联调");
     log("A+B+C 联调初始化成功");
   }
 
