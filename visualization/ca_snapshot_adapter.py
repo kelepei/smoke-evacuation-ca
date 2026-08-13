@@ -369,7 +369,7 @@ class CaSnapshotAdapter:
             ),
             "missing_fields_are_null": True,
             "missing_values_are_not_inferred": True,
-            "smoke_value_domain": "B raw non-negative concentration; normalization is not confirmed",
+            "smoke_value_domain": "B raw dimensionless concentration in [0, 10]; smoke_matrix[y][x]",
         }
         extra_meta = getattr(simulation, "d_adapter_meta", None)
         if isinstance(extra_meta, Mapping):

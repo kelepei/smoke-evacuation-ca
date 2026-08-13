@@ -229,14 +229,14 @@ class FallbackDemoSimulation:
 
     def _update_smoke(self) -> None:
         sx, sy = self.d_fallback_smoke_source
-        strength = min(1.0, 0.08 + self.current_step * 0.035)
+        strength = min(10.0, 0.8 + self.current_step * 0.35)
         field = np.zeros((int(self.grid.height), int(self.grid.width)), dtype=float)
         for y in range(int(self.grid.height)):
             for x in range(int(self.grid.width)):
                 if _cell_type(self.grid.cells[y * int(self.grid.width) + x]) == "wall":
                     continue
                 field[y][x] = max(0.0, strength * math.exp(-math.hypot(x - sx, y - sy) / 5.0))
-        self.smoke_sim.smoke_matrix = np.clip(field, 0.0, 1.0)
+        self.smoke_sim.smoke_matrix = np.clip(field, 0.0, 10.0)
 
     def step(self) -> None:
         width = int(self.grid.width)
@@ -527,7 +527,7 @@ def save_snapshot_png(snapshot: dict[str, Any], path: Path) -> None:
             interpolation="nearest",
             cmap="Reds",
             vmin=0,
-            vmax=1,
+            vmax=10,
             alpha=0.45,
         )
     active = [person for person in snapshot["people"] if not person["evacuated"]]

@@ -19,7 +19,7 @@ class _StepEngine:
         )
         self.scene = ScenarioConfig(scenario_id="step_api", grid=self.grid)
         self.person_map = {1: Person(id=1, x=0, y=0)}
-        self.smoke_matrix = [[0.0, 0.1]]
+        self.smoke_matrix = [[0.0, 10.0]]
         self.current_step = 0
 
     def step(self) -> None:
