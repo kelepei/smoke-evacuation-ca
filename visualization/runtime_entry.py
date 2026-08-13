@@ -113,6 +113,11 @@ class DVisualizationEntry:
         self.current_snapshot = snapshot
         return snapshot
 
+    def capture_after_step(self) -> dict[str, Any]:
+        """Explicit alias for B loops: call this immediately after one B step."""
+
+        return self.capture()
+
     def export_result_package(
         self, *, input_files: Mapping[str, Path], max_steps: int
     ) -> ResultPackage:

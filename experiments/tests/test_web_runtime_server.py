@@ -92,13 +92,56 @@ class WebRuntimeServerTests(unittest.TestCase):
                     self.assertEqual("application/zip", response.headers.get_content_type())
                     package = zipfile.ZipFile(io.BytesIO(response.read()))
                 names = set(package.namelist())
-                self.assertIn("d_web_runtime/people_log.csv", names)
-                self.assertIn("d_web_runtime/event_log.csv", names)
-                self.assertIn("d_web_runtime/metrics.csv", names)
-                self.assertIn("d_web_runtime/evacuation_curve.svg", names)
-                self.assertIn("d_web_runtime/occupancy_heatmap.svg", names)
-                self.assertIn("d_web_runtime/inputs/map_file.json", names)
-                self.assertIn("d_web_runtime/inputs/population_file.json", names)
+                prefix = initial["run_id"] + "/"
+                self.assertIn(prefix + "people_log.csv", names)
+                self.assertIn(prefix + "event_log.csv", names)
+                self.assertIn(prefix + "metrics.csv", names)
+                self.assertIn(prefix + "evacuation_curve.svg", names)
+                self.assertIn(prefix + "occupancy_heatmap.svg", names)
+                self.assertIn(prefix + "inputs/map_file.json", names)
+                self.assertIn(prefix + "inputs/population_file.json", names)
+        finally:
+            try:
+                post("/api/session/close", {})
+            finally:
+                server.shutdown()
+                server.close_session()
+                server.server_close()
+                worker.join(timeout=5)
+
+    def test_map_preview_uses_a_grid_before_session_start(self) -> None:
+        server = DWebRuntimeServer(("127.0.0.1", 0), RuntimeRequestHandler, root=Path.cwd())
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        base_url = f"http://127.0.0.1:{server.server_port}"
+
+        def post(route: str, body: dict[str, object]) -> dict[str, object]:
+            request = Request(
+                base_url + route,
+                data=json.dumps(body).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            with urlopen(request, timeout=10) as response:
+                return json.loads(response.read().decode("utf-8"))
+
+        try:
+            with tempfile.TemporaryDirectory() as raw:
+                map_path, _ = self._write_inputs(Path(raw))
+                preview = post(
+                    "/api/map/preview",
+                    {
+                        "map_file": {
+                            "name": map_path.name,
+                            "text": map_path.read_text(encoding="utf-8"),
+                        }
+                    },
+                )
+                grid = preview["snapshot"]["grid"]
+                self.assertEqual(8, grid["width"])
+                self.assertEqual(5, grid["height"])
+                self.assertEqual("wall", grid["cell_type"][0][0])
+                self.assertEqual("exit", grid["cell_type"][2][7])
+                self.assertEqual("A JSON/CSV/PNG loader -> Grid", preview["map_meta"]["loader"])
         finally:
             try:
                 post("/api/session/close", {})
