@@ -85,9 +85,11 @@ class WebRuntimeServerTests(unittest.TestCase):
                 )["snapshot"]
                 self.assertEqual(2, len(initial["people"]))
                 self.assertEqual("A map + C population + B EvacEngine", initial["adapter_meta"]["input_mode"])
-                stepped = post("/api/session/step", {})["snapshot"]
+                stepped_response = post("/api/session/step", {})
+                stepped = stepped_response["snapshot"]
                 self.assertEqual(1, stepped["step"])
                 self.assertEqual(0.5, stepped["time_s"])
+                self.assertTrue(Path(stepped_response["output_dir"], "final_frame.png").is_file())
                 with urlopen(base_url + "/api/session/export", timeout=10) as response:
                     self.assertEqual("application/zip", response.headers.get_content_type())
                     package = zipfile.ZipFile(io.BytesIO(response.read()))
