@@ -33,12 +33,19 @@ class EvacEngineRuntimeAdapter:
         behavior_provider: BehaviorProvider | None = None,
         adapter_meta: Mapping[str, Any] | None = None,
     ) -> None:
-        for name in (
-            "scene", "grid", "person_map", "smoke_matrix", "run_one_step",
-            "is_all_evacuated",
-        ):
+        for name in ("scene", "grid", "person_map", "smoke_matrix"):
             if not hasattr(engine, name):
                 raise TypeError(f"B EvacEngine is missing {name}")
+        if not callable(getattr(engine, "run_one_step", None)) and not callable(
+            getattr(engine, "step", None)
+        ):
+            raise TypeError("B EvacEngine must expose run_one_step() or step()")
+        if not callable(getattr(engine, "is_all_evacuated", None)) and not callable(
+            getattr(engine, "all_done", None)
+        ):
+            raise TypeError(
+                "B EvacEngine must expose is_all_evacuated() or all_done()"
+            )
         self._engine = engine
         self._behavior_provider = behavior_provider
         initialized_fields: list[str] = []
@@ -65,7 +72,11 @@ class EvacEngineRuntimeAdapter:
                 initialized_fields.append("person.dose=0.0")
         self.d_adapter_meta = {
             "input_mode": "A map + C population + B EvacEngine",
-            "b_runtime_api": "EvacEngine.run_one_step(c_step_data)",
+            "b_runtime_api": (
+                "EvacEngine.run_one_step(c_step_data)"
+                if callable(getattr(engine, "run_one_step", None))
+                else "EvacEngine.step()"
+            ),
             "behavior_input": "empty mapping; C behavior output not provided",
             "runtime_instance_defaults": sorted(set(initialized_fields)),
             "missing_fields_are_null": True,
@@ -99,7 +110,9 @@ class EvacEngineRuntimeAdapter:
         return None
 
     def all_done(self) -> bool:
-        return bool(self._engine.is_all_evacuated())
+        if callable(getattr(self._engine, "is_all_evacuated", None)):
+            return bool(self._engine.is_all_evacuated())
+        return bool(self._engine.all_done())
 
     def step(self) -> None:
         behavior: Mapping[int, Mapping[str, Any]] = {}
@@ -108,4 +121,7 @@ class EvacEngineRuntimeAdapter:
             if not isinstance(supplied, Mapping):
                 raise BRuntimeAdapterError("behavior_provider must return a mapping")
             behavior = supplied
-        self._engine.run_one_step(dict(behavior))
+        if callable(getattr(self._engine, "run_one_step", None)):
+            self._engine.run_one_step(dict(behavior))
+        else:
+            self._engine.step()
