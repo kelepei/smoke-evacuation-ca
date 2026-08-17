@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import io
 import tempfile
@@ -8,6 +9,8 @@ import unittest
 import zipfile
 from pathlib import Path
 from urllib.request import Request, urlopen
+
+from PIL import Image, ImageDraw
 
 from experiments.web_runtime_server import DWebRuntimeServer, RuntimeRequestHandler
 
@@ -152,6 +155,46 @@ class WebRuntimeServerTests(unittest.TestCase):
                 server.close_session()
                 server.server_close()
                 worker.join(timeout=5)
+
+    def test_png_preview_uses_ascii_runtime_temp_path(self) -> None:
+        server = DWebRuntimeServer(("127.0.0.1", 0), RuntimeRequestHandler, root=Path.cwd())
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        base_url = f"http://127.0.0.1:{server.server_port}"
+
+        def post(route: str, body: dict[str, object]) -> dict[str, object]:
+            request = Request(
+                base_url + route,
+                data=json.dumps(body).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            with urlopen(request, timeout=10) as response:
+                return json.loads(response.read().decode("utf-8"))
+
+        try:
+            with tempfile.TemporaryDirectory() as raw:
+                image_path = Path(raw) / "map.png"
+                image = Image.new("L", (200, 200), color=0)
+                ImageDraw.Draw(image).rectangle((0, 0, 199, 199), outline=255, width=10)
+                image.save(image_path)
+                preview = post(
+                    "/api/map/preview",
+                    {
+                        "map_file": {
+                            "name": image_path.name,
+                            "base64": base64.b64encode(image_path.read_bytes()).decode("ascii"),
+                        }
+                    },
+                )
+                grid = preview["snapshot"]["grid"]
+                self.assertEqual(20, grid["width"])
+                self.assertEqual(20, grid["height"])
+                self.assertEqual(76, preview["map_meta"]["cell_counts"]["wall"])
+                self.assertEqual(324, preview["map_meta"]["cell_counts"]["free"])
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join(timeout=5)
 
 
 if __name__ == "__main__":
