@@ -247,8 +247,8 @@ class CsvExperimentLoggerTests(unittest.TestCase):
             )
             with logger:
                 invalid_id = make_snapshot(0)
-                invalid_id["people"][0]["person_id"] = 0
-                with self.assertRaisesRegex(CsvLogError, "must be >= 1"):
+                invalid_id["people"][0]["person_id"] = -1
+                with self.assertRaisesRegex(CsvLogError, "must be >= 0"):
                     logger.record_snapshot(invalid_id)
 
                 inconsistent_event = make_snapshot(
@@ -266,6 +266,27 @@ class CsvExperimentLoggerTests(unittest.TestCase):
                     CsvLogError, "must have evacuated=true"
                 ):
                     logger.record_snapshot(inconsistent_event)
+
+    def test_accepts_zero_based_person_and_follow_target_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            logger = CsvExperimentLogger(
+                temp_dir,
+                run_id="run_zero_based",
+                scenario_id="scene_test",
+                random_seed=None,
+                time_step_s=0.5,
+            )
+            snapshot = make_snapshot(0)
+            snapshot["run_id"] = "run_zero_based"
+            snapshot["people"][0]["person_id"] = 0
+            snapshot["people"][0]["follow_target"] = 0
+            snapshot["people"][1]["follow_target"] = 0
+            snapshot["events"] = [{"type": "conflict", "person_id": 0, "x": 4, "y": 2}]
+            with logger:
+                logger.record_snapshot(snapshot)
+            with Path(temp_dir, "people_log.csv").open(newline="", encoding="utf-8") as file:
+                rows = list(csv.DictReader(file))
+            self.assertEqual(rows[0]["person_id"], "0")
 
 
 if __name__ == "__main__":

@@ -59,12 +59,20 @@ class CaSnapshotAdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(SnapshotAdapterError, "dense row-major order"):
             self.adapter.capture(self.simulation)
 
-    def test_rejects_non_positive_person_id_and_unknown_relation(self) -> None:
+    def test_accepts_zero_based_person_id_and_rejects_negative_id(self) -> None:
         person = self.simulation.persons.pop(1)
         person.id = 0
         self.simulation.persons[0] = person
-        with self.assertRaisesRegex(SnapshotAdapterError, "positive integer"):
+        snapshot = self.adapter.capture(self.simulation)
+        self.assertIn(0, [person["person_id"] for person in snapshot["people"]])
+
+        person = self.simulation.persons.pop(0)
+        person.id = -1
+        self.simulation.persons[-1] = person
+        with self.assertRaisesRegex(SnapshotAdapterError, "non-negative integer"):
             self.adapter.capture(self.simulation)
+
+    def test_rejects_unknown_relation(self) -> None:
 
         self.simulation = EvacEngineRuntimeAdapter(EvacEngine(build_base_scene()))
         self.simulation.config.relations = [Relation(1, 99)]

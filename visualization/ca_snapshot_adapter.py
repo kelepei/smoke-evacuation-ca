@@ -234,10 +234,10 @@ class CaSnapshotAdapter:
             if (
                 isinstance(person_id, bool)
                 or not isinstance(person_id, Integral)
-                or int(person_id) <= 0
+                or int(person_id) < 0
             ):
                 raise SnapshotAdapterError(
-                    "person_id must be a globally unique positive integer"
+                    "person_id must be a globally unique non-negative integer"
                 )
             person_id = int(person_id)
             if person_id in seen_ids:
@@ -320,10 +320,10 @@ class CaSnapshotAdapter:
                 if (
                     isinstance(endpoint_id, bool)
                     or not isinstance(endpoint_id, Integral)
-                    or int(endpoint_id) <= 0
+                    or int(endpoint_id) < 0
                 ):
                     raise SnapshotAdapterError(
-                        f"relations[{index}].{endpoint} must be a positive integer"
+                        f"relations[{index}].{endpoint} must be a non-negative integer"
                     )
                 endpoint_id = int(endpoint_id)
                 if endpoint_id not in seen_ids:

@@ -296,7 +296,7 @@ class CsvExperimentLogger:
             person_id = _strict_int(
                 _required(raw_person, "person_id", f"snapshot.people[{index}]"),
                 field=f"snapshot.people[{index}].person_id",
-                minimum=1,
+                minimum=0,
             )
             if person_id in current_people:
                 raise CsvLogError(f"duplicate person_id in snapshot: {person_id!r}")
@@ -360,7 +360,7 @@ class CsvExperimentLogger:
                 follow_target = _strict_int(
                     follow_target,
                     field=f"snapshot.people[{index}].follow_target",
-                    minimum=1,
+                    minimum=0,
                 )
 
             current_people[person_id] = raw_person
@@ -518,7 +518,7 @@ class CsvExperimentLogger:
                 else _strict_int(
                     raw_person_id,
                     field=f"snapshot.events[{index}].person_id",
-                    minimum=1,
+                    minimum=0,
                 )
             )
             if person_id is not None and person_id not in current_people:
