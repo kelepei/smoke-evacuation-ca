@@ -37,6 +37,14 @@ ALLOWED_MAP_SUFFIXES = {".json", ".csv", ".png"}
 ALLOWED_YAML_SUFFIXES = {".yaml", ".yml"}
 
 
+def _runtime_temp_directory(root: Path, prefix: str) -> tempfile.TemporaryDirectory[str]:
+    """Keep uploaded inputs in an ASCII path for A's Windows OpenCV loader."""
+
+    temp_root = root / "outputs" / ".d_runtime_tmp"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    return tempfile.TemporaryDirectory(prefix=prefix, dir=str(temp_root))
+
+
 class WebRuntimeError(ValueError):
     """A user-facing validation error from the local HTML bridge."""
 
@@ -266,7 +274,9 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
 
     def _create_session(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         self.server.close_session()
-        temporary_directory = tempfile.TemporaryDirectory(prefix="d_web_runtime_")
+        temporary_directory = _runtime_temp_directory(
+            self.server.root, "d_web_runtime_"
+        )
         root = Path(temporary_directory.name)
         try:
             map_path = _uploaded_file(payload, "map_file", ALLOWED_MAP_SUFFIXES, root)
@@ -286,7 +296,9 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             raise
 
     def _preview_map(self, payload: Mapping[str, Any]) -> dict[str, Any]:
-        temporary_directory = tempfile.TemporaryDirectory(prefix="d_map_preview_")
+        temporary_directory = _runtime_temp_directory(
+            self.server.root, "d_map_preview_"
+        )
         root = Path(temporary_directory.name)
         try:
             map_path = _uploaded_file(payload, "map_file", ALLOWED_MAP_SUFFIXES, root)
@@ -337,7 +349,9 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         yaml_path = self.server.root / "control" / "config_template.yaml"
         if map_path is None or people_path is None:
             raise WebRuntimeError("repository A/C sample files are unavailable")
-        temporary_directory = tempfile.TemporaryDirectory(prefix="d_web_runtime_sample_")
+        temporary_directory = _runtime_temp_directory(
+            self.server.root, "d_web_runtime_sample_"
+        )
         try:
             return self._start_runner(
                 temporary_directory,

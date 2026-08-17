@@ -1,5 +1,18 @@
 # D 端第六周运行与分析说明
 
+## 环境准备
+
+本项目的 D 端演示使用 Python 3.13，当前环境已安装可用版本的以下依赖：
+
+```powershell
+python -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple `
+  opencv-python pandas scikit-image networkx
+```
+
+仓库已有的 `numpy`、`scipy`、`matplotlib`、`PyYAML`、`Pillow` 也需要保留。第六周本地演示不需要额外传感器、GPU 或其他硬件，普通 CPU 即可运行。
+
+Windows 中文用户名下，D Web 运行时会把上传文件放入仓库内的 ASCII 临时目录，兼容 A 的 OpenCV PNG loader。
+
 ## 运行一次仿真
 
 ```powershell
