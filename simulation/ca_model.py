@@ -13,10 +13,11 @@ DIRS = [(-1, -1), (-1, 0), (-1, 1),
         (1, -1),  (1, 0),  (1, 1)]
 
 
-def calc_next_position(person, grid: Grid, smoke_matrix, single_behavior=None,
+def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behavior=None,
                        floor_field=None, signage_model=None, occupied_positions=None, exit_list=None):
     """
     计算行人的下一个位置
+    新增risk_dict：{person_id: 行人综合感知风险Risk_i(t)}
     新增exit_list入参，用于兜底计算出口距离
     """
     px, py = int(person.x), int(person.y)
@@ -28,14 +29,18 @@ def calc_next_position(person, grid: Grid, smoke_matrix, single_behavior=None,
 
     # 权重参数
     w_d = 7.0      # 出口距离权重
-    w_s = 1.0      # 烟雾惩罚权重
-    w_g = 3.0      # 指示牌/引导员权重（拉高，带动行人移动）
+    w_s = 1.0      # 烟雾惩罚权重（格子客观浓度）
+    w_risk = 0.9   # 行人主观感知风险权重【新增】
+    w_g = 3.0      # 指示牌/引导员权重
     w_h = 1.6      # 从众权重
-    w_r = 1.9      # 关系/结伴权重
+    w_rel = 1.9    # 关系/结伴权重
     w_f = 1.0      # 熟悉度权重
 
     if occupied_positions is None:
         occupied_positions = set()
+
+    # 获取当前行人综合感知风险
+    person_risk = risk_dict.get(person.id, 0.0)
 
     for dx, dy in DIRS:
         tx = px + dx
@@ -77,11 +82,15 @@ def calc_next_position(person, grid: Grid, smoke_matrix, single_behavior=None,
         if cell.cell_type == CellType.EXIT:
             utility += 2.0
 
-        # 3. 烟雾惩罚
+        # 3. 客观烟雾浓度惩罚
         smoke_cost = current_smoke * w_s
         utility -= smoke_cost
 
-        # 4. 熟悉度偏好（C 组提供）
+        # 【新增4】行人主观综合风险惩罚 Risk_i(t)
+        # 行人感知风险越高，整体移动意愿下降，规避烟雾区域
+        utility -= w_risk * person_risk
+
+        # 5. 熟悉度偏好（C 组提供）
         if single_behavior:
             familiarity = getattr(person, 'familiarity', 0.5)
             utility += w_f * familiarity * 0.1
@@ -103,19 +112,19 @@ def calc_next_position(person, grid: Grid, smoke_matrix, single_behavior=None,
             follow_strength = single_behavior.get("follow_strength", 0.0)
             follow_target = single_behavior.get("follow_target")
             if is_following and follow_target is not None:
-                utility += w_r * follow_strength * 0.3
+                utility += w_rel * follow_strength * 0.3
 
             # 引导影响
             guide_influence = single_behavior.get("guide_influence", 0.0)
             if guide_influence > 0.1:
                 utility += w_g * guide_influence * 0.3
 
-        # 5. 指示牌引导
+        # 6. 指示牌引导
         if signage_model is not None:
             guide_u = signage_model.get_guidance_utility(person, (tx, ty))
             utility += w_g * guide_u
 
-        # 6. 行走惯性防抖
+        # 7. 行走惯性防抖
         if hasattr(person, 'prev_x') and hasattr(person, 'prev_y'):
             prev_dx = px - person.prev_x
             prev_dy = py - person.prev_y
