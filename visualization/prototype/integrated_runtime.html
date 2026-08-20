@@ -11,14 +11,17 @@
   header{height:56px;display:flex;align-items:center;gap:14px;padding:0 18px;background:#101827;color:#fff;border-bottom:1px solid #0b1220}
   h1{font-size:17px;margin:0;font-weight:800}
   .badge{margin-left:auto;padding:5px 10px;border-radius:999px;background:#1f2937;color:#cbd5e1;font-size:12px}
-  main{height:calc(100vh - 56px);display:grid;grid-template-columns:330px minmax(420px,1fr) 330px;gap:10px;padding:10px}
+  main{height:calc(100vh - 56px);display:grid;grid-template-columns:330px minmax(420px,1fr) 350px;gap:10px;padding:10px}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;min-width:0;overflow:hidden}
-  .side{padding:12px;overflow:auto}
+  .side{padding:12px;overflow-y:auto;overflow-x:hidden}
+  .runtime-side{display:flex;min-height:0;flex-direction:column}
   .title{font-weight:800;margin:4px 0 9px;display:flex;justify-content:space-between;gap:8px}
-  .hint{color:var(--muted);font-size:12px}
+  .hint{color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+  .hint.success{padding:7px 8px;border:1px solid #bbdfc7;border-radius:7px;background:#f0fdf4;color:#166534;font-weight:700}
+  .hint.error{padding:7px 8px;border:1px solid #fecaca;border-radius:7px;background:#fff1f2;color:#b91c1c;font-weight:700}
   .row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
   .stack{display:grid;gap:8px}
-  button,input,textarea{font:inherit}
+  button,input,textarea,select{font:inherit}
   button{height:34px;border:1px solid #b9c5d4;background:#fff;border-radius:7px;cursor:pointer;color:var(--ink);font-weight:700}
   button:hover{background:#f5f8fc}
   button.primary{background:var(--blue);border-color:var(--blue);color:#fff}
@@ -26,7 +29,7 @@
   button.danger{background:#fff;border-color:#f4a3a3;color:#b91c1c}
   button:disabled{opacity:.55;cursor:not-allowed}
   label{display:grid;gap:4px;font-size:12px;color:var(--muted);margin:8px 0}
-  input,textarea{width:100%;border:1px solid #c8d2df;border-radius:7px;padding:7px 8px;background:#fbfdff;color:var(--ink)}
+  input,textarea,select{width:100%;border:1px solid #c8d2df;border-radius:7px;padding:7px 8px;background:#fbfdff;color:var(--ink)}
   textarea{min-height:96px;resize:vertical;font-family:Consolas,monospace;font-size:12px}
   .canvas-wrap{position:relative;height:100%;display:flex;flex-direction:column}
   .toolbar{height:46px;display:flex;align-items:center;gap:8px;padding:7px 9px;border-bottom:1px solid var(--line);background:#f8fafc}
@@ -34,9 +37,17 @@
   canvas{width:100%;height:100%;display:block;background:#f8fafc}
   .legend{position:absolute;left:12px;bottom:12px;display:flex;gap:8px;flex-wrap:wrap;background:rgba(255,255,255,.9);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px}
   .swatch{width:13px;height:13px;display:inline-block;border-radius:3px;margin-right:4px;border:1px solid rgba(0,0,0,.12);vertical-align:-2px}
-  .status{white-space:pre-line;padding:9px;border:1px solid #bfd2ea;background:#f0f6ff;border-radius:7px;color:#35506f;font-size:12px;min-height:68px}
-  .kv{display:grid;grid-template-columns:1fr auto;gap:6px;border-bottom:1px dashed #d6dee8;padding:6px 0;font-size:13px}
-  .log{height:180px;overflow:auto;background:#0f172a;color:#dbeafe;border-radius:7px;padding:8px;font:12px/1.5 Consolas,monospace}
+  .status{flex:0 0 auto;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;padding:9px;border:1px solid #bfd2ea;background:#f0f6ff;border-radius:7px;color:#35506f;font-size:12px;min-height:68px;max-height:140px;overflow-y:auto;overflow-x:hidden}
+  .kv{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);align-items:start;gap:8px;border-bottom:1px dashed #d6dee8;padding:6px 0;font-size:13px}
+  .kv>*{min-width:0}
+  .kv b{text-align:right;overflow-wrap:anywhere;word-break:break-word}
+  .kv.output-path{grid-template-columns:1fr;gap:3px}
+  .kv.output-path b{text-align:left;color:#475569;font:11px/1.45 Consolas,monospace}
+  .log{min-height:160px;flex:1 1 180px;overflow-y:auto;overflow-x:hidden;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;background:#0f172a;color:#dbeafe;border-radius:7px;padding:8px;font:12px/1.5 Consolas,monospace}
+  .runtime-side .title{margin:2px 0 6px}
+  .runtime-side .kv{padding:4px 0}
+  .runtime-side .row{margin:6px 0}
+  .runtime-side .log{min-height:120px}
   .pill{font-size:11px;background:#eef2ff;color:#334155;border-radius:999px;padding:3px 7px}
   @media(max-width:1000px){main{grid-template-columns:1fr;height:auto}.canvas-wrap{height:70vh}}
 </style>
@@ -70,7 +81,7 @@
       <textarea id="groupConfig">{"has_classmate_prob":0.95,"classmate_size_range":[3,8],"has_friend_prob":0.5,"friend_size_range":[2,4]}</textarea>
     </label>
     <div class="row">
-      <button id="applyConfig" class="good">应用配置</button>
+      <button id="applyConfig">应用配置</button>
       <button id="yamlBtn">导入 YAML</button>
     </div>
     <input id="yamlFile" type="file" accept=".yaml,.yml,text/yaml,application/x-yaml" hidden>
@@ -89,6 +100,11 @@
       <button id="stepBtn">单步</button>
       <button id="resetBtn" class="danger">重置</button>
       <button id="initBtn" class="good">启动 A+B+C 联调</button>
+      <select id="speedSelect" aria-label="播放速度" style="width:92px;height:34px;padding:4px 6px">
+        <option value="150">快速</option>
+        <option value="300" selected>标准</option>
+        <option value="600">慢速</option>
+      </select>
       <div class="spacer"></div>
       <span id="timeText">step 0 / 0.0s</span>
     </div>
@@ -103,7 +119,7 @@
     </div>
   </section>
 
-  <aside class="panel side">
+  <aside class="panel side runtime-side">
     <div class="title">运行状态</div>
     <div class="status" id="statusBox">请先导入 A 地图。</div>
     <div class="title">指标</div>
@@ -111,7 +127,10 @@
     <div class="kv"><span>人员数</span><b id="peopleCount">0</b></div>
     <div class="kv"><span>已撤离</span><b id="evacCount">0</b></div>
     <div class="kv"><span>最大烟雾</span><b id="smokeMax">NA</b></div>
-    <div class="kv"><span>输出目录</span><b id="outputDir">NA</b></div>
+    <div class="kv"><span>烟雾契约</span><b id="smokeContract">NA</b></div>
+    <div class="kv"><span>重叠元胞</span><b id="overlapCount">0</b></div>
+    <div class="kv"><span>最近一步耗时</span><b id="stepLatency">NA</b></div>
+    <div class="kv output-path"><span>输出目录</span><b id="outputDir">NA</b></div>
     <div class="row">
       <button id="exportBtn">导出结果包</button>
       <button id="clearLog">清空日志</button>
@@ -132,6 +151,12 @@
   let pending = false;
   let appliedYamlPayload = null;
   let lastOutputDir = "";
+
+  function setConfigState(message, state = ""){
+    const hint = $("configHint");
+    hint.textContent = message;
+    hint.className = `hint${state ? ` ${state}` : ""}`;
+  }
 
   const colors = {
     free: "#e9eef5",
@@ -274,31 +299,51 @@
     ctx.strokeRect(ox, oy, grid.width * cell, grid.height * cell);
   }
 
-  function refreshStats(extra = {}){
+  function inspectSnapshot(){
     const people = snapshot && Array.isArray(snapshot.people) ? snapshot.people : [];
     const evacuated = people.filter(p => p.evacuated).length;
-    const grid = snapshot && snapshot.grid;
     const smoke = snapshot && snapshot.fields && snapshot.fields.smoke_field;
-    let maxSmoke = "NA";
+    let maxSmoke = null;
     if(Array.isArray(smoke)){
       const values = smoke.flat().map(Number).filter(Number.isFinite);
-      if(values.length) maxSmoke = Math.max(...values).toFixed(3);
+      if(values.length) maxSmoke = Math.max(...values);
     }
+    const occupied = new Map();
+    people.filter(p => !p.evacuated).forEach(person => {
+      const key = `${person.x},${person.y}`;
+      occupied.set(key, (occupied.get(key) || 0) + 1);
+    });
+    const overlapCells = [...occupied.values()].filter(count => count > 1).length;
+    return {people, evacuated, maxSmoke, smokeActive:maxSmoke !== null && maxSmoke > 0, overlapCells};
+  }
+
+  function refreshStats(extra = {}){
+    const observed = inspectSnapshot();
+    const grid = snapshot && snapshot.grid;
     $("gridSize").textContent = grid ? `${grid.width} x ${grid.height}` : "NA";
-    $("peopleCount").textContent = people.length;
-    $("evacCount").textContent = evacuated;
-    $("smokeMax").textContent = maxSmoke;
+    $("peopleCount").textContent = observed.people.length;
+    $("evacCount").textContent = observed.evacuated;
+    $("smokeMax").textContent = observed.maxSmoke === null ? "NA" : observed.maxSmoke.toFixed(3);
+    $("smokeContract").textContent = observed.maxSmoke === null
+      ? "NA"
+      : (!observed.smokeActive ? "未激活" : (observed.maxSmoke <= 10 ? "正常 (0~10)" : "超出 0~10"));
+    $("overlapCount").textContent = observed.overlapCells;
+    if(extra.diagnostics && Number.isFinite(Number(extra.diagnostics.request_processing_ms))){
+      $("stepLatency").textContent = `${Number(extra.diagnostics.request_processing_ms).toFixed(1)} ms`;
+    }
     $("timeText").textContent = snapshot ? `step ${snapshot.step} / ${Number(snapshot.time_s || 0).toFixed(1)}s` : "step 0 / 0.0s";
     if(extra.output_dir){
       lastOutputDir = extra.output_dir;
       $("outputDir").textContent = extra.output_dir;
+      $("outputDir").title = extra.output_dir;
     }
+    return observed;
   }
 
   function applySnapshot(next, extra = {}){
     snapshot = next;
     draw();
-    refreshStats(extra);
+    return refreshStats(extra);
   }
 
   function buildYamlPayload(){
@@ -363,11 +408,21 @@
       return;
     }
     const yaml = uploadedYaml || appliedYamlPayload;
+    const configSource = uploadedYaml
+      ? `外部 YAML (${uploadedYaml.name})`
+      : (appliedYamlPayload ? "面板配置（已点击应用）" : "未提供，使用后端默认/fallback");
     const result = await api("/api/session", {map_file:mapFile, population_file:populationFile, yaml_file:yaml, max_steps:500});
     activeSession = true;
     stopTimer();
     applySnapshot(result.snapshot, {output_dir:result.output_dir});
-    setStatus(`A+B+C 联调已初始化。\nB: 真实 EvacEngine.run_one_step(c_step_data)，烟雾范围 0~10\n输出目录：${result.output_dir}`, "真实联调");
+    const meta = result.snapshot.adapter_meta || {};
+    const behaviorStatus = String(meta.behavior_input || "未提供").startsWith("empty mapping")
+      ? "未接入（空映射）"
+      : String(meta.behavior_input || "未提供");
+    const drawingStatus = String(meta.upstream_animation || "").startsWith("suppressed")
+      ? "D Canvas（B 重复绘图已关闭）"
+      : String(meta.upstream_animation || "D Canvas");
+    setStatus(`A+B+C 文件联调已初始化\nB: ${meta.b_runtime_api || "run_one_step(c_step_data)"}\nC 人员: 已接入\nC 配置: ${configSource}\nC 每步行为: ${behaviorStatus}\n绘图: ${drawingStatus}`, "真实联调");
     log("A+B+C 联调初始化成功");
   }
 
@@ -380,7 +435,11 @@
     activeSession = true;
     stopTimer();
     applySnapshot(result.snapshot, {output_dir:result.output_dir});
-    setStatus(`仓库样例已加载并运行真实 B adapter。\n输出目录：${result.output_dir}`, "仓库样例");
+    const meta = result.snapshot.adapter_meta || {};
+    const behaviorStatus = String(meta.behavior_input || "未提供").startsWith("empty mapping")
+      ? "未接入（空映射）"
+      : String(meta.behavior_input || "未提供");
+    setStatus(`仓库样例已加载\nB: ${meta.b_runtime_api || "run_one_step(c_step_data)"}\nC 人员 + 配置: 已接入\nC 每步行为: ${behaviorStatus}\n烟雾: 当前样例无烟源`, "仓库样例");
     log("仓库样例初始化成功");
   }
 
@@ -390,8 +449,21 @@
     pending = true;
     try{
       const result = await api("/api/session/step", {});
-      applySnapshot(result.snapshot, {output_dir:result.output_dir});
-      log(`step ${result.snapshot.step}，已撤离 ${$("evacCount").textContent}`);
+      const observed = applySnapshot(result.snapshot, {output_dir:result.output_dir, diagnostics:result.diagnostics});
+      const warnings = [];
+      const smokeContractViolated = observed.maxSmoke !== null && observed.maxSmoke > 10;
+      if(observed.overlapCells > 0) warnings.push(`检测到 ${observed.overlapCells} 个活动人员重叠元胞`);
+      if(smokeContractViolated) warnings.push(`烟雾最大值 ${observed.maxSmoke.toFixed(3)} 超出 B 约定 0~10`);
+      if(warnings.length){
+        setStatus(`上游状态契约告警：\n${warnings.join("\n")}\nD 保留原始数据，未伪造或静默修正。${smokeContractViolated ? "\n烟雾越界，动画已自动暂停。" : ""}`, "契约告警");
+      }
+      if(smokeContractViolated){
+        stopTimer();
+        log(`烟雾在 step ${result.snapshot.step} 超出 0~10，动画已自动暂停`);
+      }
+      if(result.snapshot.step <= 5 || result.snapshot.step % 10 === 0 || result.finished || warnings.length){
+        log(`step ${result.snapshot.step}，已撤离 ${$("evacCount").textContent}，后台 ${$("stepLatency").textContent}`);
+      }
       if(result.finished) stopTimer();
     }catch(error){
       stopTimer();
@@ -405,7 +477,8 @@
   function startTimer(){
     if(!activeSession){ log("请先启动 A+B+C 联调或仓库样例。"); return; }
     stopTimer();
-    timer = setInterval(stepOnce, 450);
+    const interval = Math.max(100, Number($("speedSelect").value) || 300);
+    timer = setInterval(stepOnce, interval);
     stepOnce();
   }
 
@@ -444,17 +517,36 @@
   $("applyConfig").onclick = () => {
     try{
       appliedYamlPayload = buildYamlPayload();
-      $("configHint").textContent = "已应用到当前前端配置；下一次启动 A+B+C 联调时会作为 C YAML 传入。注意 total_persons 需要与 C 人群 JSON 一致。";
+      $("applyConfig").textContent = "配置已应用";
+      $("applyConfig").classList.add("good");
+      setConfigState("已应用。下一次启动联调时将作为 C YAML 传入；total_persons 需与人群 JSON 一致。", "success");
       log("C 配置已应用到下一次联调初始化");
     }catch(error){
-      $("configHint").textContent = error.message;
+      appliedYamlPayload = null;
+      $("applyConfig").textContent = "应用配置";
+      $("applyConfig").classList.remove("good");
+      setConfigState(error.message, "error");
     }
   };
   $("yamlBtn").onclick = () => $("yamlFile").click();
   $("yamlFile").onchange = () => {
     appliedYamlPayload = null;
-    $("configHint").textContent = $("yamlFile").files[0] ? `已选择外部 YAML：${$("yamlFile").files[0].name}` : "未选择 YAML";
+    $("applyConfig").textContent = "应用配置";
+    $("applyConfig").classList.remove("good");
+    setConfigState(
+      $("yamlFile").files[0] ? `已选择外部 YAML：${$("yamlFile").files[0].name}` : "未选择 YAML",
+      $("yamlFile").files[0] ? "success" : ""
+    );
   };
+  ["sceneName", "totalPersons", "studentRatio", "teacherRatio", "relationIntensity", "randomSeed", "groupConfig"].forEach(id => {
+    $(id).addEventListener("input", () => {
+      if(!appliedYamlPayload) return;
+      appliedYamlPayload = null;
+      $("applyConfig").textContent = "重新应用配置";
+      $("applyConfig").classList.remove("good");
+      setConfigState("配置内容已修改，请重新点击“应用配置”后再启动联调。", "error");
+    });
+  });
   $("initBtn").onclick = () => initSession().catch(error => setStatus(`联调初始化失败：${error.message}`, "初始化失败"));
   $("sampleBtn").onclick = () => loadSample().catch(error => setStatus(`仓库样例失败：${error.message}`, "样例失败"));
   $("startBtn").onclick = startTimer;

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import csv
 import json
 import io
 import tempfile
@@ -92,6 +93,9 @@ class WebRuntimeServerTests(unittest.TestCase):
                 stepped = stepped_response["snapshot"]
                 self.assertEqual(1, stepped["step"])
                 self.assertEqual(0.5, stepped["time_s"])
+                self.assertGreaterEqual(
+                    stepped_response["diagnostics"]["request_processing_ms"], 0
+                )
                 self.assertTrue(Path(stepped_response["output_dir"], "final_frame.png").is_file())
                 with urlopen(base_url + "/api/session/export", timeout=10) as response:
                     self.assertEqual("application/zip", response.headers.get_content_type())
@@ -105,6 +109,15 @@ class WebRuntimeServerTests(unittest.TestCase):
                 self.assertIn(prefix + "occupancy_heatmap.svg", names)
                 self.assertIn(prefix + "inputs/map_file.json", names)
                 self.assertIn(prefix + "inputs/population_file.json", names)
+                packaged_people = list(
+                    csv.DictReader(
+                        io.StringIO(
+                            package.read(prefix + "people_log.csv").decode("utf-8")
+                        )
+                    )
+                )
+                self.assertEqual(4, len(packaged_people))
+                self.assertEqual({"0", "1"}, {row["step"] for row in packaged_people})
         finally:
             try:
                 post("/api/session/close", {})

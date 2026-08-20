@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from time import perf_counter
 from typing import Any, Mapping
 from urllib.parse import urlparse
 
@@ -396,7 +397,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         }
         if yaml_path is not None:
             input_files["yaml"] = yaml_path
-        self._write_run_metadata(runner, snapshot, input_files)
+        self._write_run_metadata(runner, snapshot, input_files, save_frame=True)
         self.server.session = RuntimeSession(
             temporary_directory=temporary_directory,
             runner=runner,
@@ -416,19 +417,33 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
 
     def _step_session(self) -> dict[str, Any]:
         session = self._require_session()
+        request_started = perf_counter()
         snapshot = session.runner.step()
-        self._write_run_metadata(session.runner, snapshot, session.input_files)
+        step_compute_ms = (perf_counter() - request_started) * 1000.0
+        self._write_run_metadata(
+            session.runner,
+            snapshot,
+            session.input_files,
+            save_frame=session.runner.finished,
+        )
+        request_processing_ms = (perf_counter() - request_started) * 1000.0
         return {
             "ok": True,
             "finished": session.runner.finished,
             "snapshot": snapshot,
             "output_dir": str(session.runner.output_root / snapshot["run_id"]),
+            "diagnostics": {
+                "step_compute_ms": round(step_compute_ms, 3),
+                "request_processing_ms": round(request_processing_ms, 3),
+            },
         }
 
     def _reset_session(self) -> dict[str, Any]:
         session = self._require_session()
         snapshot = session.runner.reset()
-        self._write_run_metadata(session.runner, snapshot, session.input_files)
+        self._write_run_metadata(
+            session.runner, snapshot, session.input_files, save_frame=True
+        )
         return {
             "ok": True,
             "snapshot": snapshot,
@@ -440,6 +455,8 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         runner: Any,
         snapshot: Mapping[str, Any],
         input_files: Mapping[str, Path],
+        *,
+        save_frame: bool = False,
     ) -> None:
         run_id = str(snapshot.get("run_id") or runner.current_run_id)
         output_dir = runner.output_root / run_id
@@ -457,10 +474,11 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         metrics = _snapshot_metrics(snapshot, output_dir)
         _write_json(output_dir / "metrics.json", metrics)
         _write_summary_csv(output_dir / "metrics_summary.csv", metrics)
-        # Keep the web run directory self-contained like the CLI runner output.
-        from visualization.integrated_runtime import save_snapshot_png
+        if save_frame:
+            # Browser canvas owns live frames; write PNG only at durable checkpoints.
+            from visualization.integrated_runtime import save_snapshot_png
 
-        save_snapshot_png(dict(snapshot), output_dir / "final_frame.png")
+            save_snapshot_png(dict(snapshot), output_dir / "final_frame.png")
 
     def _export_session(self) -> None:
         """Return a ZIP built from the active runner's actual CSV output."""
@@ -470,6 +488,9 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         run_id = session.runner.current_run_id
         if snapshot is None or not run_id:
             raise WebRuntimeError("active session has no current snapshot to export")
+        self._write_run_metadata(
+            session.runner, snapshot, session.input_files, save_frame=True
+        )
         try:
             package = build_result_package(
                 output_dir=session.runner.output_root / run_id,

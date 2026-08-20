@@ -537,7 +537,7 @@ def save_snapshot_png(snapshot: dict[str, Any], path: Path) -> None:
     if evacuated:
         ax.scatter([p["x"] for p in evacuated], [p["y"] for p in evacuated], s=58, c="#2ca25f", marker="x", linewidths=1.8)
     ax.set_title(
-        f"D week-4 integrated demo | step={snapshot['step']} | evacuated={len(evacuated)}/{len(snapshot['people'])}"
+        f"D integrated runtime | step={snapshot['step']} | evacuated={len(evacuated)}/{len(snapshot['people'])}"
     )
     ax.set_xlim(-0.5, int(grid["width"]) - 0.5)
     ax.set_ylim(int(grid["height"]) - 0.5, -0.5)
@@ -622,7 +622,7 @@ def create_runner(args: argparse.Namespace) -> DWeek4Runner:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run D week-4 integrated visualization demo.")
+    parser = argparse.ArgumentParser(description="Run the D integrated visualization demo.")
     parser.add_argument("--map", type=Path, help="A JSON/CSV/PNG map; defaults to maps/examples/simple_room.json")
     parser.add_argument("--config", type=Path, help="C YAML config_template/SceneConfig-compatible file")
     parser.add_argument("--population", type=Path, help="C persons/relations JSON with A-assigned x/y positions")
