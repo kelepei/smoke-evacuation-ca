@@ -1,6 +1,6 @@
 """
 B08 烟雾暴露剂量统计模块 risk_metrics.py
-累计每个行人全程烟雾吸入剂量Dose，写入CSV日志
+累计每个行人全程烟雾吸入剂量Dose，写入CSV日志.
 """
 from core.schema import Person
 import numpy as np
