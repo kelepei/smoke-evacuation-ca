@@ -31,6 +31,7 @@ class EvacEngineRuntimeAdapter:
         engine: Any,
         *,
         behavior_provider: BehaviorProvider | None = None,
+        render_upstream_animation: bool = False,
         adapter_meta: Mapping[str, Any] | None = None,
     ) -> None:
         for name in ("scene", "grid", "person_map", "smoke_matrix"):
@@ -48,6 +49,9 @@ class EvacEngineRuntimeAdapter:
             )
         self._engine = engine
         self._behavior_provider = behavior_provider
+        if not isinstance(render_upstream_animation, bool):
+            raise TypeError("render_upstream_animation must be boolean")
+        self._render_upstream_animation = render_upstream_animation
         initialized_fields: list[str] = []
         grid = self._engine.grid
         if not callable(getattr(grid, "get_cell", None)):
@@ -78,6 +82,11 @@ class EvacEngineRuntimeAdapter:
                 else "EvacEngine.step()"
             ),
             "behavior_input": "empty mapping; C behavior output not provided",
+            "upstream_animation": (
+                "enabled"
+                if render_upstream_animation
+                else "suppressed; D browser/visualizer owns rendering"
+            ),
             "runtime_instance_defaults": sorted(set(initialized_fields)),
             "missing_fields_are_null": True,
         }
@@ -122,6 +131,34 @@ class EvacEngineRuntimeAdapter:
                 raise BRuntimeAdapterError("behavior_provider must return a mapping")
             behavior = supplied
         if callable(getattr(self._engine, "run_one_step", None)):
-            self._engine.run_one_step(dict(behavior))
+            self._run_one_step(dict(behavior))
         else:
             self._engine.step()
+
+    def _run_one_step(self, behavior: dict[int, Mapping[str, Any]]) -> None:
+        """Call B once while avoiding its duplicate Matplotlib renderer."""
+
+        if self._render_upstream_animation or not callable(
+            getattr(self._engine, "draw_animation", None)
+        ):
+            self._engine.run_one_step(behavior)
+            return
+
+        instance_state = getattr(self._engine, "__dict__", None)
+        if not isinstance(instance_state, dict):
+            self._engine.run_one_step(behavior)
+            return
+        had_override = "draw_animation" in instance_state
+        original_override = instance_state.get("draw_animation")
+        try:
+            setattr(self._engine, "draw_animation", lambda *_args, **_kwargs: None)
+        except (AttributeError, TypeError):
+            self._engine.run_one_step(behavior)
+            return
+        try:
+            self._engine.run_one_step(behavior)
+        finally:
+            if had_override:
+                setattr(self._engine, "draw_animation", original_override)
+            else:
+                delattr(self._engine, "draw_animation")

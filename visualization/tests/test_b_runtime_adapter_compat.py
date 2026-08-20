@@ -29,6 +29,22 @@ class _StepEngine:
         return False
 
 
+class _RunOneStepEngine(_StepEngine):
+    def __init__(self) -> None:
+        super().__init__()
+        self.draw_count = 0
+
+    def draw_animation(self) -> None:
+        self.draw_count += 1
+
+    def run_one_step(self, _behavior: dict | None = None) -> None:
+        self.current_step += 1
+        self.draw_animation()
+
+    def is_all_evacuated(self) -> bool:
+        return False
+
+
 class BRuntimeAdapterCompatibilityTests(unittest.TestCase):
     def test_supports_step_and_all_done_shape(self) -> None:
         engine = _StepEngine()
@@ -37,6 +53,21 @@ class BRuntimeAdapterCompatibilityTests(unittest.TestCase):
         self.assertEqual(engine.current_step, 1)
         self.assertFalse(adapter.all_done())
         self.assertEqual(adapter.d_adapter_meta["b_runtime_api"], "EvacEngine.step()")
+
+    def test_suppresses_duplicate_upstream_animation_by_default(self) -> None:
+        engine = _RunOneStepEngine()
+        adapter = EvacEngineRuntimeAdapter(engine)
+        adapter.step()
+        self.assertEqual(1, engine.current_step)
+        self.assertEqual(0, engine.draw_count)
+        engine.draw_animation()
+        self.assertEqual(1, engine.draw_count)
+
+    def test_can_opt_in_to_upstream_animation(self) -> None:
+        engine = _RunOneStepEngine()
+        adapter = EvacEngineRuntimeAdapter(engine, render_upstream_animation=True)
+        adapter.step()
+        self.assertEqual(1, engine.draw_count)
 
 
 if __name__ == "__main__":
