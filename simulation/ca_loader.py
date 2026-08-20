@@ -152,4 +152,4 @@ if __name__ == "__main__":
         for idx, ped in enumerate(ca_loader.agent_list[:3]):
             print(f"测试行人{idx+1} | ID:{ped.id} 网格坐标:({ped.x},{ped.y}) 角色:{ped.profile}")
     except Exception as e:
-        print(f"❌ 加载失败：{str(e)}")
+        print(f"加载失败：{str(e)}")
