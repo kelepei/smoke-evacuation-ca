@@ -1,7 +1,7 @@
 """
 B07 行人烟雾风险感知模型 risk_perception.py
 实现论文行人风险感知计算公式，输出单个人风险值给CA移动逻辑
-参数a/b/c为权重系数，可根据实验调整
+参数a/b/c为权重系数，可根据实验调整.
 """
 import numpy as np
 from core.schema import Person, Grid
