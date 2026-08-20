@@ -1,7 +1,7 @@
 """
 B06 烟雾扩散模型 smoke_model.py
 实现简化烟雾扩散偏微分方程、墙体遮挡、烟源生成、烟雾场更新
-对应论文公式 S_{t+1}(x,y) = S_t(x,y) + α∇²S_t(x,y) + Q(x,y) − δS_t(x,y)
+对应论文公式 S_{t+1}(x,y) = S_t(x,y) + α∇²S_t(x,y) + Q(x,y) − δS_t(x,y).
 """
 import numpy as np
 from core.schema import Grid, CellType, SmokeSource
