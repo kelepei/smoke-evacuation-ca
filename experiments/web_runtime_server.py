@@ -19,6 +19,7 @@ import json
 import mimetypes
 import shutil
 import tempfile
+import threading
 from datetime import datetime
 from dataclasses import dataclass
 from http import HTTPStatus
@@ -73,11 +74,15 @@ class DWebRuntimeServer(ThreadingHTTPServer):
         super().__init__(address, handler)
         self.root = root.resolve()
         self.session: RuntimeSession | None = None
+        # A B step can be much slower than browser timer events.  Serialize
+        # all mutations so reset/close cannot replace a live runner mid-step.
+        self.session_lock = threading.RLock()
 
     def close_session(self) -> None:
-        if self.session is not None:
-            self.session.close()
-        self.session = None
+        with self.session_lock:
+            if self.session is not None:
+                self.session.close()
+            self.session = None
 
 
 def _safe_suffix(filename: Any, allowed: set[str], field: str) -> str:
@@ -223,7 +228,8 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             return
         if path == "/api/session/export":
             try:
-                self._export_session()
+                with self.server.session_lock:
+                    self._export_session()
             except WebRuntimeError as exc:
                 self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
             except Exception as exc:
@@ -235,22 +241,24 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         path = urlparse(self.path).path
         try:
             payload = self._read_json()
-            if path == "/api/session":
-                response = self._create_session(payload)
-            elif path == "/api/map/preview":
+            if path == "/api/map/preview":
                 response = self._preview_map(payload)
-            elif path == "/api/session/sample":
-                response = self._create_repository_sample()
-            elif path == "/api/session/step":
-                response = self._step_session()
-            elif path == "/api/session/reset":
-                response = self._reset_session()
-            elif path == "/api/session/close":
-                self.server.close_session()
-                response = {"ok": True}
             else:
-                self._send_error_json(HTTPStatus.NOT_FOUND, "unknown API route")
-                return
+                with self.server.session_lock:
+                    if path == "/api/session":
+                        response = self._create_session(payload)
+                    elif path == "/api/session/sample":
+                        response = self._create_repository_sample()
+                    elif path == "/api/session/step":
+                        response = self._step_session()
+                    elif path == "/api/session/reset":
+                        response = self._reset_session()
+                    elif path == "/api/session/close":
+                        self.server.close_session()
+                        response = {"ok": True}
+                    else:
+                        self._send_error_json(HTTPStatus.NOT_FOUND, "unknown API route")
+                        return
             self._send_json(response)
         except WebRuntimeError as exc:
             self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))

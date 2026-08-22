@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 import unittest
+
+import numpy as np
 
 from core.schema import Relation
 from experiments.b_runtime_adapter import EvacEngineRuntimeAdapter
@@ -51,6 +54,20 @@ class CaSnapshotAdapterTests(unittest.TestCase):
         smoke = snapshot["fields"]["smoke_field"]
         for person in snapshot["people"]:
             self.assertEqual(person["smoke_concentration"], smoke[person["y"]][person["x"]])
+
+    def test_normalizes_numpy_scalars_for_browser_and_csv_boundaries(self) -> None:
+        person = self.simulation.persons[1]
+        person.risk = np.float32(0.25)
+        person.dose = np.float64(1.5)
+        person.info_source_history = [np.int64(7)]
+
+        snapshot = self.adapter.capture(self.simulation)
+        captured = next(item for item in snapshot["people"] if item["person_id"] == 1)
+
+        self.assertIsInstance(captured["risk"], float)
+        self.assertIsInstance(captured["dose"], float)
+        self.assertEqual([7], captured["info_source_history"])
+        json.dumps(snapshot, ensure_ascii=False)
 
     def test_rejects_non_row_major_grid(self) -> None:
         self.simulation.grid.cells[0], self.simulation.grid.cells[1] = (

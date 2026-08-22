@@ -149,6 +149,8 @@
   let activeSession = false;
   let timer = null;
   let pending = false;
+  let autoPlaying = false;
+  let autoDelayMs = 300;
   let appliedYamlPayload = null;
   let lastOutputDir = "";
 
@@ -177,6 +179,14 @@
   function setStatus(message, mode){
     $("statusBox").textContent = message;
     if(mode) $("modeBadge").textContent = mode;
+  }
+
+  function setRunControlsBusy(busy){
+    ["stepBtn", "resetBtn", "initBtn", "sampleBtn"].forEach(id => {
+      $(id).disabled = busy;
+    });
+    $("startBtn").disabled = busy || autoPlaying;
+    $("startBtn").textContent = busy ? "计算中..." : (autoPlaying ? "运行中" : "开始");
   }
 
   function resize(){
@@ -394,6 +404,7 @@
   }
 
   async function initSession(){
+    if(pending){ log("当前单步正在计算，请等待完成后再初始化。"); return; }
     if(location.protocol === "file:"){
       setStatus("真实联调需要本地服务：python -m experiments.web_runtime_server", "需要启动服务");
       return;
@@ -427,6 +438,7 @@
   }
 
   async function loadSample(){
+    if(pending){ log("当前单步正在计算，请等待完成后再加载样例。"); return; }
     if(location.protocol === "file:"){
       setStatus("仓库样例需要本地服务：python -m experiments.web_runtime_server", "需要启动服务");
       return;
@@ -447,6 +459,9 @@
     if(!activeSession){ log("当前只有地图预览，未启动 B 联调。"); return; }
     if(pending) return;
     pending = true;
+    setRunControlsBusy(true);
+    $("stepLatency").textContent = "计算中";
+    setStatus(`B 正在计算 step ${Number(snapshot && snapshot.step || 0) + 1}。\n最新版烟雾模型可能需要十几秒，请勿重置或重复点击。`, "计算中");
     try{
       const result = await api("/api/session/step", {});
       const observed = applySnapshot(result.snapshot, {output_dir:result.output_dir, diagnostics:result.diagnostics});
@@ -471,23 +486,38 @@
       log(`step 失败：${error.message}`);
     }finally{
       pending = false;
+      setRunControlsBusy(false);
     }
+  }
+
+  function scheduleNextStep(){
+    if(!autoPlaying || !activeSession || pending) return;
+    timer = setTimeout(async () => {
+      timer = null;
+      await stepOnce();
+      scheduleNextStep();
+    }, autoDelayMs);
   }
 
   function startTimer(){
     if(!activeSession){ log("请先启动 A+B+C 联调或仓库样例。"); return; }
-    stopTimer();
-    const interval = Math.max(100, Number($("speedSelect").value) || 300);
-    timer = setInterval(stepOnce, interval);
-    stepOnce();
+    if(pending || autoPlaying){ log("当前正在计算，请等待本步完成。 "); return; }
+    autoPlaying = true;
+    autoDelayMs = Math.max(100, Number($("speedSelect").value) || 300);
+    setRunControlsBusy(false);
+    stepOnce().then(scheduleNextStep);
   }
 
   function stopTimer(){
     if(timer) clearInterval(timer);
+    if(timer) clearTimeout(timer);
     timer = null;
+    autoPlaying = false;
+    setRunControlsBusy(pending);
   }
 
   async function resetSession(){
+    if(pending){ log("当前单步正在计算，不能重置。请等待完成或点击暂停停止后续自动步骤。"); return; }
     if(!activeSession){ snapshot = null; draw(); refreshStats(); setStatus("已清空预览。", "等待导入地图"); return; }
     const result = await api("/api/session/reset", {});
     stopTimer();
@@ -497,6 +527,7 @@
   }
 
   async function exportPackage(){
+    if(pending){ log("当前单步正在计算，请等待完成后再导出。 "); return; }
     if(!activeSession){ log("没有活动联调会话，暂不能导出结果包。"); return; }
     const response = await fetch("/api/session/export");
     if(!response.ok){

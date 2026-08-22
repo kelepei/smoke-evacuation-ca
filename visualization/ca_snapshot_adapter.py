@@ -9,6 +9,7 @@ a compatibility fallback.
 from __future__ import annotations
 
 from enum import Enum
+import math
 from numbers import Integral, Real
 from typing import Any, Iterable, Mapping
 
@@ -30,6 +31,44 @@ def _enum_storage_value(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
     return value
+
+
+def _json_compatible(value: Any) -> Any:
+    """Return a strict JSON-compatible copy of an upstream snapshot value.
+
+    B's smoke implementation may expose NumPy scalar values (for example
+    ``numpy.float32``) through risk, dose, or other public person fields.
+    D snapshots cross browser JSON, CSV detail columns, and result-package
+    JSON, so conversion belongs at this read-only D boundary.
+    """
+
+    value = _enum_storage_value(value)
+    if value is None or isinstance(value, (str, bool)):
+        return value
+    if isinstance(value, Integral):
+        return int(value)
+    if isinstance(value, Real):
+        normalized = float(value)
+        if not math.isfinite(normalized):
+            raise SnapshotAdapterError("snapshot numeric values must be finite")
+        return normalized
+
+    item = getattr(value, "item", None)
+    if callable(item):
+        scalar = item()
+        if scalar is not value:
+            return _json_compatible(scalar)
+    tolist = getattr(value, "tolist", None)
+    if callable(tolist):
+        return _json_compatible(tolist())
+    if isinstance(value, Mapping):
+        return {str(key): _json_compatible(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_compatible(item) for item in value]
+
+    raise SnapshotAdapterError(
+        f"snapshot value of type {type(value).__name__} is not JSON-compatible"
+    )
 
 
 def _heading_value(value: Any) -> str | None:
@@ -375,7 +414,7 @@ class CaSnapshotAdapter:
         if isinstance(extra_meta, Mapping):
             adapter_meta.update(dict(extra_meta))
 
-        return {
+        return _json_compatible({
             "schema_version": self.schema_version,
             "run_id": self.run_id,
             "scenario_id": scenario_id,
@@ -400,4 +439,4 @@ class CaSnapshotAdapter:
             "events": [],
             "strategy_state": {},
             "adapter_meta": adapter_meta,
-        }
+        })
