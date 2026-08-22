@@ -93,6 +93,8 @@ class WebRuntimeServerTests(unittest.TestCase):
                 stepped = stepped_response["snapshot"]
                 self.assertEqual(1, stepped["step"])
                 self.assertEqual(0.5, stepped["time_s"])
+                smoke_field = stepped["fields"]["smoke_field"]
+                self.assertGreater(max(max(row) for row in smoke_field), 0.0)
                 self.assertGreaterEqual(
                     stepped_response["diagnostics"]["request_processing_ms"], 0
                 )

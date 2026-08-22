@@ -126,6 +126,7 @@
     <div class="kv"><span>Grid 尺寸</span><b id="gridSize">NA</b></div>
     <div class="kv"><span>人员数</span><b id="peopleCount">0</b></div>
     <div class="kv"><span>已撤离</span><b id="evacCount">0</b></div>
+    <div class="kv"><span>烟源数</span><b id="smokeSourceCount">NA</b></div>
     <div class="kv"><span>最大烟雾</span><b id="smokeMax">NA</b></div>
     <div class="kv"><span>烟雾契约</span><b id="smokeContract">NA</b></div>
     <div class="kv"><span>重叠元胞</span><b id="overlapCount">0</b></div>
@@ -260,7 +261,7 @@
       row.forEach((raw, x) => {
         const value = Math.max(0, Math.min(1, Number(raw) / 10));
         if(value <= 0) return;
-        ctx.fillStyle = `rgba(31,41,55,${0.10 + value * .42})`;
+        ctx.fillStyle = `rgba(249,115,22,${0.12 + value * .48})`;
         ctx.fillRect(ox + x * cell, oy + y * cell, cell, cell);
       });
     });
@@ -324,7 +325,12 @@
       occupied.set(key, (occupied.get(key) || 0) + 1);
     });
     const overlapCells = [...occupied.values()].filter(count => count > 1).length;
-    return {people, evacuated, maxSmoke, smokeActive:maxSmoke !== null && maxSmoke > 0, overlapCells};
+    const rows = snapshot && snapshot.grid && Array.isArray(snapshot.grid.cell_type)
+      ? snapshot.grid.cell_type : [];
+    const smokeSourceCount = rows.reduce((total, row) => total + (
+      Array.isArray(row) ? row.filter(cell => normalizeCell(cell) === "smoke_source").length : 0
+    ), 0);
+    return {people, evacuated, maxSmoke, smokeActive:maxSmoke !== null && maxSmoke > 0, overlapCells, smokeSourceCount};
   }
 
   function refreshStats(extra = {}){
@@ -333,10 +339,11 @@
     $("gridSize").textContent = grid ? `${grid.width} x ${grid.height}` : "NA";
     $("peopleCount").textContent = observed.people.length;
     $("evacCount").textContent = observed.evacuated;
+    $("smokeSourceCount").textContent = grid ? observed.smokeSourceCount : "NA";
     $("smokeMax").textContent = observed.maxSmoke === null ? "NA" : observed.maxSmoke.toFixed(3);
     $("smokeContract").textContent = observed.maxSmoke === null
       ? "NA"
-      : (!observed.smokeActive ? "未激活" : (observed.maxSmoke <= 10 ? "正常 (0~10)" : "超出 0~10"));
+      : (observed.smokeSourceCount === 0 ? "无烟源" : (!observed.smokeActive ? "待 B 首步更新" : (observed.maxSmoke <= 10 ? "正常 (0~10)" : "超出 0~10")));
     $("overlapCount").textContent = observed.overlapCells;
     if(extra.diagnostics && Number.isFinite(Number(extra.diagnostics.request_processing_ms))){
       $("stepLatency").textContent = `${Number(extra.diagnostics.request_processing_ms).toFixed(1)} ms`;
@@ -399,7 +406,8 @@
     stopTimer();
     applySnapshot(result.snapshot);
     const meta = result.map_meta || {};
-    setStatus(`地图已显示。\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\ncell_type: ${JSON.stringify(meta.cell_counts || {})}`, "地图预览");
+    const smokeSources = Number((meta.cell_counts || {}).smoke_source || 0);
+    setStatus(`地图已显示。\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\n烟源: ${smokeSources}${smokeSources ? " 个；启动联调后显示 B 烟雾" : " 个；当前地图无 smoke_source，因此不会产生烟雾"}\ncell_type: ${JSON.stringify(meta.cell_counts || {})}`, "地图预览");
     log(`地图预览成功：${mapFile.name}`);
   }
 
@@ -433,7 +441,11 @@
     const drawingStatus = String(meta.upstream_animation || "").startsWith("suppressed")
       ? "D Canvas（B 重复绘图已关闭）"
       : String(meta.upstream_animation || "D Canvas");
-    setStatus(`A+B+C 文件联调已初始化\nB: ${meta.b_runtime_api || "run_one_step(c_step_data)"}\nC 人员: 已接入\nC 配置: ${configSource}\nC 每步行为: ${behaviorStatus}\n绘图: ${drawingStatus}`, "真实联调");
+    const observed = inspectSnapshot();
+    const smokeStatus = observed.smokeSourceCount
+      ? `烟雾: ${observed.smokeActive ? "已显示" : "已接入，等待 B 首步更新"}`
+      : "烟雾: 当前 A Grid 没有 smoke_source，B 将返回全 0";
+    setStatus(`A+B+C 文件联调已初始化\nB: ${meta.b_runtime_api || "run_one_step(c_step_data)"}\nC 人员: 已接入\nC 配置: ${configSource}\nC 每步行为: ${behaviorStatus}\n${smokeStatus}\n绘图: ${drawingStatus}`, "真实联调");
     log("A+B+C 联调初始化成功");
   }
 
