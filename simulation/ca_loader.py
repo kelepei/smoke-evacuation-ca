@@ -1,5 +1,16 @@
 import json
 import os
+import numpy as np
+
+# 自定义JSON编码器，兼容numpy数值类型，解决float32无法序列化报错
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.integer):
+            return int(obj)
+        return super().default(obj)
+
 
 # 自动定位项目根目录，解决工作目录导致的路径找不到问题
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -128,7 +139,7 @@ class CASimulationLoader:
             os.makedirs(output_dir)
 
         with open(save_path, "w", encoding="utf-8") as f:
-            json.dump(result_data, f, ensure_ascii=False, indent=2)
+            json.dump(result_data, f, ensure_ascii=False, indent=2, cls=NumpyEncoder)
         print(f"✅ 仿真结果已导出至：{os.path.abspath(save_path)}")
 
 
@@ -141,4 +152,4 @@ if __name__ == "__main__":
         for idx, ped in enumerate(ca_loader.agent_list[:3]):
             print(f"测试行人{idx+1} | ID:{ped.id} 网格坐标:({ped.x},{ped.y}) 角色:{ped.profile}")
     except Exception as e:
-        print(f"❌ 加载失败：{str(e)}")
+        print(f"加载失败：{str(e)}")
