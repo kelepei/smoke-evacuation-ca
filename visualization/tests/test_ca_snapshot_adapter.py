@@ -34,7 +34,8 @@ class CaSnapshotAdapterTests(unittest.TestCase):
         self.assertEqual(next_snapshot["time_s"], 0.5)
         self.assertEqual(len(next_snapshot["people"]), 3)
         self.assertEqual(
-            next_snapshot["fields"]["smoke_field"], self.simulation.smoke_matrix
+            next_snapshot["fields"]["smoke_field"],
+            self.simulation.smoke_matrix.tolist(),
         )
 
     def test_missing_values_remain_null_and_public_evacuation_is_preserved(self) -> None:
