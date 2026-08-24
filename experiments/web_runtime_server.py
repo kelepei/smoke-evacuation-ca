@@ -37,6 +37,7 @@ from visualization.scene_input_adapter import grid_to_static_snapshot, load_map_
 MAX_REQUEST_BYTES = 24 * 1024 * 1024
 ALLOWED_MAP_SUFFIXES = {".json", ".csv", ".png"}
 ALLOWED_YAML_SUFFIXES = {".yaml", ".yml"}
+STANDARD_TEMPLATE_IDS = ("classroom", "mall", "canteen", "dormitory")
 
 
 def _runtime_temp_directory(root: Path, prefix: str) -> tempfile.TemporaryDirectory[str]:
@@ -243,10 +244,14 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             payload = self._read_json()
             if path == "/api/map/preview":
                 response = self._preview_map(payload)
+            elif path == "/api/template/preview":
+                response = self._preview_template(payload)
             else:
                 with self.server.session_lock:
                     if path == "/api/session":
                         response = self._create_session(payload)
+                    elif path == "/api/session/template":
+                        response = self._create_template_session(payload)
                     elif path == "/api/session/sample":
                         response = self._create_repository_sample()
                     elif path == "/api/session/step":
@@ -339,6 +344,45 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         finally:
             temporary_directory.cleanup()
 
+    def _standard_template_path(self, template_id: Any) -> Path:
+        """Return an A-provided standard template without a new A interface."""
+
+        normalized = str(template_id or "").strip().lower()
+        if normalized not in STANDARD_TEMPLATE_IDS:
+            choices = ", ".join(STANDARD_TEMPLATE_IDS)
+            raise WebRuntimeError(f"template_id must be one of: {choices}")
+        path = self.server.root / "maps" / "templates" / f"{normalized}.json"
+        if not path.is_file():
+            raise WebRuntimeError(f"A standard template is unavailable: {normalized}")
+        return path
+
+    def _preview_template(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        template_id = str(payload.get("template_id") or "").strip().lower()
+        map_path = self._standard_template_path(template_id)
+        grid = load_map_grid(map_path)
+        snapshot = grid_to_static_snapshot(
+            grid,
+            run_id="d_template_preview",
+            scenario_id=template_id,
+        )
+        counts: dict[str, int] = {}
+        for row in snapshot["grid"]["cell_type"]:
+            for cell_type in row:
+                key = str(cell_type)
+                counts[key] = counts.get(key, 0) + 1
+        return {
+            "ok": True,
+            "snapshot": snapshot,
+            "map_meta": {
+                "source": str(map_path.relative_to(self.server.root)),
+                "template_id": template_id,
+                "width": snapshot["grid"]["width"],
+                "height": snapshot["grid"]["height"],
+                "cell_counts": counts,
+                "loader": "A standard template JSON -> Grid",
+            },
+        }
+
     def _create_repository_sample(self) -> dict[str, Any]:
         """Start the one confirmed A/C repository sample without browser uploads."""
 
@@ -369,6 +413,41 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 yaml_path=yaml_path if yaml_path.is_file() else None,
                 max_steps=500,
             )
+        except Exception:
+            temporary_directory.cleanup()
+            raise
+
+    def _create_template_session(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        """Run a selected A template with a C file, preserving C coordinates."""
+
+        self.server.close_session()
+        temporary_directory = _runtime_temp_directory(
+            self.server.root, "d_web_template_"
+        )
+        root = Path(temporary_directory.name)
+        try:
+            map_path = self._standard_template_path(payload.get("template_id"))
+            people_path = _uploaded_file(payload, "population_file", {".json"}, root)
+            yaml_path = _uploaded_file(payload, "yaml_file", ALLOWED_YAML_SUFFIXES, root)
+            if people_path is None:
+                raise WebRuntimeError("C population_file is required for a standard template")
+            try:
+                return self._start_runner(
+                    temporary_directory,
+                    map_path=map_path,
+                    people_path=people_path,
+                    yaml_path=yaml_path,
+                    max_steps=_positive_steps(payload.get("max_steps")),
+                )
+            except Exception as exc:
+                message = str(exc)
+                if "A-assigned position" in message and "outside the map" in message:
+                    template_id = str(payload.get("template_id") or "").strip().lower()
+                    raise WebRuntimeError(
+                        f"C 人员坐标与 A 模板 {template_id} 的尺寸不匹配；"
+                        "请让 C 按该模板重新生成 output_people_position.json。"
+                    ) from exc
+                raise
         except Exception:
             temporary_directory.cleanup()
             raise

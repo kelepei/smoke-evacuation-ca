@@ -9,6 +9,7 @@ import threading
 import unittest
 import zipfile
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from PIL import Image, ImageDraw
@@ -170,6 +171,58 @@ class WebRuntimeServerTests(unittest.TestCase):
                 server.close_session()
                 server.server_close()
                 worker.join(timeout=5)
+
+    def test_standard_template_preview_uses_a_loader_grid(self) -> None:
+        server = DWebRuntimeServer(("127.0.0.1", 0), RuntimeRequestHandler, root=Path.cwd())
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        base_url = f"http://127.0.0.1:{server.server_port}"
+        request = Request(
+            base_url + "/api/template/preview",
+            data=json.dumps({"template_id": "classroom"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urlopen(request, timeout=10) as response:
+                preview = json.loads(response.read().decode("utf-8"))
+            self.assertEqual("classroom", preview["map_meta"]["template_id"])
+            self.assertEqual(20, preview["snapshot"]["grid"]["width"])
+            self.assertEqual(12, preview["snapshot"]["grid"]["height"])
+            self.assertEqual("A standard template JSON -> Grid", preview["map_meta"]["loader"])
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join(timeout=5)
+
+    def test_standard_template_explains_population_coordinate_mismatch(self) -> None:
+        server = DWebRuntimeServer(("127.0.0.1", 0), RuntimeRequestHandler, root=Path.cwd())
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        base_url = f"http://127.0.0.1:{server.server_port}"
+        people_path = Path.cwd() / "control" / "output_people_position.json"
+        request = Request(
+            base_url + "/api/session/template",
+            data=json.dumps(
+                {
+                    "template_id": "classroom",
+                    "population_file": {
+                        "name": people_path.name,
+                        "text": people_path.read_text(encoding="utf-8"),
+                    },
+                }
+            ).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with self.assertRaises(HTTPError) as captured:
+                urlopen(request, timeout=10)
+            error = json.loads(captured.exception.read().decode("utf-8"))
+            self.assertIn("C 人员坐标与 A 模板 classroom 的尺寸不匹配", error["error"])
+        finally:
+            server.shutdown()
+            server.close_session()
+            server.server_close()
+            worker.join(timeout=5)
 
     def test_png_preview_uses_ascii_runtime_temp_path(self) -> None:
         server = DWebRuntimeServer(("127.0.0.1", 0), RuntimeRequestHandler, root=Path.cwd())

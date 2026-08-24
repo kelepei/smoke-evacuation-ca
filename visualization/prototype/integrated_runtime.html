@@ -20,6 +20,7 @@
   .hint.success{padding:7px 8px;border:1px solid #bbdfc7;border-radius:7px;background:#f0fdf4;color:#166534;font-weight:700}
   .hint.error{padding:7px 8px;border:1px solid #fecaca;border-radius:7px;background:#fff1f2;color:#b91c1c;font-weight:700}
   .row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+  .template-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:8px 0}
   .stack{display:grid;gap:8px}
   button,input,textarea,select{font:inherit}
   button{height:34px;border:1px solid #b9c5d4;background:#fff;border-radius:7px;cursor:pointer;color:var(--ink);font-weight:700}
@@ -66,6 +67,14 @@
       <button id="sampleBtn">加载仓库样例</button>
     </div>
     <div class="hint">上传后会调用后端 `/api/map/preview`，由 A loader 生成 Grid，再按 `grid.cells[y * width + x]` 绘制。</div>
+    <div class="title" style="margin-top:12px">A 标准模板 <span class="pill">同一 JSON → Grid</span></div>
+    <div class="template-grid">
+      <button data-template="classroom">教室</button>
+      <button data-template="mall">商场</button>
+      <button data-template="canteen">食堂</button>
+      <button data-template="dormitory">宿舍</button>
+    </div>
+    <div class="hint" id="templateHint">模板可直接预览；启动仿真仍需上传 C 为该模板生成的人员位置文件。</div>
 
     <hr>
     <div class="title">C 人员配置</div>
@@ -154,6 +163,7 @@
   let autoDelayMs = 300;
   let appliedYamlPayload = null;
   let lastOutputDir = "";
+  let selectedTemplate = null;
 
   function setConfigState(message, state = ""){
     const hint = $("configHint");
@@ -402,6 +412,8 @@
     const mapFile = await readFilePayload($("mapFile"));
     if(!mapFile){ setStatus("请选择 A 地图文件。", "等待地图"); return; }
     const result = await api("/api/map/preview", {map_file:mapFile, source_name:mapFile.name});
+    selectedTemplate = null;
+    $("templateHint").textContent = "当前使用手动上传地图；模板选择已取消。";
     activeSession = false;
     stopTimer();
     applySnapshot(result.snapshot);
@@ -409,6 +421,23 @@
     const smokeSources = Number((meta.cell_counts || {}).smoke_source || 0);
     setStatus(`地图已显示。\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\n烟源: ${smokeSources}${smokeSources ? " 个；启动联调后显示 B 烟雾" : " 个；当前地图无 smoke_source，因此不会产生烟雾"}\ncell_type: ${JSON.stringify(meta.cell_counts || {})}`, "地图预览");
     log(`地图预览成功：${mapFile.name}`);
+  }
+
+  async function previewTemplate(templateId){
+    if(location.protocol === "file:"){
+      setStatus("标准模板需要本地服务：python -m experiments.web_runtime_server", "需要启动服务");
+      return;
+    }
+    const result = await api("/api/template/preview", {template_id:templateId});
+    selectedTemplate = templateId;
+    activeSession = false;
+    stopTimer();
+    applySnapshot(result.snapshot);
+    const meta = result.map_meta || {};
+    const smokeSources = Number((meta.cell_counts || {}).smoke_source || 0);
+    $("templateHint").textContent = `已选择 ${templateId} 模板。启动联调时必须上传 C 针对该模板生成的人员位置文件。`;
+    setStatus(`A 标准模板已显示：${templateId}\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\n烟源: ${smokeSources} 个\n下一步：上传匹配该模板的 C 人群输出后启动联调。`, "模板预览");
+    log(`A 标准模板预览成功：${templateId}`);
   }
 
   async function initSession(){
@@ -422,15 +451,20 @@
       readFilePayload($("populationFile")),
       readFilePayload($("yamlFile"))
     ]);
-    if(!mapFile || !populationFile){
-      setStatus("启动 A+B+C 联调需要 A 地图和 C 人群输出。只预览地图时请点“导入并显示地图”。", "缺少输入");
+    if((!mapFile && !selectedTemplate) || !populationFile){
+      setStatus("启动 A+B+C 联调需要 A 地图或标准模板，以及 C 人群输出。", "缺少输入");
       return;
     }
     const yaml = uploadedYaml || appliedYamlPayload;
     const configSource = uploadedYaml
       ? `外部 YAML (${uploadedYaml.name})`
       : (appliedYamlPayload ? "面板配置（已点击应用）" : "未提供，使用后端默认/fallback");
-    const result = await api("/api/session", {map_file:mapFile, population_file:populationFile, yaml_file:yaml, max_steps:500});
+    const result = await api(
+      selectedTemplate ? "/api/session/template" : "/api/session",
+      selectedTemplate
+        ? {template_id:selectedTemplate, population_file:populationFile, yaml_file:yaml, max_steps:500}
+        : {map_file:mapFile, population_file:populationFile, yaml_file:yaml, max_steps:500}
+    );
     activeSession = true;
     stopTimer();
     applySnapshot(result.snapshot, {output_dir:result.output_dir});
@@ -557,6 +591,9 @@
 
   $("previewMap").onclick = () => previewMap().catch(error => setStatus(`地图导入失败：${error.message}`, "导入失败"));
   $("mapFile").onchange = () => previewMap().catch(error => setStatus(`地图导入失败：${error.message}`, "导入失败"));
+  document.querySelectorAll("[data-template]").forEach(button => {
+    button.onclick = () => previewTemplate(button.dataset.template).catch(error => setStatus(`模板导入失败：${error.message}`, "导入失败"));
+  });
   $("applyConfig").onclick = () => {
     try{
       appliedYamlPayload = buildYamlPayload();
