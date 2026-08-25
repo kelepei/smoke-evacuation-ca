@@ -161,11 +161,11 @@ def main():
     sim = EvacEngine(scene=ca_scene)
     max_frame = 600
 
-    # ===================== D可视化接入 =====================
-    # 使用时间戳生成唯一run_id，避免日志覆盖报错
+    # ===================== D可视化接入【已按D官方文档修正】 =====================
     unique_run_id = f"exp_classroom_smoke_{int(time.time())}"
+    # 注意：第一个参数直接传sim，不要写 simulation=sim
     d_view = DVisualizationEntry(
-        simulation=sim,
+        sim,
         output_root="outputs/experiments",
         run_id=unique_run_id,
         time_step_s=0.5,
@@ -173,7 +173,7 @@ def main():
     print(f"本次实验run_id：{unique_run_id}")
 
     try:
-        d_view.start()
+        d_view.start()   # 这里拉起websocket，控制台打印 ws://127.0.0.1:xxxx
 
         # ---------------------- 仿真主循环 ----------------------
         for frame in range(max_frame):
@@ -196,7 +196,19 @@ def main():
             }
 
             sim.run_one_step(c_step_data=behavior_package, signage_model=signage_engine)
-            snapshot = d_view.capture()
+
+            # ==========修复 numpy float32 无法JSON序列化问题，数值不变，仅转换类型==========
+            for p in sim.person_map.values():
+                if hasattr(p, "risk"):
+                    p.risk = float(p.risk)
+                if hasattr(p, "dose"):
+                    p.dose = float(p.dose)
+            if hasattr(sim.smoke_engine, "smoke_matrix"):
+                mat = sim.smoke_engine.smoke_matrix
+                sim.smoke_engine.smoke_matrix = mat.astype(float)
+            # =========================================================================
+
+            snapshot = d_view.capture()   # ✅每一步抓取快照，输出日志+推送网页动画
 
             if sim.person_map:
                 sample_ped = next(iter(sim.person_map.values()))

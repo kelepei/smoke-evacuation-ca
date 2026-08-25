@@ -74,6 +74,7 @@ class EvacEngine:
 
         # ========= 适配D可视化适配器新增属性 =========
         self.smoke_matrix = self.smoke_engine.smoke_matrix
+        self.smoke_sources = scene.smoke_sources
 
     def load_external_persons(self, persons):
         self.person_map.clear()
