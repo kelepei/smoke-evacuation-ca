@@ -17,7 +17,7 @@ C04: 结伴行为模块 (group_behavior.py)
     - 出口偏好修正: exit_preference
 
 输出给D组:
-    - 结伴日志: 等待次数、同伴分离次数、共同出口比例
+    - 结伴日志: 等待次数、同伴分离次数、共同出口比例 
 """
 
 import numpy as np
