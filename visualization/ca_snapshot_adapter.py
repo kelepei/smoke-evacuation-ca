@@ -137,6 +137,59 @@ def _matrix_to_lists(
     return normalized
 
 
+def _smoke_sources_to_dicts(
+    sources: Any,
+    *,
+    width: int,
+    height: int,
+) -> list[dict[str, Any]]:
+    """Normalize B runtime smoke sources for the browser snapshot.
+
+    Source generation remains B's responsibility.  D only preserves the
+    source coordinates and optional declared intensity that B exposes.
+    """
+
+    if sources is None:
+        return []
+    if isinstance(sources, (str, bytes)) or not isinstance(sources, Iterable):
+        raise SnapshotAdapterError("smoke_sources must be an iterable")
+
+    normalized: list[dict[str, Any]] = []
+    for index, source in enumerate(sources):
+        x = _optional_attr(source, "x", "source_x")
+        y = _optional_attr(source, "y", "source_y")
+        if (
+            isinstance(x, bool)
+            or isinstance(y, bool)
+            or not isinstance(x, Integral)
+            or not isinstance(y, Integral)
+        ):
+            raise SnapshotAdapterError(
+                f"smoke_sources[{index}] must expose integer x and y"
+            )
+        x, y = int(x), int(y)
+        if not (0 <= x < width and 0 <= y < height):
+            raise SnapshotAdapterError(
+                f"smoke_sources[{index}] position ({x}, {y}) is outside the grid"
+            )
+
+        intensity = _optional_attr(source, "intensity", "source_intensity")
+        item: dict[str, Any] = {"x": x, "y": y}
+        if intensity is not None:
+            if isinstance(intensity, bool) or not isinstance(intensity, Real):
+                raise SnapshotAdapterError(
+                    f"smoke_sources[{index}].intensity must be numeric when provided"
+                )
+            intensity = float(intensity)
+            if not math.isfinite(intensity) or intensity < 0:
+                raise SnapshotAdapterError(
+                    f"smoke_sources[{index}].intensity must be finite and non-negative"
+                )
+            item["intensity"] = intensity
+        normalized.append(item)
+    return normalized
+
+
 def _relation_to_dict(relation: Any) -> dict[str, Any]:
     return {
         "person_a_id": _optional_attr(
@@ -256,6 +309,11 @@ class CaSnapshotAdapter:
             raise SnapshotAdapterError(
                 "congestion_field values must be within [0, 1]"
             )
+        smoke_sources = _smoke_sources_to_dicts(
+            _optional_attr(simulation, "smoke_sources"),
+            width=width,
+            height=height,
+        )
 
         evacuated_fallback = getattr(simulation, "_evacuated_status", {})
         if not isinstance(evacuated_fallback, Mapping):
@@ -409,6 +467,7 @@ class CaSnapshotAdapter:
             "missing_fields_are_null": True,
             "missing_values_are_not_inferred": True,
             "smoke_value_domain": "B raw dimensionless concentration in [0, 10]; smoke_matrix[y][x]",
+            "smoke_source_input": "B runtime smoke_sources; coordinates use (x, y)",
         }
         extra_meta = getattr(simulation, "d_adapter_meta", None)
         if isinstance(extra_meta, Mapping):
@@ -432,6 +491,7 @@ class CaSnapshotAdapter:
             "exits": exits,
             "fields": {
                 "smoke_field": smoke_field,
+                "smoke_sources": smoke_sources,
                 "risk_field": risk_field,
                 "congestion_field": congestion_field,
             },

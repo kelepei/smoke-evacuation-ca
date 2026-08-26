@@ -96,6 +96,10 @@ class WebRuntimeServerTests(unittest.TestCase):
                 self.assertEqual(0.5, stepped["time_s"])
                 smoke_field = stepped["fields"]["smoke_field"]
                 self.assertGreater(max(max(row) for row in smoke_field), 0.0)
+                self.assertIn(
+                    {"x": 2, "y": 2, "intensity": 1.0},
+                    stepped["fields"]["smoke_sources"],
+                )
                 self.assertGreaterEqual(
                     stepped_response["diagnostics"]["request_processing_ms"], 0
                 )
@@ -217,7 +221,7 @@ class WebRuntimeServerTests(unittest.TestCase):
             with self.assertRaises(HTTPError) as captured:
                 urlopen(request, timeout=10)
             error = json.loads(captured.exception.read().decode("utf-8"))
-            self.assertIn("C 人员坐标与 A 模板 classroom 的尺寸不匹配", error["error"])
+            self.assertIn("人员文件与 A 模板 classroom 的尺寸不匹配", error["error"])
         finally:
             server.shutdown()
             server.close_session()
