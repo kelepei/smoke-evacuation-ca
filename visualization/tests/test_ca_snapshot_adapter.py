@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -69,6 +70,18 @@ class CaSnapshotAdapterTests(unittest.TestCase):
         self.assertIsInstance(captured["dose"], float)
         self.assertEqual([7], captured["info_source_history"])
         json.dumps(snapshot, ensure_ascii=False)
+
+    def test_reads_b_runtime_smoke_sources_for_browser_overlay(self) -> None:
+        self.simulation._engine.smoke_sources = [
+            SimpleNamespace(x=2, y=3, intensity=np.float32(1.5))
+        ]
+
+        snapshot = self.adapter.capture(self.simulation)
+
+        self.assertEqual(
+            [{"x": 2, "y": 3, "intensity": 1.5}],
+            snapshot["fields"]["smoke_sources"],
+        )
 
     def test_rejects_non_row_major_grid(self) -> None:
         self.simulation.grid.cells[0], self.simulation.grid.cells[1] = (

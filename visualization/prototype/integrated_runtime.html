@@ -74,7 +74,7 @@
       <button data-template="canteen">食堂</button>
       <button data-template="dormitory">宿舍</button>
     </div>
-    <div class="hint" id="templateHint">模板可直接预览；启动仿真仍需上传 C 为该模板生成的人员位置文件。</div>
+    <div class="hint" id="templateHint">模板可直接预览；启动仿真需上传 C 生成人员后、经 A 按该模板分配坐标的人员文件。</div>
 
     <hr>
     <div class="title">C 人员配置</div>
@@ -97,9 +97,9 @@
     <div class="hint" id="configHint">未应用。应用后会作为 C YAML 配置传入下一次联调初始化。</div>
 
     <hr>
-    <div class="title">C 人群输出</div>
+    <div class="title">C 人群输出（经 A 分配坐标后）</div>
     <input id="populationFile" type="file" accept=".json,application/json">
-    <div class="hint">真实 B 联调需要 C 的 `output_people_position.json` 或等价 persons/relations JSON。</div>
+    <div class="hint">真实 B 联调使用 C 的人员/关系输出，经 A 按地图分配坐标后的 `output_people_position.json` 或等价 JSON。</div>
   </aside>
 
   <section class="panel canvas-wrap">
@@ -277,6 +277,23 @@
     });
   }
 
+  function drawSmokeSources(sources, grid, ox, oy, cell){
+    if(!Array.isArray(sources)) return;
+    sources.forEach(source => {
+      const x = Number(source && source.x), y = Number(source && source.y);
+      if(!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= grid.width || y >= grid.height) return;
+      const px = ox + (x + .5) * cell;
+      const py = oy + (y + .5) * cell;
+      ctx.beginPath();
+      ctx.fillStyle = "#f97316";
+      ctx.strokeStyle = "#fff7ed";
+      ctx.lineWidth = Math.max(1.5, cell * .1);
+      ctx.arc(px, py, Math.max(3, Math.min(9, cell * .28)), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+  }
+
   function drawPeople(people, grid, ox, oy, cell){
     (people || []).forEach(person => {
       if(person.evacuated) return;
@@ -314,6 +331,7 @@
     const oy = (h - cell * grid.height) / 2;
     drawGrid(grid, ox, oy, cell);
     drawField(snapshot.fields && snapshot.fields.smoke_field, grid, ox, oy, cell);
+    drawSmokeSources(snapshot.fields && snapshot.fields.smoke_sources, grid, ox, oy, cell);
     drawPeople(snapshot.people, grid, ox, oy, cell);
     ctx.strokeStyle = "#0f172a";
     ctx.lineWidth = 2;
@@ -337,10 +355,20 @@
     const overlapCells = [...occupied.values()].filter(count => count > 1).length;
     const rows = snapshot && snapshot.grid && Array.isArray(snapshot.grid.cell_type)
       ? snapshot.grid.cell_type : [];
-    const smokeSourceCount = rows.reduce((total, row) => total + (
-      Array.isArray(row) ? row.filter(cell => normalizeCell(cell) === "smoke_source").length : 0
-    ), 0);
-    return {people, evacuated, maxSmoke, smokeActive:maxSmoke !== null && maxSmoke > 0, overlapCells, smokeSourceCount};
+    const sourceCells = new Set();
+    rows.forEach((row, y) => Array.isArray(row) && row.forEach((cell, x) => {
+      if(normalizeCell(cell) === "smoke_source") sourceCells.add(`${x},${y}`);
+    }));
+    const runtimeSources = snapshot && snapshot.fields && Array.isArray(snapshot.fields.smoke_sources)
+      ? snapshot.fields.smoke_sources : [];
+    runtimeSources.forEach(source => {
+      const x = Number(source && source.x), y = Number(source && source.y);
+      if(Number.isInteger(x) && Number.isInteger(y)) sourceCells.add(`${x},${y}`);
+    });
+    return {
+      people, evacuated, maxSmoke, smokeActive:maxSmoke !== null && maxSmoke > 0,
+      overlapCells, smokeSourceCount:sourceCells.size, runtimeSmokeSourceCount:runtimeSources.length
+    };
   }
 
   function refreshStats(extra = {}){
@@ -435,8 +463,8 @@
     applySnapshot(result.snapshot);
     const meta = result.map_meta || {};
     const smokeSources = Number((meta.cell_counts || {}).smoke_source || 0);
-    $("templateHint").textContent = `已选择 ${templateId} 模板。启动联调时必须上传 C 针对该模板生成的人员位置文件。`;
-    setStatus(`A 标准模板已显示：${templateId}\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\n烟源: ${smokeSources} 个\n下一步：上传匹配该模板的 C 人群输出后启动联调。`, "模板预览");
+    $("templateHint").textContent = `已选择 ${templateId} 模板。启动联调时请上传 C 生成人员后、经 A 按该模板分配坐标的人员文件。`;
+    setStatus(`A 标准模板已显示：${templateId}\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\n地图烟源: ${smokeSources} 个\n下一步：上传 C 生成人员、经 A 按该模板分配坐标后的文件，再启动联调。`, "模板预览");
     log(`A 标准模板预览成功：${templateId}`);
   }
 
@@ -476,9 +504,11 @@
       ? "D Canvas（B 重复绘图已关闭）"
       : String(meta.upstream_animation || "D Canvas");
     const observed = inspectSnapshot();
-    const smokeStatus = observed.smokeSourceCount
-      ? `烟雾: ${observed.smokeActive ? "已显示" : "已接入，等待 B 首步更新"}`
-      : "烟雾: 当前 A Grid 没有 smoke_source，B 将返回全 0";
+    const smokeStatus = observed.runtimeSmokeSourceCount
+      ? `烟雾: 已接入 B 运行时烟源 ${observed.runtimeSmokeSourceCount} 个；${observed.smokeActive ? "已显示" : "等待 B 首步更新"}`
+      : (observed.smokeSourceCount
+        ? `烟雾: ${observed.smokeActive ? "已显示" : "已接入，等待 B 首步更新"}`
+        : "烟雾: B 尚未提供运行时烟源，等待 B 初始化/首步返回 smoke_sources 和 smoke_matrix");
     setStatus(`A+B+C 文件联调已初始化\nB: ${meta.b_runtime_api || "run_one_step(c_step_data)"}\nC 人员: 已接入\nC 配置: ${configSource}\nC 每步行为: ${behaviorStatus}\n${smokeStatus}\n绘图: ${drawingStatus}`, "真实联调");
     log("A+B+C 联调初始化成功");
   }

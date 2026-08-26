@@ -22,13 +22,13 @@ http://127.0.0.1:8765/visualization/prototype/integrated_runtime.html
 使用以下仓库文件：
 
 - A 地图：`maps/edited_map.json`
-- C 人员：`control/output_people_position.json`
+- 人员文件：C 先生成 `out_people.json`（人员/关系），A 再按地图分配可通行坐标后导出 `control/output_people_position.json`
 - C 配置：`control/config_template.yaml`
 
 验收步骤：
 
 1. 在“地图文件”选择 A 地图。页面应立即显示楼层结构，尺寸为 `135 x 116`，墙体和出口可见。
-2. 在“人员文件”选择 C 人员文件。
+2. 在“人员文件”选择经 A 分配坐标后的 `control/output_people_position.json`。不要直接上传尚未分配坐标的 C 原始 `out_people.json`。
 3. 在“YAML 配置”选择 C 配置文件，或在配置面板填写参数后点击“应用到当前仿真”。
 4. 点击“启动 A+B+C 联调”。状态栏应明确显示 B 使用 `run_one_step(c_step_data)`；C 配置和人员已接入，但 C 每步行为目前为 `empty mapping`。
 5. 连续点击三次“单步”。步数应逐次增加，人员位置应变化，耗时面板应刷新。
@@ -92,7 +92,7 @@ outputs/experiments/d_week7_manual_check_01/acceptance_report.json
 ## 5. 当前公平结论
 
 - A 地图到 Grid 再到 D Canvas 的链路通过。
-- C YAML、人员文件和随机种子已进入初始化；C 每步行为输出尚未提供，社会关系策略效果不能宣称已完成。
+- C YAML、人员/关系文件和随机种子已进入初始化；人员坐标由 A 按地图分配后交给 B/D。C 每步行为输出尚未提供，社会关系策略效果不能宣称已完成。
 - B 正式调用 `run_one_step(c_step_data)`，人员能移动并全部撤离。
 - 当前 B 状态存在活动人员同元胞问题。
 - 仓库样例没有烟源；独立烟源测试中 B 烟雾从第 4 步起超过 0 到 10 的接口约定。

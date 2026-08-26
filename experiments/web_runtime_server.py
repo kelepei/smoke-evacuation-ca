@@ -444,8 +444,9 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 if "A-assigned position" in message and "outside the map" in message:
                     template_id = str(payload.get("template_id") or "").strip().lower()
                     raise WebRuntimeError(
-                        f"C 人员坐标与 A 模板 {template_id} 的尺寸不匹配；"
-                        "请让 C 按该模板重新生成 output_people_position.json。"
+                        f"人员文件与 A 模板 {template_id} 的尺寸不匹配；"
+                        "请先由 C 生成人员/关系，再由 A 按该模板分配坐标并导出 "
+                        "output_people_position.json。"
                     ) from exc
                 raise
         except Exception:

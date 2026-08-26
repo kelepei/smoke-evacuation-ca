@@ -110,6 +110,24 @@ class EvacEngineRuntimeAdapter:
         return self._engine.smoke_matrix
 
     @property
+    def smoke_sources(self) -> Any:
+        """Expose B's runtime smoke sources without changing its model state.
+
+        B's source generator may keep its collection on the engine, its smoke
+        engine, or the scene depending on the integration revision.  D only
+        reads the first public collection that is present.
+        """
+
+        sources = getattr(self._engine, "smoke_sources", None)
+        if sources is not None:
+            return sources
+        smoke_engine = getattr(self._engine, "smoke_engine", None)
+        sources = getattr(smoke_engine, "smoke_sources", None)
+        if sources is not None:
+            return sources
+        return getattr(self._engine.scene, "smoke_sources", [])
+
+    @property
     def current_step(self) -> int:
         return int(self._engine.current_step)
 
