@@ -472,7 +472,7 @@ group_config:
 # 默认配置（模块加载时自动从 YAML 加载）
 # ============================================================
 
-_CONFIG_FILE_PATH = "config_template.yaml"
+_CONFIG_FILE_PATH = "control/config_template.yaml"
 
 try:
     DEFAULT_CONFIG = SceneConfigGenerator.load_config_from_yaml(_CONFIG_FILE_PATH)
