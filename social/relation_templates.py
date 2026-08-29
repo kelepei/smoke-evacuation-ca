@@ -102,7 +102,7 @@ def generate_profiles(semantic: str, n: int) -> List[str]:
     types = list(dist.keys())
     probs = np.array(list(dist.values()))
     probs = probs / probs.sum()
-    return list(np.random.choice(types, size=n, p=probs))
+    return [str(x) for x in np.random.choice(types, size=n, p=probs)]
 
 
 def get_group_size_range(semantic: str) -> List[int]:
@@ -168,7 +168,7 @@ def generate_profiles_from_config(scene_config) -> List[str]:
     types = list(dist.keys())
     probs = np.array(list(dist.values()))
     probs = probs / probs.sum()
-    return list(np.random.choice(types, size=n, p=probs))
+    return [str(x) for x in np.random.choice(types, size=n, p=probs)]
 
 
 # ============================================================
@@ -196,7 +196,7 @@ def generate_relations_from_config(scene_config, profiles: List[str]) -> List[Tu
     assigned = set()
     scene_name = getattr(scene_config, 'scene_name', 'unknown')
 
-    print(f"\n[调试] 生成关系: 总人数={n}, 场景={scene_name}")
+
 
     def force_sample(assigned_set, total_n, size):
         available = [i for i in range(total_n) if i not in assigned_set]
@@ -215,7 +215,7 @@ def generate_relations_from_config(scene_config, profiles: List[str]) -> List[Tu
                 relations.extend(_add_clique_edges(family_members, "family"))
                 assigned.update(family_members)
                 groups_generated += 1
-                print(f"[调试] ✓ 家庭组 #{groups_generated}: {family_members} ({len(family_members)}人)")
+
             else:
                 break
 
@@ -230,7 +230,7 @@ def generate_relations_from_config(scene_config, profiles: List[str]) -> List[Tu
                 relations.extend(_add_clique_edges(friends, "friend"))
                 assigned.update(friends)
                 groups_generated += 1
-                print(f"[调试] ✓ 朋友组 #{groups_generated}: {friends} ({len(friends)}人)")
+
             else:
                 break
 
@@ -246,7 +246,7 @@ def generate_relations_from_config(scene_config, profiles: List[str]) -> List[Tu
                 relations.extend(_add_clique_edges(classmates, "classmate"))
                 assigned.update(classmates)
                 groups_generated += 1
-                print(f"[调试] ✓ 同学组 #{groups_generated}: {classmates} ({len(classmates)}人)")
+
             else:
                 break
 
@@ -261,7 +261,7 @@ def generate_relations_from_config(scene_config, profiles: List[str]) -> List[Tu
                 relations.extend(_add_clique_edges(colleagues, "colleague"))
                 assigned.update(colleagues)
                 groups_generated += 1
-                print(f"[调试] ✓ 同事组 #{groups_generated}: {colleagues} ({len(colleagues)}人)")
+
             else:
                 break
 
@@ -276,7 +276,7 @@ def generate_relations_from_config(scene_config, profiles: List[str]) -> List[Tu
                 for s in selected_students:
                     relations.append((t, s, "classmate"))
                     relations.append((s, t, "classmate"))
-            print(f"[调试] ✓ 教师-学生关系: {len(teacher_ids)} 位教师与部分学生建立关系")
+
 
     # ===== 6. 员工-顾客关系 =====
     if hasattr(group_config, 'has_staff_customer_prob') and np.random.random() < group_config.has_staff_customer_prob:
@@ -289,7 +289,7 @@ def generate_relations_from_config(scene_config, profiles: List[str]) -> List[Tu
                 for c in selected_customers:
                     relations.append((s, c, "staff_to_customer"))
                     relations.append((c, s, "staff_to_customer"))
-            print(f"[调试] ✓ 员工-顾客关系: 双向边")
+
 
     # ===== 7. 医生-病人关系 =====
     if hasattr(group_config, 'has_doctor_patient_prob') and np.random.random() < group_config.has_doctor_patient_prob:
@@ -302,9 +302,9 @@ def generate_relations_from_config(scene_config, profiles: List[str]) -> List[Tu
                 for p in selected_patients:
                     relations.append((d, p, "doctor_patient"))
                     relations.append((p, d, "doctor_patient"))
-            print(f"[调试] ✓ 医生-病人关系: 双向边")
 
-    print(f"[调试] 总边数: {len(relations)}, 已分配: {len(assigned)} 人")
+
+
     return relations
 
 
