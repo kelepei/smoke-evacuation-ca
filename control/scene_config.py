@@ -7,6 +7,7 @@ C11: 场景参数配置模块 (scene_config.py)
 
 import copy
 import json
+import os
 import sys
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
@@ -439,6 +440,78 @@ def load_scene_config(filepath: str) -> SceneConfig:
 # 配置模板字符串
 # ============================================================
 
+
+
+# ============================================================
+# 人群生成入口（供 __main__ 与 main.py 调用）
+# ============================================================
+
+def convert_numpy(obj):
+    """递归将 numpy 类型转换为 Python 原生类型"""
+    if isinstance(obj, dict):
+        return {key: convert_numpy(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy(item) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(convert_numpy(item) for item in obj)
+    elif isinstance(obj, (np.integer, np.int64, np.int32)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float64, np.float32)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    else:
+        return obj
+
+
+def _generate_from_config(config, people_output="output_people.json",
+                          map_file=None, position_output=None):
+    """根据 SceneConfig 生成人群/关系 JSON，并分配初始位置。
+
+    返回 (builder, persons)，供调用方复用社会关系图。
+    """
+    from social.social_graph import SocialGraphBuilder
+    builder = SocialGraphBuilder.from_config(config)
+    graph, persons = builder.build_with_config()
+
+    output_data = {
+        "metadata": convert_numpy(builder.summary()),
+        "persons": [convert_numpy(p.to_dict()) for p in persons.values()],
+        "relations": convert_numpy(builder.export_relations()),
+    }
+    people_output = os.path.abspath(people_output)
+    with open(people_output, "w", encoding="utf-8") as json_file:
+        json.dump(output_data, json_file, indent=2, ensure_ascii=False)
+    print(f"[OK] 已导出人群/关系: {people_output}")
+
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if map_file is None:
+        default_map = os.path.join(project_root, "maps", "edited_map.json")
+        if os.path.exists(default_map):
+            map_file = default_map
+    if position_output is None:
+        position_output = os.path.join(project_root, "control", "output_people_position.json")
+
+    if map_file and os.path.exists(map_file):
+        from control.position_allocator import allocate_people_position
+        allocate_people_position(people_output, map_file, position_output)
+        print(f"[OK] 已生成带位置文件: {position_output}")
+    else:
+        print(f"[WARN] 未找到地图文件（{map_file}），跳过位置分配")
+    return builder, persons
+
+
+def generate_population(yaml_file="config_template.yaml",
+                        people_output="output_people.json",
+                        map_file=None,
+                        position_output=None):
+    """读取 YAML 配置 → 生成人群/关系 → 分配位置（main.py 与命令行共用入口）"""
+    config = SceneConfigGenerator.load_config_from_yaml(yaml_file)
+    return _generate_from_config(config, people_output, map_file, position_output)
+
+
 CONFIG_TEMPLATE = """
 # ============================================================
 # 行人疏散仿真平台 - 场景配置文件
@@ -472,16 +545,18 @@ group_config:
 # 默认配置（模块加载时自动从 YAML 加载）
 # ============================================================
 
-_CONFIG_FILE_PATH = "control/config_template.yaml"
+_CONFIG_FILE_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "config_template.yaml"
+)
 
 try:
     DEFAULT_CONFIG = SceneConfigGenerator.load_config_from_yaml(_CONFIG_FILE_PATH)
-    print(f"✅ 自动加载 YAML 配置成功: {_CONFIG_FILE_PATH}")
+    print(f"[OK]  自动加载 YAML 配置成功: {_CONFIG_FILE_PATH}")
 except FileNotFoundError:
-    print(f"⚠️ 未找到 {_CONFIG_FILE_PATH}，使用预设场景 'classroom'")
+    print(f"[WARN]  未找到 {_CONFIG_FILE_PATH}，使用预设场景 'classroom'")
     DEFAULT_CONFIG = SceneConfigGenerator.get_preset("classroom")
 except Exception as e:
-    print(f"⚠️ YAML 加载失败: {e}，使用预设场景 'classroom'")
+    print(f"[WARN]  YAML 加载失败: {e}，使用预设场景 'classroom'")
     DEFAULT_CONFIG = SceneConfigGenerator.get_preset("classroom")
 
 
@@ -491,24 +566,6 @@ except Exception as e:
 
 if __name__ == "__main__":
 
-    def convert_numpy(obj):
-        """递归将 numpy 类型转换为 Python 原生类型"""
-        if isinstance(obj, dict):
-            return {key: convert_numpy(value) for key, value in obj.items()}
-        elif isinstance(obj, list):
-            return [convert_numpy(item) for item in obj]
-        elif isinstance(obj, tuple):
-            return tuple(convert_numpy(item) for item in obj)
-        elif isinstance(obj, (np.integer, np.int64, np.int32)):
-            return int(obj)
-        elif isinstance(obj, (np.floating, np.float64, np.float32)):
-            return float(obj)
-        elif isinstance(obj, np.ndarray):
-            return obj.tolist()
-        elif isinstance(obj, np.bool_):
-            return bool(obj)
-        else:
-            return obj
 
     print("=" * 70)
     print("  C11 场景配置生成器")
@@ -518,22 +575,22 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         yaml_file = sys.argv[1]
 
-    print(f"\n📂 读取配置: {yaml_file}")
+    print(f"\n[INFO]  读取配置: {yaml_file}")
 
-    # ✅ 修复：先加载配置
+    # [OK]  修复：先加载配置
     try:
         config = SceneConfigGenerator.load_config_from_yaml(yaml_file)
-        print("✅ 配置加载成功")
+        print("[OK]  配置加载成功")
         print(f"   场景名称: {config.scene_name}")
         print(f"   总人数: {config.total_persons}")
         print(f"   角色比例: {config.profile_ratios}")
         print(f"   关系紧密程度: {config.relation_intensity}")
         print(f"   随机种子: {config.random_seed}")
     except FileNotFoundError:
-        print(f"⚠️ 未找到 {yaml_file}，使用预设场景 'classroom'")
+        print(f"[WARN]  未找到 {yaml_file}，使用预设场景 'classroom'")
         config = SceneConfigGenerator.get_preset("classroom")
     except Exception as e:
-        print(f"❌ 配置加载失败: {e}")
+        print(f"[ERROR]  配置加载失败: {e}")
         sys.exit(1)
 
     
@@ -542,27 +599,24 @@ if __name__ == "__main__":
     import os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-    print("\n🔨 生成社会关系图...")
+    print("\n[INFO]  生成社会关系图...")
     try:
-        from social.social_graph import SocialGraphBuilder
-        builder = SocialGraphBuilder.from_config(config)
-        graph, persons = builder.build_with_config()
+        map_file = sys.argv[2] if len(sys.argv) > 2 else None
+        builder, persons = _generate_from_config(
+            config,
+            people_output=os.path.abspath("output_people.json"),
+            map_file=map_file,
+            position_output=os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "control", "output_people_position.json",
+            ),
+        )
         builder.print_summary()
-
-        output_data = {
-            "metadata": convert_numpy(builder.summary()),
-            "persons": [convert_numpy(p.to_dict()) for p in persons.values()],
-            "relations": convert_numpy(builder.export_relations()),
-        }
-        with open("output_people.json", "w", encoding="utf-8") as json_file:
-            json.dump(output_data, json_file, indent=2, ensure_ascii=False)
-        print(f"\n✅ 已导出到 output_people.json")
-
     except Exception as e:
-        print(f"❌ 生成失败: {e}")
+        print(f"[ERROR]  生成失败: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
 
     print("\n" + "=" * 70)
-    print("✅ 完成！")
+    print("[OK]  完成！")
