@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>D 端统一联调前端</title>
+<title>行人疏散仿真平台</title>
 <style>
   :root{--bg:#eef2f6;--panel:#fff;--line:#cfd8e3;--ink:#172033;--muted:#667589;--blue:#2563eb;--green:#16a34a;--red:#dc2626}
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 "Microsoft YaHei",Arial,sans-serif}
-  header{height:56px;display:flex;align-items:center;gap:14px;padding:0 18px;background:#101827;color:#fff;border-bottom:1px solid #0b1220}
+  body{margin:0;height:100vh;overflow:hidden;background:var(--bg);color:var(--ink);font:14px/1.45 "Microsoft YaHei",Arial,sans-serif}
+  header{height:56px;display:flex;align-items:center;gap:18px;padding:0 18px;background:#101827;color:#fff;border-bottom:1px solid #0b1220}
   h1{font-size:17px;margin:0;font-weight:800}
-  .final-link{margin-left:auto;color:#dbeafe;text-decoration:none;font-size:12px;font-weight:700;border:1px solid #475569;border-radius:999px;padding:5px 9px}
-  .final-link:hover{background:#1f2937}.badge{padding:5px 10px;border-radius:999px;background:#1f2937;color:#cbd5e1;font-size:12px}
-  main{height:calc(100vh - 56px);display:grid;grid-template-columns:330px minmax(420px,1fr) 350px;gap:10px;padding:10px}
+  .top-nav{display:flex;gap:4px;margin-left:14px;height:100%;align-items:center}.top-nav a{padding:8px 10px;color:#b9c6d8;text-decoration:none;font-size:13px;border-bottom:2px solid transparent}.top-nav a.active{color:#fff;border-bottom-color:#3b82f6}
+  .badge{margin-left:auto;padding:5px 10px;border-radius:999px;background:#1f2937;color:#cbd5e1;font-size:12px}
+  main{height:calc(100vh - 56px);min-height:0;display:grid;grid-template-columns:300px minmax(520px,1fr) 350px;grid-template-rows:minmax(0,1fr) 238px;gap:10px;padding:10px;overflow:hidden}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;min-width:0;overflow:hidden}
   .side{padding:12px;overflow-y:auto;overflow-x:hidden}
   .runtime-side{display:flex;min-height:0;flex-direction:column}
@@ -37,7 +37,7 @@
   .toolbar{height:46px;display:flex;align-items:center;gap:8px;padding:7px 9px;border-bottom:1px solid var(--line);background:#f8fafc}
   .toolbar .spacer{flex:1}
   canvas{width:100%;height:100%;display:block;background:#f8fafc}
-  .legend{position:absolute;left:12px;bottom:12px;display:flex;gap:8px;flex-wrap:wrap;background:rgba(255,255,255,.9);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px}
+  .legend{position:absolute;left:12px;bottom:12px;display:flex;flex-direction:column;gap:4px;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-size:11px;pointer-events:none}
   .swatch{width:13px;height:13px;display:inline-block;border-radius:3px;margin-right:4px;border:1px solid rgba(0,0,0,.12);vertical-align:-2px}
   .status{flex:0 0 auto;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;padding:9px;border:1px solid #bfd2ea;background:#f0f6ff;border-radius:7px;color:#35506f;font-size:12px;min-height:68px;max-height:140px;overflow-y:auto;overflow-x:hidden}
   .kv{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);align-items:start;gap:8px;border-bottom:1px dashed #d6dee8;padding:6px 0;font-size:13px}
@@ -51,17 +51,31 @@
   .runtime-side .row{margin:6px 0}
   .runtime-side .log{min-height:120px}
   .pill{font-size:11px;background:#eef2ff;color:#334155;border-radius:999px;padding:3px 7px}
-  @media(max-width:1000px){main{grid-template-columns:1fr;height:auto}.canvas-wrap{height:70vh}}
+  .config-side{grid-column:1;grid-row:1 / 3}
+  .canvas-wrap{grid-column:2;grid-row:1}
+  .runtime-side{grid-column:3;grid-row:1}
+  .insights{grid-column:2 / 4;grid-row:2;display:grid;grid-template-columns:1.3fr .9fr 1fr 1fr;gap:10px;min-width:0;min-height:0}
+  .insight-panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;min-width:0;min-height:0;overflow:auto}
+  .insight-title{font-weight:800;margin-bottom:8px;color:#1e293b}
+  .curve-wrap{height:180px}.curve-wrap canvas{height:100%;background:#fff}
+  .metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .metric{padding:8px;border:1px solid #dbe4ef;border-radius:7px;background:#f8fafc;min-width:0}
+  .metric span{display:block;color:var(--muted);font-size:12px}.metric b{display:block;margin-top:3px;font-size:18px;overflow-wrap:anywhere}
+  .bar-row{display:grid;grid-template-columns:58px 1fr 42px;gap:6px;align-items:center;margin:10px 0;font-size:12px}
+  .bar-track{height:10px;overflow:hidden;background:#e2e8f0;border-radius:99px}.bar-fill{height:100%;background:#2563eb;border-radius:99px}.bar-fill.green{background:#16a34a}
+  .real-note{color:var(--muted);font-size:12px;line-height:1.55}.real-note b{color:#334155}
+  @media(max-width:1180px){body{height:auto;overflow:auto}.top-nav{display:none}main{height:auto;min-height:calc(100vh - 56px);grid-template-columns:280px minmax(420px,1fr);grid-template-rows:minmax(520px,1fr) auto auto}.config-side{grid-column:1;grid-row:1}.canvas-wrap{grid-column:2;grid-row:1;height:70vh}.runtime-side{grid-column:1 / 3;grid-row:2}.insights{grid-column:1 / 3;grid-row:3;grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:760px){main{grid-template-columns:1fr;grid-template-rows:auto}.config-side,.canvas-wrap,.runtime-side,.insights{grid-column:1;grid-row:auto}.insights{grid-template-columns:1fr}.canvas-wrap{height:70vh}}
 </style>
 </head>
 <body>
 <header>
-  <h1>D 端统一联调前端：A 地图 Grid + C 配置 + B CA 动画 + CSV 日志</h1>
-  <a class="final-link" href="/visualization/prototype/final_platform.html">打开最终展示页</a>
+  <h1>烟雾风险感知与社会信息传播耦合的行人疏散仿真平台</h1>
+  <nav class="top-nav" aria-label="页面导航"><a class="active" href="#runtime">仿真运行</a><a href="#analysis">实验分析</a></nav>
   <span class="badge" id="modeBadge">等待导入地图</span>
 </header>
 <main>
-  <aside class="panel side">
+  <aside class="panel side config-side">
     <div class="title">A 地图导入 <span class="pill">JSON / CSV / PNG</span></div>
     <input id="mapFile" type="file" accept=".json,.csv,.png,application/json,text/csv,image/png">
     <div class="row">
@@ -104,7 +118,7 @@
     <div class="hint">真实 B 联调使用 C 的人员/关系输出，经 A 按地图分配坐标后的 `output_people_position.json` 或等价 JSON。</div>
   </aside>
 
-  <section class="panel canvas-wrap">
+  <section class="panel canvas-wrap" id="runtime">
     <div class="toolbar">
       <button id="startBtn" class="primary">开始</button>
       <button id="pauseBtn">暂停</button>
@@ -150,6 +164,31 @@
     <div class="title">事件日志</div>
     <div class="log" id="log"></div>
   </aside>
+
+  <section class="insights" id="analysis" aria-label="真实运行分析面板">
+    <section class="insight-panel">
+      <div class="insight-title">疏散人数-时间曲线</div>
+      <div class="curve-wrap"><canvas id="evacCurve"></canvas></div>
+      <div class="real-note" id="curveNote">等待真实联调快照。</div>
+    </section>
+    <section class="insight-panel">
+      <div class="insight-title">出口利用率</div>
+      <div id="exitBars" class="real-note">上游尚未提供撤离事件。</div>
+    </section>
+    <section class="insight-panel">
+      <div class="insight-title">风险与拥堵统计</div>
+      <div class="metric-grid">
+        <div class="metric"><span>平均风险</span><b id="avgRisk">NA</b></div>
+        <div class="metric"><span>平均剂量</span><b id="avgDose">NA</b></div>
+        <div class="metric"><span>活动重叠元胞</span><b id="insightOverlap">0</b></div>
+        <div class="metric"><span>最大烟雾</span><b id="insightSmoke">NA</b></div>
+      </div>
+    </section>
+    <section class="insight-panel">
+      <div class="insight-title">真实数据说明</div>
+      <div class="real-note" id="dataProvenance">本页面仅展示 A Grid、C 文件、B 快照和 D 日志中的真实字段；上游未提供的风险、剂量、出口目标等值显示 NA，不生成演示数据。</div>
+    </section>
+  </section>
 </main>
 
 <script>
@@ -157,7 +196,10 @@
   const $ = id => document.getElementById(id);
   const canvas = $("view");
   const ctx = canvas.getContext("2d");
+  const curveCanvas = $("evacCurve");
+  const curveCtx = curveCanvas.getContext("2d");
   let snapshot = null;
+  let snapshotHistory = [];
   let activeSession = false;
   let timer = null;
   let pending = false;
@@ -166,6 +208,8 @@
   let appliedYamlPayload = null;
   let lastOutputDir = "";
   let selectedTemplate = null;
+  let personTransition = null;
+  let personTransitionFrame = null;
 
   function setConfigState(message, state = ""){
     const hint = $("configHint");
@@ -208,7 +252,12 @@
     canvas.width = Math.max(1, Math.floor(rect.width * dpr));
     canvas.height = Math.max(1, Math.floor(rect.height * dpr));
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const curveRect = curveCanvas.getBoundingClientRect();
+    curveCanvas.width = Math.max(1, Math.floor(curveRect.width * dpr));
+    curveCanvas.height = Math.max(1, Math.floor(curveRect.height * dpr));
+    curveCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     draw();
+    drawInsights();
   }
 
   async function readFilePayload(input){
@@ -296,10 +345,27 @@
     });
   }
 
+  function personKey(person){
+    if(!person) return null;
+    const value = person.person_id ?? person.id;
+    return value === undefined || value === null ? null : String(value);
+  }
+
+  function personDisplayPosition(person){
+    const transition = personTransition && personTransition.get(personKey(person));
+    if(!transition) return {x:Number(person.x), y:Number(person.y)};
+    const progress = Math.min(1, Math.max(0, (performance.now() - transition.startedAt) / transition.duration));
+    return {
+      x: transition.from.x + (transition.to.x - transition.from.x) * progress,
+      y: transition.from.y + (transition.to.y - transition.from.y) * progress
+    };
+  }
+
   function drawPeople(people, grid, ox, oy, cell){
     (people || []).forEach(person => {
       if(person.evacuated) return;
-      const x = Number(person.x), y = Number(person.y);
+      const position = personDisplayPosition(person);
+      const x = position.x, y = position.y;
       if(!Number.isFinite(x) || !Number.isFinite(y)) return;
       const px = ox + (x + .5) * cell;
       const py = oy + (y + .5) * cell;
@@ -311,6 +377,34 @@
       ctx.fill();
       ctx.stroke();
     });
+  }
+
+  function startPersonTransition(previous, next){
+    if(personTransitionFrame) cancelAnimationFrame(personTransitionFrame);
+    personTransitionFrame = null;
+    personTransition = null;
+    if(!previous || !Array.isArray(previous.people) || !next || !Array.isArray(next.people)) return;
+    const before = new Map(previous.people.map(person => [personKey(person), person]).filter(([key]) => key !== null));
+    const transitions = new Map();
+    next.people.forEach(person => {
+      if(!person || person.evacuated) return;
+      const key = personKey(person);
+      const oldPerson = key === null ? null : before.get(key);
+      if(!oldPerson || oldPerson.evacuated) return;
+      const from = {x:Number(oldPerson.x), y:Number(oldPerson.y)};
+      const to = {x:Number(person.x), y:Number(person.y)};
+      if(!Number.isFinite(from.x) || !Number.isFinite(from.y) || !Number.isFinite(to.x) || !Number.isFinite(to.y)) return;
+      if(from.x !== to.x || from.y !== to.y) transitions.set(key, {from, to, startedAt:performance.now(), duration:260});
+    });
+    if(!transitions.size) return;
+    personTransition = transitions;
+    const animate = () => {
+      draw();
+      const running = [...transitions.values()].some(item => performance.now() - item.startedAt < item.duration);
+      if(running) personTransitionFrame = requestAnimationFrame(animate);
+      else { personTransition = null; personTransitionFrame = null; draw(); }
+    };
+    personTransitionFrame = requestAnimationFrame(animate);
   }
 
   function draw(){
@@ -398,9 +492,101 @@
   }
 
   function applySnapshot(next, extra = {}){
+    const previousSnapshot = snapshot;
     snapshot = next;
+    startPersonTransition(previousSnapshot, next);
     draw();
-    return refreshStats(extra);
+    const observed = refreshStats(extra);
+    if(extra.resetHistory) snapshotHistory = [];
+    const previous = snapshotHistory[snapshotHistory.length - 1];
+    if(!previous || Number(previous.step) !== Number(next.step)){
+      snapshotHistory.push(next);
+      if(snapshotHistory.length > 800) snapshotHistory.shift();
+    }
+    drawInsights(observed);
+    return observed;
+  }
+
+  function finiteMean(values){
+    const numeric = values.map(Number).filter(Number.isFinite);
+    return numeric.length ? numeric.reduce((sum, value) => sum + value, 0) / numeric.length : null;
+  }
+
+  function textValue(value, digits = 3){
+    return Number.isFinite(value) ? Number(value).toFixed(digits) : "NA";
+  }
+
+  function resizedCurveContext(){
+    const rect = curveCanvas.getBoundingClientRect();
+    return {width:rect.width || 1, height:rect.height || 1};
+  }
+
+  function drawInsights(observed = inspectSnapshot()){
+    const {width, height} = resizedCurveContext();
+    curveCtx.clearRect(0, 0, width, height);
+    curveCtx.fillStyle = "#fff";
+    curveCtx.fillRect(0, 0, width, height);
+    const pad = {left:34, right:12, top:12, bottom:24};
+    const series = snapshotHistory.map(item => ({
+      time:Number(item.time_s || 0),
+      evacuated:(item.people || []).filter(person => person && person.evacuated).length
+    }));
+    curveCtx.strokeStyle = "#cbd5e1";
+    curveCtx.lineWidth = 1;
+    curveCtx.beginPath();
+    curveCtx.moveTo(pad.left, pad.top);
+    curveCtx.lineTo(pad.left, height - pad.bottom);
+    curveCtx.lineTo(width - pad.right, height - pad.bottom);
+    curveCtx.stroke();
+    if(series.length){
+      const maxTime = Math.max(1, ...series.map(point => point.time));
+      const maxEvacuated = Math.max(1, ...(snapshotHistory.map(item => (item.people || []).length)), ...series.map(point => point.evacuated));
+      curveCtx.strokeStyle = "#2563eb";
+      curveCtx.lineWidth = 2.5;
+      curveCtx.beginPath();
+      series.forEach((point, index) => {
+        const x = pad.left + (width - pad.left - pad.right) * point.time / maxTime;
+        const y = height - pad.bottom - (height - pad.top - pad.bottom) * point.evacuated / maxEvacuated;
+        if(index === 0) curveCtx.moveTo(x, y); else curveCtx.lineTo(x, y);
+      });
+      curveCtx.stroke();
+      curveCtx.fillStyle = "#64748b";
+      curveCtx.font = "11px Microsoft YaHei";
+      curveCtx.textAlign = "left";
+      curveCtx.fillText("已撤离人数", 2, 12);
+      curveCtx.textAlign = "right";
+      curveCtx.fillText(`${maxTime.toFixed(1)} s`, width - pad.right, height - 5);
+    }
+    $("curveNote").textContent = series.length
+      ? `真实快照：${series.length} 帧，当前 step ${snapshot.step}，已撤离 ${observed.evacuated}/${observed.people.length}。`
+      : "等待真实联调快照。";
+
+    const people = snapshot && Array.isArray(snapshot.people) ? snapshot.people : [];
+    const riskSource = snapshot && snapshot.adapter_meta && snapshot.adapter_meta.risk_source;
+    const riskPublished = !riskSource || !String(riskSource).includes("not exposed");
+    $("avgRisk").textContent = riskPublished
+      ? textValue(finiteMean(people.map(person => person && person.risk)))
+      : "NA";
+    $("avgDose").textContent = textValue(finiteMean(people.map(person => person && person.dose)));
+    $("insightOverlap").textContent = String(observed.overlapCells);
+    $("insightSmoke").textContent = textValue(observed.maxSmoke);
+
+    const exits = new Map();
+    people.filter(person => person && person.evacuated).forEach(person => {
+      const key = person.target_exit;
+      if(key === undefined || key === null || key === "") return;
+      const name = String(key);
+      exits.set(name, (exits.get(name) || 0) + 1);
+    });
+    const total = [...exits.values()].reduce((sum, count) => sum + count, 0);
+    $("exitBars").innerHTML = total
+      ? [...exits.entries()].map(([name, count], index) => {
+          const percent = count / total * 100;
+          return `<div class="bar-row"><span>${name}</span><div class="bar-track"><div class="bar-fill${index % 2 ? " green" : ""}" style="width:${percent}%"></div></div><b>${percent.toFixed(0)}%</b></div>`;
+        }).join("")
+      : "尚无真实撤离人员，或上游未提供 target_exit。";
+    const riskNote = riskPublished ? "" : "B 当前未公开个人风险结果，平均风险显示 NA。";
+    $("dataProvenance").innerHTML = `<b>当前来源：</b>A Grid + C 人员/配置 + B ${snapshot && snapshot.adapter_meta && snapshot.adapter_meta.b_runtime_api ? snapshot.adapter_meta.b_runtime_api : "快照"} + D CSV。<br>风险/剂量/出口目标只在上游实际返回时展示；当前缺失字段为 NA。${riskNote}`;
   }
 
   function buildYamlPayload(){
@@ -446,7 +632,7 @@
     $("templateHint").textContent = "当前使用手动上传地图；模板选择已取消。";
     activeSession = false;
     stopTimer();
-    applySnapshot(result.snapshot);
+    applySnapshot(result.snapshot, {resetHistory:true});
     const meta = result.map_meta || {};
     const smokeSources = Number((meta.cell_counts || {}).smoke_source || 0);
     setStatus(`地图已显示。\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\n烟源: ${smokeSources}${smokeSources ? " 个；启动联调后显示 B 烟雾" : " 个；当前地图无 smoke_source，因此不会产生烟雾"}\ncell_type: ${JSON.stringify(meta.cell_counts || {})}`, "地图预览");
@@ -462,7 +648,7 @@
     selectedTemplate = templateId;
     activeSession = false;
     stopTimer();
-    applySnapshot(result.snapshot);
+    applySnapshot(result.snapshot, {resetHistory:true});
     const meta = result.map_meta || {};
     const smokeSources = Number((meta.cell_counts || {}).smoke_source || 0);
     $("templateHint").textContent = `已选择 ${templateId} 模板。启动联调时请上传 C 生成人员后、经 A 按该模板分配坐标的人员文件。`;
@@ -497,7 +683,7 @@
     );
     activeSession = true;
     stopTimer();
-    applySnapshot(result.snapshot, {output_dir:result.output_dir});
+    applySnapshot(result.snapshot, {output_dir:result.output_dir, resetHistory:true});
     const meta = result.snapshot.adapter_meta || {};
     const behaviorStatus = String(meta.behavior_input || "未提供").startsWith("empty mapping")
       ? "未接入（空映射）"
@@ -524,7 +710,7 @@
     const result = await api("/api/session/sample", {});
     activeSession = true;
     stopTimer();
-    applySnapshot(result.snapshot, {output_dir:result.output_dir});
+    applySnapshot(result.snapshot, {output_dir:result.output_dir, resetHistory:true});
     const meta = result.snapshot.adapter_meta || {};
     const behaviorStatus = String(meta.behavior_input || "未提供").startsWith("empty mapping")
       ? "未接入（空映射）"
@@ -599,7 +785,7 @@
     if(!activeSession){ snapshot = null; draw(); refreshStats(); setStatus("已清空预览。", "等待导入地图"); return; }
     const result = await api("/api/session/reset", {});
     stopTimer();
-    applySnapshot(result.snapshot, {output_dir:result.output_dir});
+    applySnapshot(result.snapshot, {output_dir:result.output_dir, resetHistory:true});
     setStatus(`已重置。新的输出目录：${result.output_dir}`, "已重置");
     log("联调会话已重置");
   }
