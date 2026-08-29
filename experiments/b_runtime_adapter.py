@@ -82,6 +82,12 @@ class EvacEngineRuntimeAdapter:
                 else "EvacEngine.step()"
             ),
             "behavior_input": "empty mapping; C behavior output not provided",
+            # B currently calculates a local risk dictionary for movement but
+            # does not publish that dictionary or write it to ``person.risk``.
+            # Tell D views not to present the schema's default ``risk`` value
+            # as a measured risk result.
+            "risk_source": "B risk_engine result is not exposed per person",
+            "dose_source": "B SmokeDoseRecorder person.dose",
             "upstream_animation": (
                 "enabled"
                 if render_upstream_animation

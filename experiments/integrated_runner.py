@@ -25,6 +25,7 @@ from typing import Any, Callable, Mapping
 
 from core.schema import CellType, Exit, Person, Relation, ScenarioConfig, SmokeSource
 from experiments.b_runtime_adapter import EvacEngineRuntimeAdapter
+from experiments.run_artifacts import write_run_artifacts
 from experiments.runner import SimulationRunner
 from visualization.scene_input_adapter import (
     PopulationConfigView,
@@ -342,6 +343,16 @@ def main() -> None:
         runner.initialize()
         if args.headless:
             snapshot = runner.run_until_finished()
+            write_run_artifacts(
+                snapshot,
+                runner.output_root / str(snapshot["run_id"]),
+                input_files={
+                    "map": args.map,
+                    "population": args.population,
+                    **({"yaml": args.yaml} if args.yaml is not None else {}),
+                },
+                save_frame=True,
+            )
             print(
                 f"integrated run complete: step={snapshot['step']} "
                 f"output={runner.output_root / snapshot['run_id']}"

@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
-import csv
 import json
 import mimetypes
 import shutil
@@ -31,6 +30,7 @@ from urllib.parse import urlparse
 
 from experiments.integrated_runner import create_integrated_runner
 from experiments.result_package import ResultPackageError, build_result_package
+from experiments.run_artifacts import write_run_artifacts
 from visualization.scene_input_adapter import grid_to_static_snapshot, load_map_grid
 
 
@@ -121,61 +121,6 @@ def _uploaded_file(payload: Mapping[str, Any], field: str, allowed: set[str], ro
 
 def _new_run_id(prefix: str = "d_web_runtime") -> str:
     return f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
-
-
-def _flatten_numeric_field(field: Any) -> list[float]:
-    if not isinstance(field, list):
-        return []
-    values: list[float] = []
-    for row in field:
-        if not isinstance(row, list):
-            continue
-        for value in row:
-            if isinstance(value, (int, float)) and not isinstance(value, bool):
-                values.append(float(value))
-    return values
-
-
-def _snapshot_metrics(snapshot: Mapping[str, Any], output_dir: Path) -> dict[str, Any]:
-    people = snapshot.get("people", [])
-    people_list = people if isinstance(people, list) else []
-    total = len(people_list)
-    evacuated = sum(1 for person in people_list if isinstance(person, Mapping) and person.get("evacuated") is True)
-    smoke_values = _flatten_numeric_field((snapshot.get("fields") or {}).get("smoke_field") if isinstance(snapshot.get("fields"), Mapping) else [])
-
-    evac_times: list[float] = []
-    event_path = output_dir / "event_log.csv"
-    if event_path.is_file():
-        with event_path.open("r", encoding="utf-8", newline="") as stream:
-            for row in csv.DictReader(stream):
-                if row.get("event_type") == "evac_success":
-                    try:
-                        evac_times.append(float(row.get("time_s", "")))
-                    except ValueError:
-                        pass
-
-    return {
-        "total_steps": snapshot.get("step", "NA"),
-        "total_time_s": snapshot.get("time_s", "NA"),
-        "evacuated_count": evacuated,
-        "remaining_count": max(0, total - evacuated),
-        "evacuation_rate": (evacuated / total) if total else "NA",
-        "first_evac_time_s": min(evac_times) if evac_times else "NA",
-        "last_evac_time_s": max(evac_times) if evac_times else "NA",
-        "max_smoke": max(smoke_values) if smoke_values else "NA",
-        "avg_smoke": (sum(smoke_values) / len(smoke_values)) if smoke_values else "NA",
-    }
-
-
-def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def _write_summary_csv(path: Path, row: Mapping[str, Any]) -> None:
-    with path.open("w", encoding="utf-8", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=list(row.keys()))
-        writer.writeheader()
-        writer.writerow(row)
 
 
 def _force_headless_matplotlib() -> None:
@@ -548,25 +493,12 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
     ) -> None:
         run_id = str(snapshot.get("run_id") or runner.current_run_id)
         output_dir = runner.output_root / run_id
-        output_dir.mkdir(parents=True, exist_ok=True)
-        config_used = {
-            "run_id": run_id,
-            "scenario_id": snapshot.get("scenario_id"),
-            "schema_version": snapshot.get("schema_version"),
-            "random_seed": snapshot.get("random_seed"),
-            "input_files": {key: str(path) for key, path in input_files.items()},
-            "runtime_contract": "A Grid + C population/config + B EvacEngine through D adapters",
-            "missing_upstream_fields": "CSV logger leaves unprovided upstream fields empty; D does not fabricate values.",
-        }
-        _write_json(output_dir / "config_used.json", config_used)
-        metrics = _snapshot_metrics(snapshot, output_dir)
-        _write_json(output_dir / "metrics.json", metrics)
-        _write_summary_csv(output_dir / "metrics_summary.csv", metrics)
-        if save_frame:
-            # Browser canvas owns live frames; write PNG only at durable checkpoints.
-            from visualization.integrated_runtime import save_snapshot_png
-
-            save_snapshot_png(dict(snapshot), output_dir / "final_frame.png")
+        write_run_artifacts(
+            snapshot,
+            output_dir,
+            input_files=input_files,
+            save_frame=save_frame,
+        )
 
     def _export_session(self) -> None:
         """Return a ZIP built from the active runner's actual CSV output."""
