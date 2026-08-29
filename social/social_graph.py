@@ -32,7 +32,7 @@ from .relation_templates import (
     get_scene_count,
 )
 
-# ✅ 使用绝对导入（项目根目录下的 control 模块）
+# [OK]  使用绝对导入（项目根目录下的 control 模块）
 from control.scene_config import SceneConfig
 
 # 导入 C02 生成函数（同包，相对导入）
@@ -40,6 +40,9 @@ from .relation_templates import generate_profiles_from_config, generate_relation
 
 STRONG_RELATION_TYPES = ["family", "friend", "classmate", "colleague", "staff_to_customer", "doctor_patient"]
 STRONG_RELATION_THRESHOLD = 0.3
+# 结伴组类型：C04 结伴行为仅对 family/friend 生效，group_id 也按此划分，
+# 避免 classroom 等场景因 classmate 关系把全班连成一个大组
+COMPANION_GROUP_TYPES = ["family", "friend"]
 
 # ============================================================
 # 方向性关系权重覆盖表
@@ -85,7 +88,8 @@ class Person:
     __slots__ = (
         "id", "x", "y", "speed", "group_id", "profile",
         "risk_sensitivity", "familiarity", "herding_tendency",
-        "target_exit", "info_state", "evacuated", "dose"
+        "target_exit", "info_state", "evacuated", "dose",
+        "prev_x", "prev_y", "_locked_alert",
     )
 
     def __init__(self, pid: int, profile: str, defaults: dict):
@@ -139,7 +143,7 @@ class SocialGraphBuilder:
     """
 
     def __init__(self, semantic: str, person_count: int = None,
-                 profiles_json_path: str = None,  # ✅ 改为 None，自动查找
+                 profiles_json_path: str = None,  # [OK]  改为 None，自动查找
                  seed: int = None):
         """
         初始化 SocialGraphBuilder
@@ -149,7 +153,7 @@ class SocialGraphBuilder:
         if seed is not None:
             np.random.seed(seed)
 
-        # ✅ 修复：自动查找 person_profiles.json 路径
+        # [OK]  修复：自动查找 person_profiles.json 路径
         if profiles_json_path is None:
             # 获取 social_graph.py 所在目录（即 social/）
             current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -164,7 +168,7 @@ class SocialGraphBuilder:
                 if os.path.exists(path):
                     profiles_json_path = path
                     found = True
-                    print(f"✅ 找到 person_profiles.json: {path}")
+                    print(f"[OK]  找到 person_profiles.json: {path}")
                     break
             if not found:
                 raise FileNotFoundError(
@@ -303,12 +307,14 @@ class SocialGraphBuilder:
             return base_params
 
     def _assign_groups(self):
-        """分配群组 ID"""
+        """分配群组 ID（按强关系小团体 family/friend 划分）"""
         strong_graph = nx.Graph()
         strong_graph.add_nodes_from(range(self.num_persons))
 
         for u, v, data in self.graph.edges(data=True):
-            if data.get("strength", 0) >= 0.3:
+            rel_type = data.get("relation_type", "")
+            if (rel_type in COMPANION_GROUP_TYPES
+                    and data.get("strength", 0) >= STRONG_RELATION_THRESHOLD):
                 strong_graph.add_edge(u, v)
 
         group_id = 0
@@ -388,7 +394,7 @@ class SocialGraphBuilder:
 # 便捷函数
 # ============================================================
 def build_social_graph(semantic: str, person_count: int = None,
-                       profiles_json: str = None,  # ✅ 改为 None
+                       profiles_json: str = None,  # [OK]  改为 None
                        seed: int = None) -> Tuple[nx.DiGraph, Dict[int, Person]]:
     """原有便捷函数"""
     builder = SocialGraphBuilder(semantic, person_count, profiles_json, seed)
