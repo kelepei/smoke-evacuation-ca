@@ -90,6 +90,7 @@ class ControlStrategyEngine:
         self.lockdown_status: Dict[Tuple[int, int], bool] = {}
         self.zone_assignment: Dict[int, str] = {}
         self.route_weight_map: Dict[Tuple[int, int, int, int], float] = {}
+        self.route_weight_base: Dict[Tuple[int, int, int, int], float] = {}
         self.zone_distribution: Dict[str, int] = {} 
 
         self.step_stats = defaultdict(int)
@@ -150,7 +151,8 @@ class ControlStrategyEngine:
         controlled_routes = self.route_control_params.get("controlled_routes", [])
         for from_cell, to_cell, weight in controlled_routes:
             key = (from_cell[0], from_cell[1], to_cell[0], to_cell[1])
-            self.route_weight_map[key] = weight
+            self.route_weight_map[key] = float(weight)
+            self.route_weight_base[key] = float(weight)
 
     # ============================================================
     # 每步更新
@@ -213,9 +215,14 @@ class ControlStrategyEngine:
 
     def _reassign_exit(self, person):
         available_exits = [
-            eid for eid, closed in self.closure_status.items()
-            if not closed
+            eid for eid in self.exit_positions
+            if not self.closure_status.get(eid, False)
         ]
+        if not available_exits:
+            available_exits = [
+                eid for eid, closed in self.closure_status.items()
+                if not closed
+            ]
         if not available_exits:
             return
 
@@ -255,7 +262,7 @@ class ControlStrategyEngine:
         for person in all_persons:
             if self.lockdown_status.get((int(person.x), int(person.y)), False):
                 locked_in += 1
-                if hasattr(person, '_locked_alert') and not person._locked_alert:
+                if not getattr(person, "_locked_alert", False):
                     person._locked_alert = True
                     self.info_engine.transition_state(
                         person.id,
@@ -292,10 +299,11 @@ class ControlStrategyEngine:
 
     def _update_route_control(self, _all_persons: List, _current_step: int):  
         for (fx, fy, tx, ty), weight in list(self.route_weight_map.items()):
+            base = self.route_weight_base.get((fx, fy, tx, ty), weight)
             if self.lockdown_status.get((tx, ty), False):
-                self.route_weight_map[(fx, fy, tx, ty)] = weight * 1.5
+                self.route_weight_map[(fx, fy, tx, ty)] = base * 1.5
             else:
-                self.route_weight_map[(fx, fy, tx, ty)] = weight
+                self.route_weight_map[(fx, fy, tx, ty)] = base
 
         self.step_stats["route_controlled"] = len(self.route_weight_map)
 
@@ -307,6 +315,9 @@ class ControlStrategyEngine:
         return not self.closure_status.get(exit_id, False)
 
     def get_open_exits(self) -> List[str]:
+        if self.exit_positions:
+            return [eid for eid in self.exit_positions
+                    if not self.closure_status.get(eid, False)]
         return [eid for eid, closed in self.closure_status.items() if not closed]
 
     def is_cell_accessible(self, x: int, y: int) -> bool:
