@@ -193,7 +193,7 @@ class InformationDiffusionEngine:
                 person_id = int(person.id)
                 if person_id == spreader_id:
                     continue
-                if person_id in self.persons and self.persons[person_id].evacuated:
+                if getattr(person, "evacuated", False):
                     continue
 
                 dist = self._distance(spreader, person)
@@ -260,7 +260,9 @@ class InformationDiffusionEngine:
             if not neighbors:
                 continue
 
-            neighbors = [n for n in neighbors if n in self.persons and not self.persons[n].evacuated]
+            # 只向实际参与仿真的行人传播
+            sim_ids = {int(p.id) for p in all_persons}
+            neighbors = [n for n in neighbors if n in sim_ids]
 
             np.random.shuffle(neighbors)
             neighbors = neighbors[:max_spread]
@@ -309,7 +311,7 @@ class InformationDiffusionEngine:
         source = int(inject_params.get("source", -2))
         message = str(inject_params.get("message", ""))
 
-        candidates = [p for p in all_persons if not (int(p.id) in self.persons and self.persons[int(p.id)].evacuated)]
+        candidates = [p for p in all_persons if not getattr(p, "evacuated", False)]
         np.random.shuffle(candidates)
         inject_count = max(1, int(len(candidates) * 0.2))
 
@@ -353,7 +355,7 @@ class InformationDiffusionEngine:
                 person_id = int(person.id)
                 if person_id == spreader_id:
                     continue
-                if person_id in self.persons and self.persons[person_id].evacuated:
+                if getattr(person, "evacuated", False):
                     continue
 
                 dist = self._distance(spreader, person)
