@@ -22,7 +22,7 @@ C09: 引导员模型 (guide_agent.py)
 """
 
 import numpy as np
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 from collections import defaultdict
 from enum import Enum
 from types import SimpleNamespace
@@ -86,12 +86,14 @@ class GuideAgent:
 
     def __init__(self, agent_id: int, x: int, y: int,
                  profile: str = "staff",
-                 move_strategy: GuideMoveStrategy = GuideMoveStrategy.FIXED):
+                 move_strategy: GuideMoveStrategy = GuideMoveStrategy.FIXED,
+                 person_id: Optional[int] = None):
         self.id = agent_id
         self.x = x
         self.y = y
         self.profile = profile
         self.strategy = move_strategy
+        self.person_id = person_id  # 关联的社会图行人节点 id（教师/员工/保安等）
 
         self.radius = GUIDE_PARAMS["influence"]["radius"]
         self.base_trust = GUIDE_PARAMS["trust"]["base_trust"]
@@ -119,6 +121,7 @@ class GuideAgent:
             "y": self.y,
             "profile": self.profile,
             "strategy": self.strategy.value,
+            "person_id": self.person_id,
             "radius": self.radius,
             "active": self.active,
             "guided_count": self.guided_count,
@@ -145,6 +148,7 @@ class GuideAgentModel:
         self.state_params = GUIDE_PARAMS["state"]
 
         self.guides: List[GuideAgent] = []
+        self._next_guide_id = 0
         self.step_stats = defaultdict(int)
         self.guide_influence_cache: Dict[int, dict] = {}
 
@@ -154,26 +158,30 @@ class GuideAgentModel:
 
     def add_guide(self, x: int, y: int,
                   profile: str = "staff",
-                  move_strategy: GuideMoveStrategy = GuideMoveStrategy.FIXED) -> int:
-        agent_id = len(self.guides)
-        guide = GuideAgent(agent_id, x, y, profile, move_strategy)
+                  move_strategy: GuideMoveStrategy = GuideMoveStrategy.FIXED,
+                  person_id: Optional[int] = None) -> int:
+        agent_id = self._next_guide_id
+        self._next_guide_id += 1
+        guide = GuideAgent(agent_id, x, y, profile, move_strategy, person_id)
         self.guides.append(guide)
         return agent_id
 
     def add_guide_with_patrol(self, x: int, y: int,
                               patrol_points: List[Tuple[int, int]],
-                              profile: str = "staff") -> int:
-        agent_id = len(self.guides)
-        guide = GuideAgent(agent_id, x, y, profile, GuideMoveStrategy.PATROL)
+                              profile: str = "staff",
+                              person_id: Optional[int] = None) -> int:
+        agent_id = self._next_guide_id
+        self._next_guide_id += 1
+        guide = GuideAgent(agent_id, x, y, profile, GuideMoveStrategy.PATROL, person_id)
         guide.patrol_points = patrol_points
         self.guides.append(guide)
         return agent_id
 
     def remove_guide(self, agent_id: int):
-        for i, guide in enumerate(self.guides):
+        for guide in self.guides:
             if guide.id == agent_id:
                 guide.active = False
-                self.guides.pop(i)
+                self.guides.remove(guide)
                 return True
         return False
 
@@ -340,14 +348,15 @@ class GuideAgentModel:
     def _calc_trust(self, person_id: int, guide: GuideAgent) -> float:
         base_trust = self.trust_params["base_trust"]
 
-        # 1. 关系加成
+        # 1. 关系加成（仅当引导员关联了社会图中的行人节点时生效）
         relation_boost = self.trust_params.get("relation_boost", {})
-        rel = self.graph.get_relation(person_id, guide.id)
-        if isinstance(rel, dict) and isinstance(relation_boost, dict):
-            rel_type = rel.get("relation_type", "stranger")
-            trust_boost = relation_boost.get(rel_type, 0.0)
-        else:
-            trust_boost = 0.0
+        guide_pid = getattr(guide, "person_id", None)
+        trust_boost = 0.0
+        if guide_pid is not None:
+            rel = self.graph.get_relation(person_id, guide_pid)
+            if isinstance(rel, dict) and isinstance(relation_boost, dict):
+                rel_type = rel.get("relation_type", "stranger")
+                trust_boost = relation_boost.get(rel_type, 0.0)
 
         # 2. 引导员角色加成
         profile_boost = self.trust_params.get("profile_boost", {})
