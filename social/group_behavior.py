@@ -89,27 +89,41 @@ class GroupBehaviorEngine:
         # 每步的状态缓存
         self.person_states = {}  # {person_id: 结伴状态}
 
-    def update_all(self, all_persons: List, current_step: int) -> Dict[int, dict]:
+    def update_all(self, all_persons, current_step: int) -> Dict[int, dict]:
         """
         更新所有行人的结伴状态
+
+        兼容两种输入：
+            - List[Person]：行人列表
+            - Dict[int, Person]：{person_id: person}（main.py 的 ped_dict 形式）
+        社会图中存在、但不在 all_persons 里的行人会被跳过，
+        避免 C 生成人数与 A/B 实际行人数不一致时崩溃。
         """
+        # 统一转为 id -> person 查询表
+        if isinstance(all_persons, dict):
+            all_persons = list(all_persons.values())
+        persons_by_id = {p.id: p for p in all_persons}
+
         results = {}
         groups = self._group_by_group_id()
 
         for group_id, member_ids in groups.items():
             if len(member_ids) < 2:
                 for pid in member_ids:
-                    results[pid] = self._no_behavior()
+                    if pid in persons_by_id:
+                        results[pid] = self._no_behavior()
                 continue
 
             active_members = []
             for pid in member_ids:
-                if pid in self.persons and not self.persons[pid].evacuated:
-                    active_members.append(all_persons[pid])
+                person = persons_by_id.get(pid)
+                if person is not None and not person.evacuated:
+                    active_members.append(person)
 
             if len(active_members) < 2:
                 for pid in member_ids:
-                    results[pid] = self._no_behavior()
+                    if pid in persons_by_id:
+                        results[pid] = self._no_behavior()
                 continue
 
             center_x = np.mean([p.x for p in active_members])
@@ -122,7 +136,8 @@ class GroupBehaviorEngine:
                 results[person.id] = result
 
         # 补充未分组或已撤离的行人
-        for pid in all_persons:
+        for person in all_persons:
+            pid = person.id
             if pid not in results:
                 results[pid] = self._no_behavior()
 
@@ -233,11 +248,16 @@ class GroupBehaviorEngine:
                 if prev_state.get("is_waiting") and prev_state.get("waiting_for") == other.id:
                     wait_steps = current_step - prev_state.get("wait_start_step", current_step)
                     if wait_steps > self.wait_params["max_wait_steps"]:
-                        # 放弃等待
+                        # 等待超时，放弃等待
                         continue
+                    # 仍在等待：保留原始开始步数，确保超时判断有效
+                    wait_start_step = prev_state.get("wait_start_step", current_step)
+                else:
+                    # 新开始等待
+                    wait_start_step = current_step
                 result["is_waiting"] = True
                 result["waiting_for"] = other.id
-                result["wait_start_step"] = current_step
+                result["wait_start_step"] = wait_start_step
                 result["approach_target"] = None
                 result["is_following"] = False
                 break
@@ -247,12 +267,15 @@ class GroupBehaviorEngine:
         # ============================================================
         exit_counts = Counter()
         for p in active_members:
-            if hasattr(p, 'target_exit') and p.target_exit:
+            if hasattr(p, "target_exit") and p.target_exit:
                 exit_counts[p.target_exit] += 1
 
         if exit_counts:
             most_common_exit, count = exit_counts.most_common(1)[0]
-            if count >= self.co_exit_params["min_group_size"]:
+            majority_ratio = self.co_exit_params["majority_ratio"]
+            group_size = max(1, len(active_members))
+            if (count >= self.co_exit_params["min_group_size"]
+                    and count / group_size >= majority_ratio):
                 bonus = self.co_exit_params["preference_bonus"]
                 result["exit_preference"][most_common_exit] = bonus
 
