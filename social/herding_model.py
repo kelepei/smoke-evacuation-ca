@@ -60,7 +60,7 @@ HERDING_PARAMS = {
         "k_factor": 2.0,            # 公式中的 k，陡峭度因子
         "info_states_trigger":      # 这些信息状态下更容易从众
             ["UNKNOWN", "MISINFORMED"],
-        "herding_threshold": 0.4,   # herding_tendency >= 0.4 倾向从众 (公式中的 θ_i)
+        "herding_threshold": 0.4,   # 兼容保留；实际阈值由 _get_herd_threshold 动态计算
     },
 
     # ====== 从众强度计算 ======
@@ -142,7 +142,7 @@ class HerdingModel:
             pid = person.id
 
             # 如果已撤离，跳过
-            if pid in self.persons and self.persons[pid].evacuated:
+            if getattr(person, "evacuated", False):
                 results[pid] = self._no_behavior()
                 continue
 
@@ -206,12 +206,12 @@ class HerdingModel:
         self.person_states = results
         return results
 
-    def _build_position_index(self, all_persons: List) -> Dict[Tuple[int, int], int]:
-        """构建位置→ID索引，用于快速查找"""
+    def _build_position_index(self, all_persons: List) -> Dict[Tuple[int, int], object]:
+        """构建位置→行人对象索引，用于快速查找（不依赖列表下标==id）"""
         index = {}
         for p in all_persons:
-            if not (p.id in self.persons and self.persons[p.id].evacuated):
-                index[(p.x, p.y)] = p.id
+            if not getattr(p, "evacuated", False):
+                index[(p.x, p.y)] = p
         return index
 
     def _get_visible_persons(self, person, all_persons: List,
@@ -241,12 +241,10 @@ class HerdingModel:
 
                 # 查找该位置是否有行人
                 if (nx, ny) in pos_index:
-                    neighbor_id = pos_index[(nx, ny)]
-                    if neighbor_id != person.id:
-                        neighbor = all_persons[neighbor_id]
+                    neighbor = pos_index[(nx, ny)]
+                    if neighbor.id != person.id:
                         # 检查是否已撤离
-                        if not (neighbor_id in self.persons and
-                                self.persons[neighbor_id].evacuated):
+                        if not getattr(neighbor, "evacuated", False):
                             visible.append(neighbor)
 
         return visible
@@ -282,6 +280,30 @@ class HerdingModel:
                 return x, y
         return None
 
+    def _get_herd_threshold(self, person, current_step: int) -> float:
+        """
+        计算个人的动态从众触发阈值 θ_i：
+        基础阈值取 majority_ratio，再按个人从众倾向、信息状态、时间窗口下调。
+        """
+        threshold = self.trigger_params["majority_ratio"]
+
+        # 1. 个人从众倾向：倾向越高，阈值越低（越容易从众）
+        threshold -= person.herding_tendency * 0.1
+
+        # 2. 信息状态：UNKNOWN / MISINFORMED 状态下更容易从众
+        person_info_state = self.info_engine.get_state_value(person.id) if self.info_engine else "UNKNOWN"
+        if person_info_state in self.trigger_params["info_states_trigger"]:
+            threshold -= 0.1
+
+        # 3. 时间窗口：疏散高峰期内阈值降低到 0.3
+        if self.time_params.get("enabled", False):
+            peak = self.time_params.get("peak_step", 30)
+            window = self.time_params.get("window", 20)
+            if abs(current_step - peak) < window:
+                threshold = min(threshold, 0.3)
+
+        return max(0.0, threshold)
+
     def _should_herd(self, person, majority_ratio: float, total_visible: int,
                      current_step: int) -> bool:
         """
@@ -296,34 +318,9 @@ class HerdingModel:
         if total_visible < self.trigger_params["min_visible"]:
             return False
 
-        if majority_ratio < self.trigger_params["majority_ratio"]:
-            return False
-
-        theta_i = self.trigger_params["herding_threshold"]
-
-        # 如果主流占比超过个人从众阈值，触发
-        if majority_ratio > theta_i:
-            return True
-
-        # 检查信息状态触发条件（通过 C06 接口查询）
-        person_info_state = self.info_engine.get_state_value(person.id) if self.info_engine else "UNKNOWN"
-        if person_info_state in self.trigger_params["info_states_trigger"]:
-            return True
-
-        # 检查从众倾向
-        if person.herding_tendency >= theta_i:
-            return True
-
-        # ===== 时间因素：特定时间窗口内降低从众阈值 =====
-        if self.time_params.get("enabled", False):
-            peak = self.time_params.get("peak_step", 30)
-            window = self.time_params.get("window", 20)
-            # 在高峰窗口期内，即使从众倾向较低也触发
-            if abs(current_step - peak) < window:
-                if majority_ratio > 0.3:  # 窗口期内降低阈值到0.3
-                    return True
-
-        return False
+        # 主流占比达到个人动态阈值即触发从众
+        threshold = self._get_herd_threshold(person, current_step)
+        return majority_ratio >= threshold
 
     def _calc_influence(self, person, majority_ratio: float, current_step: int) -> float:
         """
@@ -336,7 +333,7 @@ class HerdingModel:
         time_factor 随时间动态变化，模拟疏散不同阶段的从众强度
         """
         k = self.trigger_params["k_factor"]
-        theta_i = self.trigger_params["herding_threshold"]
+        theta_i = self._get_herd_threshold(person, current_step)
 
         # 计算 sigmoid 值
         x = k * (majority_ratio - theta_i)
