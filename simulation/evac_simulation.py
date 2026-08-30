@@ -22,6 +22,7 @@ class EvacEngine:
     """
     疏散仿真引擎
     适配A模块输出人员坐标
+    改动：接入冲突消解、增加actual_exit出口记录
     """
     MAX_SIM_STEP = 2000  # 最大仿真步数，防止死循环
 
@@ -75,11 +76,35 @@ class EvacEngine:
         # ========= 适配D可视化适配器新增属性 =========
         self.smoke_matrix = self.smoke_engine.smoke_matrix
         self.smoke_sources = scene.smoke_sources
+        self.exits = scene.exits
 
     def load_external_persons(self, persons):
         self.person_map.clear()
         for person in persons:
             self.person_map[person.id] = person
+
+    def _resolve_move_conflict(self, candidate_pos: dict[int, tuple[int, int]]):
+        """
+        冲突消解：多人预移动到同一个元胞，冲突行人保留原地不动
+        :param candidate_pos: {pid: (nx, ny)} 预计算的候选位置
+        :return: {pid: (final_x, final_y)} 冲突修正后的位置
+        """
+        pos_group = {}
+        for pid, pos in candidate_pos.items():
+            if pos not in pos_group:
+                pos_group[pos] = []
+            pos_group[pos].append(pid)
+
+        final = {}
+        for pos, pid_list in pos_group.items():
+            if len(pid_list) == 1:
+                final[pid_list[0]] = pos
+            else:
+                # 冲突，行人留在上一步坐标
+                for pid in pid_list:
+                    p = self.person_map[pid]
+                    final[pid] = (int(p.x), int(p.y))
+        return final
 
     def is_all_evacuated(self) -> bool:
         return all(p.evacuated for p in self.person_map.values())
@@ -142,8 +167,11 @@ class EvacEngine:
             )
             next_positions[pid] = (nx, ny)
 
-        # 6. 更新坐标 & 判断是否撤离
-        for pid, (nx, ny) in next_positions.items():
+        # -------- 新增：冲突消解，修正抢占重叠 --------
+        fixed_next_pos = self._resolve_move_conflict(next_positions)
+
+        # 6. 更新坐标 & 判断是否撤离，记录 actual_exit
+        for pid, (nx, ny) in fixed_next_pos.items():
             person = self.person_map[pid]
             if person.evacuated:
                 continue
@@ -156,6 +184,13 @@ class EvacEngine:
             if cell and cell.cell_type == CellType.EXIT:
                 person.evacuated = True
                 person.evac_step = self.current_step
+                px = int(nx)
+                py = int(ny)
+                for e in self.exits:
+                    ex, ey, eid = e
+                    if ex == px and ey == py:
+                        person.actual_exit = eid
+                        break
 
         # 7. 更新统计
         self.evacuated_count = self.get_evacuated_count()
