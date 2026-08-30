@@ -223,7 +223,7 @@ class EvacEngine:
         if person_id is None:
             evac_steps = [p.evac_step for p in self.person_map.values() if p.evac_step >= 0]
             if len(evac_steps) == self.total_persons:
-                return max(evac_steps)
+                 return max(evac_steps)
             return -1
         else:
             p = self.person_map.get(person_id)
