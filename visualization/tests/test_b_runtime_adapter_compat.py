@@ -46,6 +46,18 @@ class _RunOneStepEngine(_StepEngine):
 
 
 class BRuntimeAdapterCompatibilityTests(unittest.TestCase):
+    def test_installs_constant_time_row_major_grid_lookup(self) -> None:
+        engine = _StepEngine()
+        first_cell = engine.grid.cells[0]
+        adapter = EvacEngineRuntimeAdapter(engine)
+
+        self.assertIs(first_cell, adapter.grid.get_cell(0, 0))
+        self.assertIsNone(adapter.grid.get_cell(2, 0))
+        self.assertIn(
+            "grid.get_cell(x,y) indexed from validated row-major cells",
+            adapter.d_adapter_meta["runtime_instance_defaults"],
+        )
+
     def test_supports_step_and_all_done_shape(self) -> None:
         engine = _StepEngine()
         adapter = EvacEngineRuntimeAdapter(engine)

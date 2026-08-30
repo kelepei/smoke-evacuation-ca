@@ -19,6 +19,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from experiments.metrics_registry import metric_rows
+from experiments.week6_analysis import analysis_summary_csv, analyze_run
+
 
 class ResultPackageError(ValueError):
     """Raised when a D result package cannot be built safely."""
@@ -68,7 +71,7 @@ def _csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
     stream = io.StringIO(newline="")
     writer = csv.DictWriter(
         stream,
-        fieldnames=["metric_name", "value", "unit", "note"],
+        fieldnames=["metric_name", "label", "value", "unit", "source", "note"],
     )
     writer.writeheader()
     for row in rows:
@@ -134,85 +137,134 @@ def _heatmap_svg(occupancy: list[list[int]]) -> str:
             )
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{svg_w}" height="{svg_h}" viewBox="0 0 {svg_w} {svg_h}">
   <rect width="100%" height="100%" fill="#ffffff"/>
-  <text x="{margin}" y="24" font-family="Arial, Microsoft YaHei" font-size="17" fill="#18243a">人员占用热力图（真实日志）</text>
+  <text x="{margin}" y="24" font-family="Arial, Microsoft YaHei" font-size="17" fill="#18243a">累计占用热力图（真实日志）</text>
   <text x="{margin}" y="40" font-family="Arial, Microsoft YaHei" font-size="11" fill="#556070">颜色越深表示未撤离人员在该元胞累计出现次数越多；最大值 {maximum}</text>
   {''.join(cells)}
 </svg>'''
 
 
-def _metric_rows(
+def _log_visual_data(
     people_rows: list[dict[str, str]],
     *,
-    final_snapshot: Mapping[str, Any],
-) -> tuple[list[dict[str, Any]], list[tuple[float, int]], list[list[int]], dict[str, Any]]:
-    grid = final_snapshot.get("grid")
-    if not isinstance(grid, Mapping):
-        raise ResultPackageError("latest snapshot lacks grid")
-    width = _parse_int(grid.get("width"))
-    height = _parse_int(grid.get("height"))
-    if width is None or height is None or width <= 0 or height <= 0:
-        raise ResultPackageError("latest snapshot has invalid grid dimensions")
-
+    width: int | None = None,
+    height: int | None = None,
+) -> dict[str, Any]:
     grouped: dict[int, list[dict[str, str]]] = defaultdict(list)
+    observed_positions: list[tuple[int, int]] = []
     for row in people_rows:
         step = _parse_int(row.get("step"))
         if step is not None:
             grouped[step].append(row)
+        x, y = _parse_int(row.get("x")), _parse_int(row.get("y"))
+        if x is not None and y is not None and x >= 0 and y >= 0:
+            observed_positions.append((x, y))
     if not grouped:
         raise ResultPackageError("people_log.csv contains no step rows")
+    if width is None:
+        width = max((x for x, _ in observed_positions), default=-1) + 1
+    if height is None:
+        height = max((y for _, y in observed_positions), default=-1) + 1
+    if width <= 0 or height <= 0:
+        raise ResultPackageError("people_log.csv contains no valid grid coordinates")
 
     initial_population = len(grouped[min(grouped)])
-    first_evacuation_time: dict[int, float] = {}
     curve: list[tuple[float, int]] = []
     occupancy = [[0 for _ in range(width)] for _ in range(height)]
-    final_evacuation_count = 0
+    trajectories: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
     for step in sorted(grouped):
         rows = grouped[step]
         evacuated_count = 0
         time_s = _parse_float(rows[0].get("time_s"), default=0.0) or 0.0
         for row in rows:
-            person_id = _parse_int(row.get("person_id"))
             evacuated = _is_true(row.get("evacuated"))
             if evacuated:
                 evacuated_count += 1
-                if person_id is not None and person_id not in first_evacuation_time:
-                    first_evacuation_time[person_id] = time_s
                 continue
             x, y = _parse_int(row.get("x")), _parse_int(row.get("y"))
             if x is not None and y is not None and 0 <= x < width and 0 <= y < height:
                 occupancy[y][x] += 1
+                person_id = str(row.get("person_id", ""))
+                trajectories[person_id].append(
+                    {"x": x, "y": y, "step": step, "time_s": time_s}
+                )
         curve.append((time_s, evacuated_count))
-        final_evacuation_count = evacuated_count
-
-    remaining = max(0, initial_population - final_evacuation_count)
-    total_time = curve[-1][0]
-    success_times = list(first_evacuation_time.values())
-    last_success = max(success_times) if success_times else None
-    t90_target = math.ceil(initial_population * 0.9)
-    t90 = next((time_s for time_s, count in curve if count >= t90_target), None)
-    complete = final_evacuation_count == initial_population
-    metrics = [
-        {"metric_name": "initial_population", "value": initial_population, "unit": "person", "note": "from step 0 people_log"},
-        {"metric_name": "evacuated_count", "value": final_evacuation_count, "unit": "person", "note": "latest recorded step"},
-        {"metric_name": "evacuation_rate", "value": round(final_evacuation_count / max(1, initial_population), 6), "unit": "ratio", "note": "evacuated_count / initial_population"},
-        {"metric_name": "remaining_count", "value": remaining, "unit": "person", "note": "latest recorded step"},
-        {"metric_name": "last_successful_exit_time", "value": "" if last_success is None else last_success, "unit": "s", "note": "first observed evacuated=true transition"},
-        {"metric_name": "total_evacuation_time", "value": last_success if complete else "", "unit": "s", "note": "empty unless all persons have evacuated"},
-        {"metric_name": "mean_evacuation_time", "value": "" if not success_times else round(sum(success_times) / len(success_times), 6), "unit": "s", "note": "successful evacuees only"},
-        {"metric_name": "t90", "value": "" if t90 is None else t90, "unit": "s", "note": "empty when 90% evacuation was not reached"},
-        {"metric_name": "exit_utilization", "value": "", "unit": "ratio", "note": "not calculated: current B output has no actual_exit field"},
-    ]
-    summary = {
+    return {
+        "curve": curve,
+        "occupancy": occupancy,
+        "trajectories": dict(trajectories),
+        "grid": {"width": width, "height": height},
         "initial_population": initial_population,
-        "evacuated_count": final_evacuation_count,
-        "remaining_count": remaining,
-        "evacuation_rate": round(final_evacuation_count / max(1, initial_population), 6),
-        "last_successful_exit_time": last_success,
-        "completed": complete,
-        "last_recorded_time_s": total_time,
     }
-    return metrics, curve, occupancy, summary
+
+
+def _snapshot_grid_dimensions(
+    final_snapshot: Mapping[str, Any] | None,
+) -> tuple[int | None, int | None]:
+    grid = final_snapshot.get("grid") if isinstance(final_snapshot, Mapping) else None
+    if not isinstance(grid, Mapping):
+        return None, None
+    width = _parse_int(grid.get("width"))
+    height = _parse_int(grid.get("height"))
+    if width is None or height is None or width <= 0 or height <= 0:
+        return None, None
+    return width, height
+
+
+def build_runtime_analysis(
+    *,
+    output_dir: str | Path,
+    final_snapshot: Mapping[str, Any] | None = None,
+    include_figures: bool = False,
+    include_layers: bool = False,
+) -> dict[str, Any]:
+    """Read one completed D log stream into metrics and optional SVG figures.
+
+    This is shared by the browser and ZIP exporter so both show the same
+    CSV-derived results instead of maintaining separate analysis logic.
+    """
+
+    base = Path(output_dir)
+    people_rows = _read_csv(base / "people_log.csv")
+    width, height = _snapshot_grid_dimensions(final_snapshot)
+    visual = _log_visual_data(
+        people_rows,
+        width=width,
+        height=height,
+    )
+    week6_metrics = analyze_run(base)
+    summary = {
+        "initial_population": week6_metrics["total_persons"],
+        "evacuated_count": week6_metrics["evacuated_count"],
+        "remaining_count": week6_metrics["remaining_count"],
+        "evacuation_rate": week6_metrics["evacuation_rate"],
+        "last_successful_exit_time": (
+            None
+            if week6_metrics["last_evac_time_s"] == "NA"
+            else week6_metrics["last_evac_time_s"]
+        ),
+        "completed": week6_metrics["status"] == "complete",
+        "last_recorded_time_s": week6_metrics["simulation_time_s"],
+        "total_steps": week6_metrics["simulation_steps"],
+    }
+    result: dict[str, Any] = {
+        "metrics": metric_rows(week6_metrics),
+        "summary": summary,
+        "week6_metrics": week6_metrics,
+    }
+    if include_figures:
+        result["evacuation_curve_svg"] = _curve_svg(
+            visual["curve"], summary["initial_population"]
+        )
+        result["occupancy_heatmap_svg"] = _heatmap_svg(visual["occupancy"])
+    if include_layers:
+        result["layers"] = {
+            "grid": visual["grid"],
+            "cumulative_occupancy": visual["occupancy"],
+            "trajectories": visual["trajectories"],
+            "source": "people_log.csv",
+        }
+    return result
 
 
 def build_result_package(
@@ -229,16 +281,20 @@ def build_result_package(
     base = Path(output_dir)
     people_path = base / "people_log.csv"
     event_path = base / "event_log.csv"
-    people_rows = _read_csv(people_path)
-    event_rows = _read_csv(event_path)
-    metrics, curve, occupancy, summary = _metric_rows(
-        people_rows, final_snapshot=final_snapshot
+    _read_csv(event_path)
+    analysis = build_runtime_analysis(
+        output_dir=base,
+        final_snapshot=final_snapshot,
+        include_figures=True,
     )
+    metrics = analysis["metrics"]
+    summary = analysis["summary"]
 
     metadata = {
         "run_id": run_id,
         "scenario_id": scenario_id,
         "schema_version": final_snapshot.get("schema_version"),
+        "random_seed": final_snapshot.get("random_seed"),
         "time_step_s": final_snapshot.get("time_step"),
         "last_step": final_snapshot.get("step"),
         "max_steps": max_steps,
@@ -254,6 +310,7 @@ def build_result_package(
     configuration = {
         "run_id": run_id,
         "scenario_id": scenario_id,
+        "random_seed": final_snapshot.get("random_seed"),
         "time_step_s": final_snapshot.get("time_step"),
         "max_steps": max_steps,
         "input_files": {key: path.name for key, path in input_files.items() if path.is_file()},
@@ -265,8 +322,10 @@ def build_result_package(
         bundle.writestr(prefix + "metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
         bundle.writestr(prefix + "config.json", json.dumps(configuration, ensure_ascii=False, indent=2))
         bundle.writestr(prefix + "metrics.csv", _csv_text(metrics))
-        bundle.writestr(prefix + "evacuation_curve.svg", _curve_svg(curve, summary["initial_population"]))
-        bundle.writestr(prefix + "occupancy_heatmap.svg", _heatmap_svg(occupancy))
+        bundle.writestr(prefix + "evacuation_curve.svg", analysis["evacuation_curve_svg"])
+        bundle.writestr(prefix + "occupancy_heatmap.svg", analysis["occupancy_heatmap_svg"])
+        bundle.writestr(prefix + "week6_metrics.json", json.dumps(analysis["week6_metrics"], ensure_ascii=False, indent=2))
+        bundle.writestr(prefix + "week6_metrics_summary.csv", analysis_summary_csv(analysis["week6_metrics"]))
         bundle.write(people_path, prefix + "people_log.csv")
         bundle.write(event_path, prefix + "event_log.csv")
         for key, source in input_files.items():

@@ -103,11 +103,13 @@ class IntegratedRuntimeTests(unittest.TestCase):
                 output_root=root / "outputs",
                 run_id="integrated_test",
                 random_seed=42,
+                time_step_s=0.25,
                 max_steps=8,
             )
             try:
                 initial = runner.initialize()
                 self.assertEqual(4, len(initial["people"]))
+                self.assertEqual(0.25, initial["time_step"])
                 self.assertEqual(1, len(initial["relations"]))
                 self.assertEqual("A map + C population + B EvacEngine", initial["adapter_meta"]["input_mode"])
                 final = runner.run_until_finished()
