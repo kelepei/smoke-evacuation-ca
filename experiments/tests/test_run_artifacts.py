@@ -42,7 +42,7 @@ class RunArtifactTests(unittest.TestCase):
 
             self.assertEqual(metrics["evacuated_count"], 1)
             self.assertEqual(metrics["remaining_count"], 1)
-            self.assertEqual(metrics["first_evac_time_s"], 1.0)
+            self.assertEqual(metrics["first_evacuation_time_s"], 1.0)
             self.assertEqual(metrics["max_smoke"], 2.0)
             self.assertAlmostEqual(metrics["avg_smoke"], 1.0)
             self.assertTrue((output_dir / "config_used.json").is_file())

@@ -77,7 +77,7 @@ class WebRuntimeServerTests(unittest.TestCase):
         try:
             with tempfile.TemporaryDirectory() as raw:
                 map_path, population_path = self._write_inputs(Path(raw))
-                initial = post(
+                initial_response = post(
                     "/api/session",
                     {
                         "map_file": {"name": map_path.name, "text": map_path.read_text(encoding="utf-8")},
@@ -86,14 +86,23 @@ class WebRuntimeServerTests(unittest.TestCase):
                             "text": population_path.read_text(encoding="utf-8"),
                         },
                         "max_steps": 8,
+                        "random_seed": 17,
+                        "time_step_s": 0.25,
                     },
-                )["snapshot"]
+                )
+                initial = initial_response["snapshot"]
+                self.assertEqual(
+                    {"random_seed": 17, "time_step_s": 0.25, "max_steps": 8},
+                    initial_response["runtime_parameters"],
+                )
+                self.assertEqual(17, initial["random_seed"])
+                self.assertEqual(0.25, initial["time_step"])
                 self.assertEqual(2, len(initial["people"]))
                 self.assertEqual("A map + C population + B EvacEngine", initial["adapter_meta"]["input_mode"])
                 stepped_response = post("/api/session/step", {})
                 stepped = stepped_response["snapshot"]
                 self.assertEqual(1, stepped["step"])
-                self.assertEqual(0.5, stepped["time_s"])
+                self.assertEqual(0.25, stepped["time_s"])
                 smoke_field = stepped["fields"]["smoke_field"]
                 self.assertGreater(max(max(row) for row in smoke_field), 0.0)
                 self.assertIn(
@@ -104,6 +113,27 @@ class WebRuntimeServerTests(unittest.TestCase):
                     stepped_response["diagnostics"]["request_processing_ms"], 0
                 )
                 self.assertTrue(Path(stepped_response["output_dir"], "final_frame.png").is_file())
+                with urlopen(base_url + "/api/session/analysis", timeout=10) as response:
+                    analysis = json.loads(response.read().decode("utf-8"))
+                self.assertTrue(analysis["ok"])
+                self.assertIn("evacuation_curve_svg", analysis)
+                self.assertIn("occupancy_heatmap_svg", analysis)
+                self.assertIn("累计占用热力图", analysis["occupancy_heatmap_svg"])
+                self.assertEqual("NA", analysis["week6_metrics"]["total_evacuation_time_s"])
+                self.assertEqual("NA", analysis["week6_metrics"]["exit_distribution"])
+                with urlopen(base_url + "/api/experiments", timeout=10) as response:
+                    history = json.loads(response.read().decode("utf-8"))
+                self.assertTrue(history["ok"])
+                matching = next(item for item in history["experiments"] if item["experiment_id"] == initial["run_id"])
+                with urlopen(base_url + "/api/experiments/" + matching["id"], timeout=10) as response:
+                    detail = json.loads(response.read().decode("utf-8"))
+                self.assertTrue(detail["ok"])
+                self.assertEqual(initial["run_id"], detail["experiment"]["summary"]["experiment_id"])
+                with urlopen(base_url + "/api/session/layers", timeout=10) as response:
+                    layers = json.loads(response.read().decode("utf-8"))
+                self.assertTrue(layers["ok"])
+                self.assertEqual("people_log.csv", layers["layers"]["source"])
+                self.assertNotIn("evacuation_curve_svg", layers)
                 with urlopen(base_url + "/api/session/export", timeout=10) as response:
                     self.assertEqual("application/zip", response.headers.get_content_type())
                     package = zipfile.ZipFile(io.BytesIO(response.read()))
@@ -114,6 +144,8 @@ class WebRuntimeServerTests(unittest.TestCase):
                 self.assertIn(prefix + "metrics.csv", names)
                 self.assertIn(prefix + "evacuation_curve.svg", names)
                 self.assertIn(prefix + "occupancy_heatmap.svg", names)
+                self.assertIn(prefix + "week6_metrics.json", names)
+                self.assertIn(prefix + "week6_metrics_summary.csv", names)
                 self.assertIn(prefix + "inputs/map_file.json", names)
                 self.assertIn(prefix + "inputs/population_file.json", names)
                 packaged_people = list(

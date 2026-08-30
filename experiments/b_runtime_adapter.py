@@ -18,6 +18,37 @@ class BRuntimeAdapterError(ValueError):
 BehaviorProvider = Callable[[Any], Mapping[int, Mapping[str, Any]]]
 
 
+def _install_indexed_grid_lookup(grid: Any) -> bool:
+    """Use D's validated row-major Grid layout for constant-time lookup."""
+
+    try:
+        width = int(grid.width)
+        height = int(grid.height)
+        cells = grid.cells
+    except (AttributeError, TypeError, ValueError):
+        return False
+    if width <= 0 or height <= 0 or len(cells) != width * height:
+        return False
+    for index, cell in enumerate(cells):
+        if int(getattr(cell, "x", -1)) != index % width or int(
+            getattr(cell, "y", -1)
+        ) != index // width:
+            return False
+
+    def get_cell(x: int, y: int) -> Any:
+        try:
+            ix = int(x)
+            iy = int(y)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if ix != x or iy != y or not (0 <= ix < width and 0 <= iy < height):
+            return None
+        return cells[iy * width + ix]
+
+    setattr(grid, "get_cell", get_cell)
+    return True
+
+
 class EvacEngineRuntimeAdapter:
     """Expose B's current public runtime through D's runner contract.
 
@@ -54,7 +85,11 @@ class EvacEngineRuntimeAdapter:
         self._render_upstream_animation = render_upstream_animation
         initialized_fields: list[str] = []
         grid = self._engine.grid
-        if not callable(getattr(grid, "get_cell", None)):
+        if _install_indexed_grid_lookup(grid):
+            initialized_fields.append(
+                "grid.get_cell(x,y) indexed from validated row-major cells"
+            )
+        elif not callable(getattr(grid, "get_cell", None)):
             def get_cell(x: int, y: int) -> Any:
                 for cell in grid.cells:
                     if int(cell.x) == int(x) and int(cell.y) == int(y):

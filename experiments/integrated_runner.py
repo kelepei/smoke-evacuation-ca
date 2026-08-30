@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+import numpy as np
+
 from core.schema import CellType, Exit, Person, Relation, ScenarioConfig, SmokeSource
 from experiments.b_runtime_adapter import EvacEngineRuntimeAdapter
 from experiments.run_artifacts import write_run_artifacts
@@ -259,6 +261,7 @@ def integrated_simulation_factory(
         seed = scenario.config.parameters.get("random_seed")  # type: ignore[attr-defined]
         if seed is not None:
             random.seed(seed)
+            np.random.seed(seed)
         wrapped = EvacEngineRuntimeAdapter(
             EvacEngine(scenario.config),
             adapter_meta={
@@ -292,6 +295,7 @@ def create_integrated_runner(
     c_module_path: str | Path = Path("control") / "scene_config.py",
     run_id: str = "d_integrated_run",
     random_seed: int | None = None,
+    time_step_s: float = 0.5,
     max_steps: int = 500,
 ) -> SimulationRunner:
     scenario = build_integrated_scenario(
@@ -305,7 +309,7 @@ def create_integrated_runner(
         integrated_simulation_factory(scenario),
         output_root=output_root,
         run_id=run_id,
-        time_step_s=0.5,
+        time_step_s=time_step_s,
         max_steps=max_steps,
         random_seed=scenario.config.parameters.get("random_seed"),  # type: ignore[attr-defined]
     )
@@ -322,6 +326,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--output-root", type=Path, default=Path("outputs") / "integrated")
     parser.add_argument("--run-id", default="d_integrated_run")
     parser.add_argument("--random-seed", type=int)
+    parser.add_argument("--time-step", type=float, default=0.5)
     parser.add_argument("--max-steps", type=int, default=500)
     parser.add_argument("--headless", action="store_true")
     return parser.parse_args()
@@ -337,6 +342,7 @@ def main() -> None:
         output_root=args.output_root,
         run_id=args.run_id,
         random_seed=args.random_seed,
+        time_step_s=args.time_step,
         max_steps=args.max_steps,
     )
     try:

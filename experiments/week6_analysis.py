@@ -10,15 +10,14 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import json
 import math
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
-
-NA = "NA"
-
+from experiments.metrics_registry import NA, metric_rows
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
     if not path.is_file():
@@ -63,47 +62,7 @@ def _mean(values: Iterable[float]) -> float | str:
 
 
 def _metric_rows(metrics: Mapping[str, Any]) -> list[dict[str, Any]]:
-    units = {
-        "total_steps": "step",
-        "total_time_s": "s",
-        "evacuated_count": "person",
-        "remaining_count": "person",
-        "evacuation_rate": "ratio",
-        "first_evac_time_s": "s",
-        "last_evac_time_s": "s",
-        "t90_time_s": "s",
-        "max_smoke": "concentration",
-        "avg_smoke": "concentration",
-        "avg_risk": "risk",
-        "avg_dose": "dose",
-        "avg_congestion": "ratio",
-        "mean_waiting_time_s": "s",
-        "informed_rate": "ratio",
-        "group_cohesion": "ratio",
-        "exit_distribution": "json",
-        "improvement_rate": "ratio",
-    }
-    return [
-        {
-            "metric_name": name,
-            "value": metrics.get(name, NA),
-            "unit": units.get(name, ""),
-            "note": metrics.get(f"{name}_note", ""),
-        }
-        for name in units
-    ]
-
-
-def _group_cohesion_values(values: Iterable[tuple[str, str]]) -> list[float]:
-    by_group: dict[str, Counter[str]] = defaultdict(Counter)
-    for group_id, exit_id in values:
-        by_group[group_id][exit_id] += 1
-    cohesion: list[float] = []
-    for exits in by_group.values():
-        group_size = sum(exits.values())
-        if group_size > 1:
-            cohesion.append(max(exits.values()) / group_size)
-    return cohesion
+    return metric_rows(metrics)
 
 
 def analyze_run(run_dir: str | Path) -> dict[str, Any]:
@@ -130,11 +89,7 @@ def analyze_run(run_dir: str | Path) -> dict[str, Any]:
     all_smoke: list[float] = []
     all_risk: list[float] = []
     all_dose: list[float] = []
-    all_congestion: list[float] = []
-    informed_values: list[bool] = []
-    waiting_values: list[float] = []
     latest_exit_by_person: dict[str, str] = {}
-    group_exit_by_person: dict[str, tuple[str, str]] = {}
 
     for row in rows:
         time_s = _float(row.get("time_s"))
@@ -151,27 +106,37 @@ def analyze_run(run_dir: str | Path) -> dict[str, Any]:
         dose = _float(row.get("dose"))
         if dose is not None:
             all_dose.append(dose)
-        congestion = _float(row.get("congestion") or row.get("congestion_level"))
-        if congestion is not None:
-            all_congestion.append(congestion)
-        exit_id = row.get("actual_exit") or row.get("target_exit")
+        # A planned target is not evidence of the exit actually used.  Keep
+        # this analysis truthful until B emits ``actual_exit``.
+        exit_id = row.get("actual_exit")
         if exit_id not in (None, ""):
             latest_exit_by_person[person_id] = str(exit_id)
-            group_id = row.get("group_id")
-            if group_id not in (None, ""):
-                group_exit_by_person[person_id] = (str(group_id), str(exit_id))
-        info_state = row.get("info_state")
-        if info_state not in (None, ""):
-            informed_values.append(str(info_state).upper() != "UNKNOWN")
-        waiting = _float(row.get("waiting_time_s") or row.get("wait_time_s"))
-        if waiting is not None:
-            waiting_values.append(waiting)
 
     final_evacuated = sum(1 for row in final_rows if _bool(row.get("evacuated")) is True)
     evacuation_times = list(evacuated_by_person.values())
     total_time = max((_float(row.get("time_s")) or 0.0 for row in final_rows), default=0.0)
     exit_distribution = Counter(latest_exit_by_person.values())
-    group_values = _group_cohesion_values(group_exit_by_person.values())
+    active_positions = Counter(
+        (x, y)
+        for row in final_rows
+        if _bool(row.get("evacuated")) is not True
+        for x, y in [(_int(row.get("x")), _int(row.get("y")))]
+        if x is not None and y is not None
+    )
+    overlap_cells = sum(1 for count in active_positions.values() if count > 1)
+    overlap_by_step = [
+        Counter(
+            (x, y)
+            for row in step_rows
+            if _bool(row.get("evacuated")) is not True
+            for x, y in [(_int(row.get("x")), _int(row.get("y")))]
+            if x is not None and y is not None
+        )
+        for step_rows in by_step.values()
+    ]
+    overlap_steps = sum(1 for positions in overlap_by_step if any(count > 1 for count in positions.values()))
+    max_overlap_cells = max((sum(count > 1 for count in positions.values()) for positions in overlap_by_step), default=0)
+    max_persons_per_cell = max((max(positions.values(), default=0) for positions in overlap_by_step), default=0)
     t90_target = math.ceil(population * 0.9)
     t90 = NA
     for step in steps:
@@ -180,10 +145,40 @@ def analyze_run(run_dir: str | Path) -> dict[str, Any]:
             t90 = _float(by_step[step][0].get("time_s")) or 0.0
             break
 
+    mean_evacuation_time = _mean(evacuation_times)
+    complete = population > 0 and final_evacuated == population
+    total_evacuation_time = max(evacuation_times) if complete else NA
+    random_seed = _int(rows[0].get("random_seed"))
     metrics: dict[str, Any] = {
         "run_id": rows[0].get("run_id", output_dir.name),
         "scenario_id": rows[0].get("scenario_id", NA),
+        "random_seed": random_seed if random_seed is not None else NA,
+        "status": "complete" if complete else "incomplete",
+        "total_persons": population,
+        "simulation_steps": steps[-1],
+        "simulation_time_s": total_time,
+        "total_evacuation_time_s": total_evacuation_time,
+        "mean_evacuation_time_s": mean_evacuation_time,
+        "first_evacuation_time_s": min(evacuation_times) if evacuation_times else NA,
+        "overlap_cells": overlap_cells,
+        "overlap_steps": overlap_steps,
+        "max_overlap_cells": max_overlap_cells,
+        "max_persons_per_cell": max_persons_per_cell,
+        "exit_utilization": (
+            {exit_id: round(count / len(latest_exit_by_person), 6) for exit_id, count in sorted(exit_distribution.items())}
+            if latest_exit_by_person
+            else NA
+        ),
+        "exit_utilization_note": (
+            "shares calculated from logged actual_exit"
+            if latest_exit_by_person
+            else "NA: B did not provide actual_exit"
+        ),
+        # Compatibility aliases are retained for Round-1 consumers. They are
+        # intentionally absent from the formal registry and batch contract.
+        "total_population": population,
         "total_steps": steps[-1],
+        "elapsed_time_s": total_time,
         "total_time_s": total_time,
         "evacuated_count": final_evacuated,
         "remaining_count": max(0, population - final_evacuated),
@@ -195,26 +190,24 @@ def analyze_run(run_dir: str | Path) -> dict[str, Any]:
         "avg_smoke": _mean(all_smoke),
         "avg_risk": _mean(all_risk),
         "avg_dose": _mean(all_dose),
-        "avg_congestion": _mean(all_congestion),
-        "mean_waiting_time_s": _mean(waiting_values),
-        "informed_rate": _mean(float(value) for value in informed_values),
-        "group_cohesion": _mean(group_values),
         "exit_distribution": dict(exit_distribution) if exit_distribution else NA,
-        "group_cohesion_note": (
-            "NA: B/C did not provide group_id with exit choice"
-            if not group_values
-            else "mean majority-exit share per group"
+        "exit_distribution_note": (
+            "NA: B did not provide actual_exit"
+            if not exit_distribution
+            else "counts actual_exit only"
         ),
-        "avg_congestion_note": (
-            "NA: B did not provide congestion"
-            if not all_congestion
-            else "mean of B congestion rows"
+        "total_evacuation_time_s_note": (
+            "all people evacuated"
+            if complete
+            else "NA: run is not fully evacuated"
         ),
-        "mean_waiting_time_s_note": (
-            "NA: B did not provide waiting_time_s"
-            if not waiting_values
-            else "mean of B waiting_time_s rows"
+        "mean_evacuation_time_s_note": (
+            "mean first evacuated transition time"
+            if evacuation_times
+            else "NA: no person has evacuated"
         ),
+        "avg_risk_note": "NA: B did not provide risk" if not all_risk else "mean logged risk",
+        "avg_dose_note": "NA: B did not provide dose" if not all_dose else "mean logged dose",
     }
     return metrics
 
@@ -248,9 +241,25 @@ def write_analysis(metrics: Mapping[str, Any], output_dir: str | Path) -> None:
         json.dumps(dict(metrics), ensure_ascii=False, indent=2), encoding="utf-8"
     )
     with (output_path / "week6_metrics_summary.csv").open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.DictWriter(stream, fieldnames=["metric_name", "value", "unit", "note"])
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=["metric_name", "label", "value", "unit", "source", "note"],
+        )
         writer.writeheader()
         writer.writerows(_metric_rows(metrics))
+
+
+def analysis_summary_csv(metrics: Mapping[str, Any]) -> str:
+    """Return the standard Week-6 summary without creating another artifact."""
+
+    stream = io.StringIO(newline="")
+    writer = csv.DictWriter(
+        stream,
+        fieldnames=["metric_name", "label", "value", "unit", "source", "note"],
+    )
+    writer.writeheader()
+    writer.writerows(_metric_rows(metrics))
+    return stream.getvalue()
 
 
 def _parse_args() -> argparse.Namespace:

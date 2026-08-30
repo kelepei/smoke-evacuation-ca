@@ -19,6 +19,7 @@ import mimetypes
 import shutil
 import tempfile
 import threading
+import math
 from datetime import datetime
 from dataclasses import dataclass
 from http import HTTPStatus
@@ -26,10 +27,11 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Mapping
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
+from experiments.experiment_history import ExperimentHistoryError, discover_experiments, load_experiment_detail
 from experiments.integrated_runner import create_integrated_runner
-from experiments.result_package import ResultPackageError, build_result_package
+from experiments.result_package import ResultPackageError, build_result_package, build_runtime_analysis
 from experiments.run_artifacts import write_run_artifacts
 from visualization.scene_input_adapter import grid_to_static_snapshot, load_map_grid
 
@@ -142,6 +144,25 @@ def _positive_steps(value: Any) -> int:
     return value
 
 
+def _optional_seed(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise WebRuntimeError("random_seed must be an integer or empty")
+    return value
+
+
+def _positive_time_step(value: Any) -> float:
+    if value is None:
+        return 0.5
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise WebRuntimeError("time_step_s must be numeric")
+    normalized = float(value)
+    if not math.isfinite(normalized) or not 0 < normalized <= 60:
+        raise WebRuntimeError("time_step_s must be greater than 0 and at most 60")
+    return normalized
+
+
 class RuntimeRequestHandler(SimpleHTTPRequestHandler):
     """Serve the D HTML and a minimal JSON API from one localhost origin."""
 
@@ -168,9 +189,20 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802 - required HTTP handler name
-        path = urlparse(self.path).path
+        parsed_url = urlparse(self.path)
+        path = parsed_url.path
         if path == "/api/health":
             self._send_json({"ok": True, "service": "d_web_runtime", "version": "0.1"})
+            return
+        if path == "/api/experiments":
+            self._send_json({"ok": True, "experiments": discover_experiments(self._history_roots())})
+            return
+        if path.startswith("/api/experiments/"):
+            try:
+                experiment_id = unquote(path.removeprefix("/api/experiments/"))
+                self._send_json({"ok": True, "experiment": load_experiment_detail(experiment_id, self._history_roots())})
+            except ExperimentHistoryError as exc:
+                self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
             return
         if path == "/api/session/export":
             try:
@@ -180,6 +212,25 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
             except Exception as exc:
                 self._send_error_json(HTTPStatus.INTERNAL_SERVER_ERROR, f"export error: {exc}")
+            return
+        if path in {
+            "/api/session/metrics",
+            "/api/session/analysis",
+            "/api/session/layers",
+        }:
+            try:
+                with self.server.session_lock:
+                    self._send_json(
+                        self._runtime_analysis(
+                            include_figures=path.endswith("/analysis"),
+                            include_layers=path.endswith("/analysis")
+                            or path.endswith("/layers"),
+                        )
+                    )
+            except WebRuntimeError as exc:
+                self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            except Exception as exc:
+                self._send_error_json(HTTPStatus.INTERNAL_SERVER_ERROR, f"analysis error: {exc}")
             return
         super().do_GET()
 
@@ -198,7 +249,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                     elif path == "/api/session/template":
                         response = self._create_template_session(payload)
                     elif path == "/api/session/sample":
-                        response = self._create_repository_sample()
+                        response = self._create_repository_sample(payload)
                     elif path == "/api/session/step":
                         response = self._step_session()
                     elif path == "/api/session/reset":
@@ -249,6 +300,8 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 people_path=people_path,
                 yaml_path=yaml_path,
                 max_steps=_positive_steps(payload.get("max_steps")),
+                random_seed=_optional_seed(payload.get("random_seed")),
+                time_step_s=_positive_time_step(payload.get("time_step_s")),
             )
         except Exception:
             temporary_directory.cleanup()
@@ -328,7 +381,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             },
         }
 
-    def _create_repository_sample(self) -> dict[str, Any]:
+    def _create_repository_sample(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         """Start the one confirmed A/C repository sample without browser uploads."""
 
         self.server.close_session()
@@ -356,7 +409,9 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 map_path=map_path,
                 people_path=people_path,
                 yaml_path=yaml_path if yaml_path.is_file() else None,
-                max_steps=500,
+                max_steps=_positive_steps(payload.get("max_steps")),
+                random_seed=_optional_seed(payload.get("random_seed")),
+                time_step_s=_positive_time_step(payload.get("time_step_s")),
             )
         except Exception:
             temporary_directory.cleanup()
@@ -383,6 +438,8 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                     people_path=people_path,
                     yaml_path=yaml_path,
                     max_steps=_positive_steps(payload.get("max_steps")),
+                    random_seed=_optional_seed(payload.get("random_seed")),
+                    time_step_s=_positive_time_step(payload.get("time_step_s")),
                 )
             except Exception as exc:
                 message = str(exc)
@@ -406,6 +463,8 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         people_path: Path,
         yaml_path: Path | None,
         max_steps: int,
+        random_seed: int | None = None,
+        time_step_s: float = 0.5,
     ) -> dict[str, Any]:
         run_id = _new_run_id()
         output_root = self.server.root / "outputs" / "experiments"
@@ -417,6 +476,8 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             c_module_path=self.server.root / "control" / "scene_config.py",
             output_root=output_root,
             run_id=run_id,
+            random_seed=random_seed,
+            time_step_s=time_step_s,
             max_steps=max_steps,
         )
         try:
@@ -441,6 +502,11 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             "ok": True,
             "snapshot": snapshot,
             "output_dir": str(runner.output_root / run_id),
+            "runtime_parameters": {
+                "random_seed": snapshot.get("random_seed"),
+                "time_step_s": snapshot.get("time_step"),
+                "max_steps": max_steps,
+            },
         }
 
     def _require_session(self) -> RuntimeSession:
@@ -481,6 +547,11 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             "ok": True,
             "snapshot": snapshot,
             "output_dir": str(session.runner.output_root / snapshot["run_id"]),
+            "runtime_parameters": {
+                "random_seed": snapshot.get("random_seed"),
+                "time_step_s": snapshot.get("time_step"),
+                "max_steps": session.max_steps,
+            },
         }
 
     def _write_run_metadata(
@@ -526,6 +597,36 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             filename=package.filename,
         )
 
+    def _runtime_analysis(
+        self, *, include_figures: bool, include_layers: bool
+    ) -> dict[str, Any]:
+        """Return only CSV-derived analysis for the active D run."""
+
+        session = self._require_session()
+        snapshot = session.runner.current_snapshot
+        run_id = session.runner.current_run_id
+        if snapshot is None or not run_id:
+            raise WebRuntimeError("active session has no current snapshot to analyze")
+        try:
+            result = build_runtime_analysis(
+                output_dir=session.runner.output_root / run_id,
+                final_snapshot=snapshot,
+                include_figures=include_figures,
+                include_layers=include_layers,
+            )
+        except ResultPackageError as exc:
+            raise WebRuntimeError(str(exc)) from exc
+        result["ok"] = True
+        return result
+
+    def _history_roots(self) -> tuple[Path, ...]:
+        """Return only D's real formal output roots for the history view."""
+
+        return (
+            self.server.root / "outputs" / "experiments",
+            self.server.root / "outputs" / "integrated",
+        )
+
     def _send_json(self, data: Mapping[str, Any]) -> None:
         encoded = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(HTTPStatus.OK)
@@ -565,7 +666,7 @@ def main() -> None:
     if not (root / "visualization" / "prototype" / "integrated_runtime.html").is_file():
         raise SystemExit("--root must be the smoke-evacuation-ca repository root")
     server = DWebRuntimeServer((args.host, args.port), RuntimeRequestHandler, root=root)
-    print(f"D local web runtime: http://{args.host}:{args.port}/visualization/prototype/integrated_runtime.html")
+    print(f"D local web runtime: http://{args.host}:{args.port}/visualization/prototype/final_platform.html")
     print("Press Ctrl+C to stop the local server.")
     try:
         server.serve_forever()
