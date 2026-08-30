@@ -84,11 +84,12 @@ def _svg_escape(value: Any) -> str:
 
 
 def _curve_svg(points: list[tuple[float, int]], population: int) -> str:
-    width, height, left, right, top, bottom = 760, 380, 62, 28, 35, 48
+    width, height, left, right, top, bottom = 760, 380, 72, 28, 35, 48
     chart_w, chart_h = width - left - right, height - top - bottom
     max_time = max((point[0] for point in points), default=1.0)
     max_time = max(1.0, max_time)
     maximum = max(1, population)
+    max_count = max((point[1] for point in points), default=0)
     if points:
         polyline = " ".join(
             f"{left + chart_w * time_s / max_time:.2f},{top + chart_h * (1 - count / maximum):.2f}"
@@ -99,14 +100,17 @@ def _curve_svg(points: list[tuple[float, int]], population: int) -> str:
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
   <rect width="100%" height="100%" fill="#ffffff"/>
   <text x="{left}" y="22" font-family="Arial, Microsoft YaHei" font-size="17" fill="#18243a">疏散人数—时间曲线（真实日志）</text>
+  <rect x="{left}" y="{top}" width="{chart_w}" height="{chart_h}" fill="#fbfdff" stroke="#cbd5e1"/>
   <line x1="{left}" y1="{top + chart_h}" x2="{left + chart_w}" y2="{top + chart_h}" stroke="#556070"/>
   <line x1="{left}" y1="{top}" x2="{left}" y2="{top + chart_h}" stroke="#556070"/>
+  <line x1="{left}" y1="{top + chart_h}" x2="{left + chart_w}" y2="{top + chart_h}" stroke="#93c5fd" stroke-dasharray="4 4"/>
   <text x="{left - 20}" y="{top + chart_h + 4}" font-family="Arial" font-size="12" fill="#556070">0</text>
   <text x="{left - 36}" y="{top + 4}" font-family="Arial" font-size="12" fill="#556070">{population}</text>
   <text x="{left + chart_w - 58}" y="{top + chart_h + 28}" font-family="Arial" font-size="12" fill="#556070">时间 / s</text>
-  <text x="10" y="{top + 12}" font-family="Arial, Microsoft YaHei" font-size="12" fill="#556070">已疏散人数</text>
+  <text x="17" y="{top + chart_h / 2}" transform="rotate(-90 17 {top + chart_h / 2})" text-anchor="middle" font-family="Arial, Microsoft YaHei" font-size="12" fill="#556070">已疏散人数</text>
   <polyline points="{polyline}" fill="none" stroke="#2764e7" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
   <text x="{left + chart_w - 98}" y="{top + 18}" font-family="Arial" font-size="12" fill="#2764e7">{max_time:g}s</text>
+  {f'<text x="{left + chart_w / 2}" y="{top + chart_h / 2}" text-anchor="middle" font-family="Arial, Microsoft YaHei" font-size="13" fill="#64748b">尚无撤离事件</text>' if max_count == 0 else ''}
 </svg>'''
 
 
@@ -302,7 +306,7 @@ def build_result_package(
         "data_source": "A map + C population + B CA via D integration boundary",
         "limitations": {
             "missing_upstream_fields_remain_empty": ["heading", "risk", "dose", "conflict", "exit_switch"],
-            "exit_utilization": "not available until B provides actual_exit",
+            "exit_utilization": "calculated only when B logs actual_exit",
             "strategy_controls": "not connected to B movement decisions in this package",
         },
         "summary": summary,
