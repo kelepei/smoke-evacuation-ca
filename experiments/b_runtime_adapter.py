@@ -18,6 +18,38 @@ class BRuntimeAdapterError(ValueError):
 BehaviorProvider = Callable[[Any], Mapping[int, Mapping[str, Any]]]
 
 
+def _prepare_b_exit_tuples(engine: Any) -> bool:
+    """Adapt shared-schema exits to B's current runtime-only tuple contract."""
+
+    raw_exits = getattr(engine, "exits", None)
+    if not isinstance(raw_exits, list) or not raw_exits:
+        return False
+    if all(isinstance(item, tuple) and len(item) == 3 for item in raw_exits):
+        return False
+
+    grid = getattr(engine, "grid", None)
+    cells = getattr(grid, "cells", [])
+    exit_cells = [
+        (int(cell.x), int(cell.y))
+        for cell in cells
+        if getattr(getattr(cell, "cell_type", None), "value", getattr(cell, "cell_type", None))
+        == "exit"
+    ]
+    if len(exit_cells) != len(raw_exits):
+        return False
+
+    tuples: list[tuple[int, int, str]] = []
+    for index, exit_obj in enumerate(raw_exits):
+        exit_id = getattr(exit_obj, "id", getattr(exit_obj, "exit_id", None))
+        if exit_id in (None, ""):
+            return False
+        x = getattr(exit_obj, "x", exit_cells[index][0])
+        y = getattr(exit_obj, "y", exit_cells[index][1])
+        tuples.append((int(x), int(y), str(exit_id)))
+    engine.exits = tuples
+    return True
+
+
 def _install_indexed_grid_lookup(grid: Any) -> bool:
     """Use D's validated row-major Grid layout for constant-time lookup."""
 
@@ -84,6 +116,8 @@ class EvacEngineRuntimeAdapter:
             raise TypeError("render_upstream_animation must be boolean")
         self._render_upstream_animation = render_upstream_animation
         initialized_fields: list[str] = []
+        if _prepare_b_exit_tuples(self._engine):
+            initialized_fields.append("B runtime exits=(x,y,exit_id) from scene grid")
         grid = self._engine.grid
         if _install_indexed_grid_lookup(grid):
             initialized_fields.append(

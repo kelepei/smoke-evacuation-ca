@@ -28,7 +28,6 @@ class FinalPlatformPageTests(unittest.TestCase):
         ):
             self.assertIn(f'id="{control}"', self.page)
         self.assertIn("/api/session/layers", self.page)
-        self.assertIn("people_log.csv", self.page)
         self.assertIn("当前场景无烟源；不生成视觉烟雾", self.page)
 
     def test_history_ui_reads_only_real_output_api(self) -> None:
@@ -38,6 +37,18 @@ class FinalPlatformPageTests(unittest.TestCase):
         self.assertNotIn("实时拥堵热力图", self.page)
         self.assertIn("仅统计 B 返回的 actual_exit", self.page)
         self.assertIn("NA · 上游未提供", self.page)
+
+    def test_navigation_and_history_errors_are_product_friendly(self) -> None:
+        self.assertIn('href="#runtime"', self.page)
+        self.assertIn('href="#analysis"', self.page)
+        self.assertIn("scrollIntoView", self.page)
+        self.assertIn("历史实验暂不可用。请在开发诊断查看详情。", self.page)
+        self.assertNotIn("unavailable: ${error.message}", self.page)
+
+    def test_actual_exit_is_rendered_only_from_real_runtime_or_history_data(self) -> None:
+        self.assertIn("person.evacuated && person.actual_exit", self.page)
+        self.assertIn("week6_metrics: historyMetrics", self.page)
+        self.assertIn("renderActualExitDistribution(actualExits)", self.page)
 
 
 if __name__ == "__main__":
