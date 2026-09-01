@@ -42,7 +42,7 @@ class EvacEngine:
         self.current_step = 0
 
         # 绑定场景seed，给外部冲突消解、出口选择、拥堵模型使用，保证仿真可复现
-        self.random = random.Random(scene.seed)
+        self.random = random.Random(getattr(scene, "parameters", {}).get("random_seed"))
 
         # ===== B03出口选择、B09拥堵模型实例化 =====
         self.exit_chooser = ExitChooser(scene, rng=self.random)
@@ -152,7 +152,7 @@ class EvacEngine:
                 floor_field=self.floor_field,
                 signage_model=signage_model,
                 occupied_positions=occupied_positions,
-                exit_list=[(e.exit_id, e.x, e.y) for e in self.exits],
+                exit_list=[(eid, ex, ey) for ex, ey, eid in self.exits],
                 exit_chooser=self.exit_chooser,
                 congestion_model=self.congestion_model,
                 alive_person_pos=alive_person_pos,
