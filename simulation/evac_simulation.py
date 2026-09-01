@@ -17,13 +17,15 @@ from .risk_perception import SmokeRiskPerception
 from .risk_metrics import SmokeDoseRecorder
 from .floor_field import FloorField
 from .conflict_solver import resolve_conflict
+from .exit_choice import ExitChooser
+from .congestion import CongestionModel
 
 
 class EvacEngine:
     """
     疏散仿真引擎
     适配A模块输出人员坐标
-    改动：接入外部conflict_solver冲突消解、增加actual_exit出口记录
+    改动：接入外部conflict_solver冲突消解、增加actual_exit出口记录；新增B03出口选择、B09拥堵模型
     """
     MAX_SIM_STEP = 2000  # 最大仿真步数，防止死循环
 
@@ -39,8 +41,12 @@ class EvacEngine:
         self.height = self.grid.height
         self.current_step = 0
 
-        # 绑定场景seed，给外部冲突消解使用，保证仿真可复现
+        # 绑定场景seed，给外部冲突消解、出口选择、拥堵模型使用，保证仿真可复现
         self.random = random.Random(scene.seed)
+
+        # ===== B03出口选择、B09拥堵模型实例化 =====
+        self.exit_chooser = ExitChooser(scene, rng=self.random)
+        self.congestion_model = CongestionModel(grid=self.grid, neighbor_radius=2, density_threshold=0.35)
 
         # 1. 初始化距离场
         self.floor_field = FloorField(self.grid, scene.exits)
@@ -126,6 +132,7 @@ class EvacEngine:
         for pid, person in self.person_map.items():
             if not person.evacuated:
                 occupied_positions.add((int(person.x), int(person.y)))
+        alive_person_pos = occupied_positions
 
         # 5. 预计算下一时刻位置
         next_positions = {}
@@ -144,7 +151,12 @@ class EvacEngine:
                 single_behavior=single_behavior,
                 floor_field=self.floor_field,
                 signage_model=signage_model,
-                occupied_positions=occupied_positions
+                occupied_positions=occupied_positions,
+                exit_list=[(e.exit_id, e.x, e.y) for e in self.exits],
+                exit_chooser=self.exit_chooser,
+                congestion_model=self.congestion_model,
+                alive_person_pos=alive_person_pos,
+                rng=self.random
             )
             next_positions[pid] = (nx, ny)
 

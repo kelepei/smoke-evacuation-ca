@@ -14,13 +14,33 @@ DIRS = [(-1, -1), (-1, 0), (-1, 1),
 
 
 def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behavior=None,
-                       floor_field=None, signage_model=None, occupied_positions=None, exit_list=None):
+                       floor_field=None, signage_model=None, occupied_positions=None, exit_list=None,
+                       exit_chooser=None, congestion_model=None, alive_person_pos=None, rng=None):
     """
     计算行人的下一个位置
     新增risk_dict：{person_id: 行人综合感知风险Risk_i(t)}
     新增exit_list入参，用于兜底计算出口距离
+    新增B03出口选择、B09拥堵模型相关入参
     """
     px, py = int(person.x), int(person.y)
+
+    # ===================== B03 出口选择模块 =====================
+    if exit_chooser is not None and single_behavior is not None:
+        if "target_exit" in single_behavior:
+            # C模块传入引导出口
+            target_exit = exit_chooser.select_exit(person, mode="guided", guided_exit_id=single_behavior["target_exit"])
+        else:
+            # 默认最近出口模式
+            target_exit = exit_chooser.select_exit(person, mode="nearest")
+        if target_exit is not None:
+            person.target_exit_id = target_exit.exit_id
+
+    # ===================== B09 拥堵等待判断 =====================
+    if congestion_model is not None and alive_person_pos is not None and rng is not None:
+        if congestion_model.need_congestion_wait(person, alive_person_pos, rng):
+            # 拥堵触发，直接原地不动，不做邻域搜索
+            return px, py
+
     best_x, best_y = px, py
     max_utility = -9999.0
     # 拆分安全/高烟雾候选
