@@ -16,13 +16,14 @@ from .smoke_model import SmokeDiffusionModel
 from .risk_perception import SmokeRiskPerception
 from .risk_metrics import SmokeDoseRecorder
 from .floor_field import FloorField
+from .conflict_solver import resolve_conflict
 
 
 class EvacEngine:
     """
     疏散仿真引擎
     适配A模块输出人员坐标
-    改动：接入冲突消解、增加actual_exit出口记录
+    改动：接入外部conflict_solver冲突消解、增加actual_exit出口记录
     """
     MAX_SIM_STEP = 2000  # 最大仿真步数，防止死循环
 
@@ -37,6 +38,9 @@ class EvacEngine:
         self.width = self.grid.width
         self.height = self.grid.height
         self.current_step = 0
+
+        # 绑定场景seed，给外部冲突消解使用，保证仿真可复现
+        self.random = random.Random(scene.seed)
 
         # 1. 初始化距离场
         self.floor_field = FloorField(self.grid, scene.exits)
@@ -82,29 +86,6 @@ class EvacEngine:
         self.person_map.clear()
         for person in persons:
             self.person_map[person.id] = person
-
-    def _resolve_move_conflict(self, candidate_pos: dict[int, tuple[int, int]]):
-        """
-        冲突消解：多人预移动到同一个元胞，冲突行人保留原地不动
-        :param candidate_pos: {pid: (nx, ny)} 预计算的候选位置
-        :return: {pid: (final_x, final_y)} 冲突修正后的位置
-        """
-        pos_group = {}
-        for pid, pos in candidate_pos.items():
-            if pos not in pos_group:
-                pos_group[pos] = []
-            pos_group[pos].append(pid)
-
-        final = {}
-        for pos, pid_list in pos_group.items():
-            if len(pid_list) == 1:
-                final[pid_list[0]] = pos
-            else:
-                # 冲突，行人留在上一步坐标
-                for pid in pid_list:
-                    p = self.person_map[pid]
-                    final[pid] = (int(p.x), int(p.y))
-        return final
 
     def is_all_evacuated(self) -> bool:
         return all(p.evacuated for p in self.person_map.values())
@@ -167,8 +148,8 @@ class EvacEngine:
             )
             next_positions[pid] = (nx, ny)
 
-        # -------- 新增：冲突消解，修正抢占重叠 --------
-        fixed_next_pos = self._resolve_move_conflict(next_positions)
+        # -------- 调用外部conflict_solver做冲突消解 --------
+        fixed_next_pos = resolve_conflict(next_positions, self.person_map, self.random)
 
         # 6. 更新坐标 & 判断是否撤离，记录 actual_exit
         for pid, (nx, ny) in fixed_next_pos.items():
