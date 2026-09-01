@@ -33,7 +33,7 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
             # 默认最近出口模式
             target_exit = exit_chooser.select_exit(person, mode="nearest")
         if target_exit is not None:
-            person.target_exit_id = target_exit.exit_id
+            person.target_exit_id = target_exit[2]
 
     # ===================== B09 拥堵等待判断 =====================
     if congestion_model is not None and alive_person_pos is not None and rng is not None:
