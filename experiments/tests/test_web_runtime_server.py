@@ -208,6 +208,55 @@ class WebRuntimeServerTests(unittest.TestCase):
                 server.server_close()
                 worker.join(timeout=5)
 
+    def test_auto_position_session_uses_a_allocator_and_runs_one_step(self) -> None:
+        server = DWebRuntimeServer(("127.0.0.1", 0), RuntimeRequestHandler, root=Path.cwd())
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        base_url = f"http://127.0.0.1:{server.server_port}"
+
+        def post(route: str, body: dict[str, object]) -> dict[str, object]:
+            request = Request(
+                base_url + route,
+                data=json.dumps(body).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            with urlopen(request, timeout=10) as response:
+                return json.loads(response.read().decode("utf-8"))
+
+        try:
+            with tempfile.TemporaryDirectory() as raw:
+                map_path, population_path = self._write_inputs(Path(raw))
+                initial = post(
+                    "/api/session/auto-position",
+                    {
+                        "map_file": {"name": map_path.name, "text": map_path.read_text(encoding="utf-8")},
+                        "population_file": {"name": population_path.name, "text": population_path.read_text(encoding="utf-8")},
+                        "random_seed": 31,
+                        "max_steps": 8,
+                    },
+                )
+                self.assertEqual(2, initial["auto_positioning"]["person_count"])
+                self.assertEqual(31, initial["auto_positioning"]["random_seed"])
+                self.assertEqual(
+                    "control.position_allocator.allocate_positions",
+                    initial["auto_positioning"]["source"],
+                )
+                positions = [
+                    (person["x"], person["y"])
+                    for person in initial["snapshot"]["people"]
+                ]
+                self.assertEqual(len(positions), len(set(positions)))
+                stepped = post("/api/session/step", {})
+                self.assertEqual(1, stepped["snapshot"]["step"])
+        finally:
+            try:
+                post("/api/session/close", {})
+            finally:
+                server.shutdown()
+                server.close_session()
+                server.server_close()
+                worker.join(timeout=5)
+
     def test_standard_template_preview_uses_a_loader_grid(self) -> None:
         server = DWebRuntimeServer(("127.0.0.1", 0), RuntimeRequestHandler, root=Path.cwd())
         worker = threading.Thread(target=server.serve_forever, daemon=True)

@@ -30,10 +30,16 @@ from typing import Any, Mapping
 from urllib.parse import unquote, urlparse
 
 from experiments.experiment_history import ExperimentHistoryError, discover_experiments, load_experiment_detail
+from experiments.auto_positioning import AutoPositioningError, allocate_uploaded_positions
 from experiments.integrated_runner import create_integrated_runner
 from experiments.result_package import ResultPackageError, build_result_package, build_runtime_analysis
 from experiments.run_artifacts import write_run_artifacts
-from visualization.scene_input_adapter import grid_to_static_snapshot, load_map_grid
+from visualization.scene_input_adapter import (
+    SceneInputError,
+    grid_to_static_snapshot,
+    load_map_grid,
+    load_population_config,
+)
 
 
 MAX_REQUEST_BYTES = 24 * 1024 * 1024
@@ -246,6 +252,8 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 with self.server.session_lock:
                     if path == "/api/session":
                         response = self._create_session(payload)
+                    elif path == "/api/session/auto-position":
+                        response = self._create_auto_position_session(payload)
                     elif path == "/api/session/template":
                         response = self._create_template_session(payload)
                     elif path == "/api/session/sample":
@@ -303,6 +311,53 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 random_seed=_optional_seed(payload.get("random_seed")),
                 time_step_s=_positive_time_step(payload.get("time_step_s")),
             )
+        except Exception:
+            temporary_directory.cleanup()
+            raise
+
+    def _create_auto_position_session(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        """Allocate uploaded JSON positions through A, then start B via D."""
+
+        self.server.close_session()
+        temporary_directory = _runtime_temp_directory(
+            self.server.root, "d_web_auto_position_"
+        )
+        root = Path(temporary_directory.name)
+        try:
+            map_path = _uploaded_file(payload, "map_file", {".json"}, root)
+            people_path = _uploaded_file(payload, "population_file", {".json"}, root)
+            yaml_path = _uploaded_file(payload, "yaml_file", ALLOWED_YAML_SUFFIXES, root)
+            if map_path is None or people_path is None:
+                raise WebRuntimeError("automatic position allocation requires map_file and population_file")
+            random_seed = _optional_seed(payload.get("random_seed"))
+            allocation_seed = random_seed
+            if allocation_seed is None and yaml_path is not None:
+                try:
+                    allocation_seed = load_population_config(
+                        yaml_path,
+                        c_module_path=self.server.root / "control" / "scene_config.py",
+                    ).random_seed
+                except SceneInputError as exc:
+                    raise WebRuntimeError(str(exc)) from exc
+            try:
+                allocation = allocate_uploaded_positions(
+                    map_path=map_path,
+                    people_path=people_path,
+                    random_seed=allocation_seed,
+                )
+            except AutoPositioningError as exc:
+                raise WebRuntimeError(str(exc)) from exc
+            result = self._start_runner(
+                temporary_directory,
+                map_path=map_path,
+                people_path=people_path,
+                yaml_path=yaml_path,
+                max_steps=_positive_steps(payload.get("max_steps")),
+                random_seed=random_seed,
+                time_step_s=_positive_time_step(payload.get("time_step_s")),
+            )
+            result["auto_positioning"] = allocation
+            return result
         except Exception:
             temporary_directory.cleanup()
             raise
