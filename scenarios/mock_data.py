@@ -18,7 +18,7 @@ def build_base_scene() -> ScenarioConfig:
             # 左右边界墙体
             elif x == 0 or x == W - 1:
                 ct = CellType.WALL
-            # (15,6)设置为出口格子，出口坐标写在网格里，不要给Exit对象传x,y
+            # (15,6)设置为出口格子
             if x == 15 and y == 6:
                 ct = CellType.EXIT
             # 烟源位置(3,3)
@@ -30,8 +30,7 @@ def build_base_scene() -> ScenarioConfig:
 
     grid = Grid(width=W, height=H, cell_size=0.5, cells=cells)
 
-    # ✅只传id，删掉x y width label！！！！
-    exits = [Exit(id="exit_01")]
+    exits = [Exit(id="exit_01", x=15, y=6)]
 
     # 创建几个行人
     persons = [

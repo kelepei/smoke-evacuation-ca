@@ -202,7 +202,7 @@ def build_integrated_scenario(
         relations.append(relation)
 
     exits = [
-        Exit(id=f"exit_{index + 1}")
+        Exit(id=f"exit_{index + 1}", x=int(cell.x), y=int(cell.y))
         for index, cell in enumerate(grid.cells)
         if _cell_type_value(cell) == CellType.EXIT.value
     ]
