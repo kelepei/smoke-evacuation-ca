@@ -29,6 +29,7 @@ from time import perf_counter
 from typing import Any, Mapping
 from urllib.parse import unquote, urlparse
 
+from experiments.auto_positioning import AutoPositioningError, allocate_map_data_positions
 from experiments.experiment_history import ExperimentHistoryError, discover_experiments, load_experiment_detail
 from experiments.integrated_runner import create_integrated_runner
 from experiments.result_package import ResultPackageError, build_result_package, build_runtime_analysis
@@ -119,6 +120,29 @@ def _uploaded_file(payload: Mapping[str, Any], field: str, allowed: set[str], ro
             raise WebRuntimeError(f"{field} must contain valid base64 data") from exc
         return target
     raise WebRuntimeError(f"{field} must contain text or base64/data_url")
+
+
+def _map_input_file(payload: Mapping[str, Any], root: Path) -> Path | None:
+    """Materialize one canonical edited JSON map for a preview/session."""
+
+    map_data = payload.get("map_data")
+    if map_data is None:
+        return _uploaded_file(payload, "map_file", ALLOWED_MAP_SUFFIXES, root)
+    if not isinstance(map_data, Mapping):
+        raise WebRuntimeError("map_data must be a JSON object")
+    target = root / "current_map.json"
+    target.write_text(json.dumps(map_data, ensure_ascii=False), encoding="utf-8")
+    return target
+
+
+def _json_object(path: Path, field: str) -> dict[str, Any]:
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise WebRuntimeError(f"{field} must be valid UTF-8 JSON") from exc
+    if not isinstance(parsed, Mapping):
+        raise WebRuntimeError(f"{field} must be a JSON object")
+    return dict(parsed)
 
 
 def _new_run_id(prefix: str = "d_web_runtime") -> str:
@@ -238,7 +262,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         path = urlparse(self.path).path
         try:
             payload = self._read_json()
-            if path == "/api/map/preview":
+            if path in {"/api/map/preview", "/api/map/preview-data"}:
                 response = self._preview_map(payload)
             elif path == "/api/template/preview":
                 response = self._preview_template(payload)
@@ -246,6 +270,8 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 with self.server.session_lock:
                     if path == "/api/session":
                         response = self._create_session(payload)
+                    elif path == "/api/session/auto-position":
+                        response = self._create_auto_position_session(payload)
                     elif path == "/api/session/template":
                         response = self._create_template_session(payload)
                     elif path == "/api/session/sample":
@@ -289,11 +315,11 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         )
         root = Path(temporary_directory.name)
         try:
-            map_path = _uploaded_file(payload, "map_file", ALLOWED_MAP_SUFFIXES, root)
+            map_path = _map_input_file(payload, root)
             people_path = _uploaded_file(payload, "population_file", {".json"}, root)
             yaml_path = _uploaded_file(payload, "yaml_file", ALLOWED_YAML_SUFFIXES, root)
             if map_path is None or people_path is None:
-                raise WebRuntimeError("map_file and population_file are required")
+                raise WebRuntimeError("map_data or map_file, and population_file, are required")
             return self._start_runner(
                 temporary_directory,
                 map_path=map_path,
@@ -307,15 +333,54 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             temporary_directory.cleanup()
             raise
 
+    def _create_auto_position_session(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        """Allocate on the same edited JSON map that B will subsequently run."""
+
+        self.server.close_session()
+        temporary_directory = _runtime_temp_directory(self.server.root, "d_web_auto_position_")
+        root = Path(temporary_directory.name)
+        try:
+            map_path = _map_input_file(payload, root)
+            people_path = _uploaded_file(payload, "population_file", {".json"}, root)
+            yaml_path = _uploaded_file(payload, "yaml_file", ALLOWED_YAML_SUFFIXES, root)
+            if map_path is None or people_path is None:
+                raise WebRuntimeError("automatic position allocation requires map_data and population_file")
+            if map_path.suffix.lower() != ".json":
+                raise WebRuntimeError("automatic position allocation currently supports JSON maps only")
+            random_seed = _optional_seed(payload.get("random_seed"))
+            people_data = _json_object(people_path, "population_file")
+            map_data = _json_object(map_path, "map_data")
+            try:
+                allocation = allocate_map_data_positions(
+                    map_data=map_data, people_data=people_data, random_seed=random_seed
+                )
+            except AutoPositioningError as exc:
+                raise WebRuntimeError(str(exc)) from exc
+            people_path.write_text(json.dumps(people_data, ensure_ascii=False), encoding="utf-8")
+            result = self._start_runner(
+                temporary_directory,
+                map_path=map_path,
+                people_path=people_path,
+                yaml_path=yaml_path,
+                max_steps=_positive_steps(payload.get("max_steps")),
+                random_seed=random_seed,
+                time_step_s=_positive_time_step(payload.get("time_step_s")),
+            )
+            result["auto_positioning"] = allocation
+            return result
+        except Exception:
+            temporary_directory.cleanup()
+            raise
+
     def _preview_map(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         temporary_directory = _runtime_temp_directory(
             self.server.root, "d_map_preview_"
         )
         root = Path(temporary_directory.name)
         try:
-            map_path = _uploaded_file(payload, "map_file", ALLOWED_MAP_SUFFIXES, root)
+            map_path = _map_input_file(payload, root)
             if map_path is None:
-                raise WebRuntimeError("map_file is required")
+                raise WebRuntimeError("map_data or map_file is required")
             grid = load_map_grid(map_path)
             snapshot = grid_to_static_snapshot(
                 grid,

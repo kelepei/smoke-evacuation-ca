@@ -1,0 +1,1293 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>行人疏散仿真平台</title>
+<style>
+  :root{--bg:#e9eff6;--panel:#fff;--line:#ccd8e6;--ink:#14233b;--muted:#64748b;--blue:#1769e0;--blue-dark:#0d3f8f;--green:#159447;--red:#dc2626;--shadow:0 8px 24px rgba(24,55,91,.08)}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;overflow:hidden;background:linear-gradient(145deg,#eef4fa 0%,#e5edf6 100%);color:var(--ink);font:14px/1.45 "Microsoft YaHei",Arial,sans-serif}
+  header{height:56px;display:flex;align-items:center;gap:18px;padding:0 20px;background:linear-gradient(100deg,#0a2855,#0d4b9c 62%,#1267c5);color:#fff;border-bottom:1px solid #0b3b78;box-shadow:0 3px 14px rgba(9,45,94,.2)}
+  h1{font-size:17px;margin:0;font-weight:800}
+  .top-nav{display:flex;gap:4px;margin-left:14px;height:100%;align-items:center}.top-nav a{padding:8px 10px;color:#b9c6d8;text-decoration:none;font-size:13px;border-bottom:2px solid transparent}.top-nav a.active{color:#fff;border-bottom-color:#3b82f6}
+  .badge{margin-left:auto;padding:6px 11px;border:1px solid rgba(255,255,255,.2);border-radius:999px;background:rgba(4,31,67,.45);color:#dbeafe;font-size:12px}
+  main{height:calc(100vh - 56px);display:grid;grid-template-columns:292px minmax(560px,1fr) 340px;grid-template-rows:minmax(0,1fr) 232px;gap:10px;padding:10px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);min-width:0;overflow:hidden}
+  .side{padding:12px;overflow-y:auto;overflow-x:hidden}
+  .runtime-side{display:flex;min-height:0;flex-direction:column}
+  .title{font-weight:800;margin:4px 0 9px;display:flex;justify-content:space-between;align-items:center;gap:8px;color:#18345b}
+  .section-kicker{margin:2px 0 7px;color:#1b64bd;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+  .hint{color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+  .hint.success{padding:7px 8px;border:1px solid #bbdfc7;border-radius:7px;background:#f0fdf4;color:#166534;font-weight:700}
+  .hint.error{padding:7px 8px;border:1px solid #fecaca;border-radius:7px;background:#fff1f2;color:#b91c1c;font-weight:700}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+  .template-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:8px 0}
+  .stack{display:grid;gap:8px}
+  button,input,textarea,select{font:inherit}
+  button{height:34px;border:1px solid #b9c5d4;background:#fff;border-radius:7px;cursor:pointer;color:var(--ink);font-weight:700}
+  button:hover{background:#f5f8fc}
+  button.primary{background:linear-gradient(180deg,#2879e8,#1763ce);border-color:#1559bc;color:#fff}
+  button.good{background:var(--green);border-color:var(--green);color:#fff}
+  button.danger{background:#fff;border-color:#f4a3a3;color:#b91c1c}
+  button:disabled{opacity:.55;cursor:not-allowed}
+  label{display:grid;gap:4px;font-size:12px;color:var(--muted);margin:8px 0}
+  input,textarea,select{width:100%;border:1px solid #c8d2df;border-radius:7px;padding:7px 8px;background:#fbfdff;color:var(--ink)}
+  input[type=file]{padding:6px;background:#f7faff;font-size:12px}
+  input:disabled,textarea:disabled{background:#eef2f6;color:#667589}
+  textarea{min-height:96px;resize:vertical;font-family:Consolas,monospace;font-size:12px}
+  .canvas-wrap{position:relative;height:100%;display:flex;flex-direction:column}
+  .toolbar{min-height:50px;display:flex;align-items:center;gap:7px;padding:7px 9px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fbfdff,#f2f7fc)}
+  .toolbar .spacer{flex:1}
+  .run-control{flex:0 0 62px;min-width:62px;white-space:nowrap}
+  .layer-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-left:4px;border-left:1px solid #d5dfeb;font-size:12px;color:#475569}.layer-controls label{display:flex;align-items:center;gap:4px;margin:0;color:inherit}.layer-controls label:has(input:disabled){color:#94a3b8}.layer-controls input{width:auto;margin:0}
+  .layer-notice{position:absolute;right:12px;top:55px;max-width:320px;padding:6px 9px;border:1px solid #cbd5e1;border-radius:6px;background:rgba(255,255,255,.94);color:#475569;font-size:11px;pointer-events:none}
+  canvas{width:100%;height:100%;display:block;background:#f8fafc}
+  .legend{position:absolute;left:12px;bottom:12px;display:flex;flex-direction:column;gap:4px;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-size:11px;pointer-events:none}
+  .swatch{width:13px;height:13px;display:inline-block;border-radius:3px;margin-right:4px;border:1px solid rgba(0,0,0,.12);vertical-align:-2px}
+  .status{flex:0 0 auto;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;padding:9px;border:1px solid #bfd2ea;background:#f0f6ff;border-radius:7px;color:#35506f;font-size:12px;min-height:68px;max-height:140px;overflow-y:auto;overflow-x:hidden}
+  .run-summary{padding:11px;border:1px solid #bcd3ef;background:linear-gradient(135deg,#eef6ff,#f9fcff);border-radius:8px;color:#184c85;font-size:13px;font-weight:800;box-shadow:inset 3px 0 #2b78db}
+  details.diagnostics{margin-top:10px;border-top:1px solid #d6dee8;padding-top:8px;color:#53657b;font-size:12px}details.diagnostics summary{cursor:pointer;font-weight:800;color:#334155}details.diagnostics[open] summary{margin-bottom:8px}
+  .kv{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);align-items:start;gap:8px;border-bottom:1px dashed #d6dee8;padding:6px 0;font-size:13px}
+  .kv>*{min-width:0}
+  .kv b{text-align:right;overflow-wrap:anywhere;word-break:break-word}
+  .kv.output-path{grid-template-columns:1fr;gap:3px}
+  .kv.output-path b{text-align:left;color:#475569;font:11px/1.45 Consolas,monospace}
+  .log{min-height:160px;flex:1 1 180px;overflow-y:auto;overflow-x:hidden;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;background:#0f172a;color:#dbeafe;border-radius:7px;padding:8px;font:12px/1.5 Consolas,monospace}
+  .runtime-side .title{margin:2px 0 6px}
+  .runtime-side .kv{padding:4px 0}
+  .runtime-side .row{margin:6px 0}
+  .runtime-side .log{min-height:120px}
+  .action-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:8px 0}.action-grid button:first-child{grid-column:1 / 3}
+  .pill{font-size:11px;background:#eef2ff;color:#334155;border-radius:999px;padding:3px 7px}
+  .config-side{grid-column:1;grid-row:1}
+  .canvas-wrap{grid-column:2;grid-row:1}
+  .runtime-side{grid-column:3;grid-row:1}
+  .insights{grid-column:1 / 4;grid-row:2;display:grid;grid-template-columns:1.45fr .8fr 1fr 1.45fr;gap:10px;min-width:0;min-height:0}
+  .insight-panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:11px;min-width:0;min-height:0;overflow:auto}.insight-panel.figure-panel{overflow:hidden;display:flex;flex-direction:column}
+  .insight-title{font-weight:800;margin-bottom:8px;color:#1e293b}.insight-title-row{position:relative;display:flex;align-items:center;gap:8px;min-height:20px;margin-bottom:8px}.insight-title-row .insight-title{margin:0}.figure-meta{color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .figure-wrap{height:150px;min-height:0;flex:0 0 150px;display:grid;place-items:center;border:1px solid #e1e8f0;background:#fff;border-radius:7px;overflow:hidden}.figure-wrap img{display:block;width:100%;height:100%;max-width:100%;max-height:100%;min-height:0;object-fit:contain}.figure-placeholder{color:var(--muted);font-size:12px;text-align:center;padding:16px}
+  .figure-panel .figure-wrap{height:auto;flex:1 1 auto}
+  .metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .metric{padding:8px;border:1px solid #dbe4ef;border-radius:7px;background:#f8fafc;min-width:0}
+  .metric span{display:block;color:var(--muted);font-size:12px}.metric b{display:block;margin-top:3px;font-size:18px;overflow-wrap:anywhere}
+  .bar-row{display:grid;grid-template-columns:58px 1fr 48px;gap:6px;align-items:center;margin:10px 0;font-size:12px}
+  .bar-track{height:10px;overflow:hidden;background:#e2e8f0;border-radius:99px}.bar-fill{height:100%;background:#2563eb;border-radius:99px}.bar-fill.green{background:#16a34a}
+  .real-note{color:var(--muted);font-size:11px;line-height:1.4;margin-top:5px}.real-note b{color:#334155}
+  .info-tooltip{display:inline-grid;place-items:center;width:18px;height:18px;margin-left:auto;border:1px solid #94a3b8;border-radius:50%;background:#f8fafc;color:#475569;font-size:12px;font-weight:800;line-height:1;cursor:help}.info-tooltip-content{position:absolute;z-index:3;top:26px;right:0;width:min(340px,90vw);padding:9px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#475569;font-size:11px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.16);opacity:0;visibility:hidden;transform:translateY(-3px);transition:opacity .15s ease,transform .15s ease,visibility .15s}.info-tooltip:hover+.info-tooltip-content,.info-tooltip:focus+.info-tooltip-content{opacity:1;visibility:visible;transform:translateY(0)}
+  .history-list{display:grid;gap:6px;margin-top:7px}.history-item{width:100%;height:auto;min-height:32px;padding:6px 7px;text-align:left;font-size:11px;font-weight:600}.history-item.active{border-color:#1769e0;background:#eff6ff}.history-detail{margin-top:7px;color:#475569;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+  .editor-modal{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(15,23,42,.55)}.editor-modal.open{display:flex}.editor-dialog{width:min(1440px,96vw);height:min(900px,92vh);display:flex;flex-direction:column;overflow:hidden;border-radius:10px;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.28)}.editor-dialog header{height:auto;min-height:50px;padding:8px 12px;background:#fff;color:var(--ink);box-shadow:none;border-bottom:1px solid var(--line)}.editor-dialog header strong{margin-right:auto}.editor-dialog iframe{width:100%;min-height:0;flex:1;border:0}.editor-actions{display:flex;justify-content:flex-end;gap:8px;padding:8px 12px;border-top:1px solid var(--line)}
+  @media(max-width:1180px){body{overflow:auto}.top-nav{display:none}main{height:auto;min-height:calc(100vh - 56px);grid-template-columns:280px minmax(420px,1fr);grid-template-rows:minmax(560px,70vh) auto auto}.config-side{grid-column:1;grid-row:1}.canvas-wrap{grid-column:2;grid-row:1}.runtime-side{grid-column:1 / 3;grid-row:2}.insights{grid-column:1 / 3;grid-row:3;grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:760px){main{grid-template-columns:1fr;grid-template-rows:auto}.config-side,.canvas-wrap,.runtime-side,.insights{grid-column:1;grid-row:auto}.insights{grid-template-columns:1fr}.canvas-wrap{height:70vh}.layer-controls{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>烟雾风险感知与社会信息传播耦合的行人疏散仿真平台</h1>
+  <nav class="top-nav" aria-label="页面导航"><a class="active" href="#runtime">正式仿真</a><a href="#analysis">运行分析</a></nav>
+  <span class="badge" id="modeBadge">等待场景</span>
+</header>
+<main>
+  <aside class="panel side config-side">
+    <div class="section-kicker">INPUTS</div>
+    <div class="title">场景与人群 <span class="pill">真实输入</span></div>
+    <label>A 地图（JSON / CSV / PNG）<input id="mapFile" type="file" accept=".json,.csv,.png,application/json,text/csv,image/png"></label>
+    <div class="row">
+      <button id="previewMap" class="primary">导入并显示地图</button>
+      <button id="sampleBtn">加载仓库样例</button>
+    </div>
+    <div class="row"><button id="editMapBtn" disabled>编辑地图</button><button id="autoPositionBtn" disabled>自动分配人员</button></div>
+    <div class="hint" id="mapEditorHint">在线编辑优先支持 JSON 地图；PNG 保留原有导入运行方式。</div>
+    <label>人员位置与关系 JSON<input id="populationFile" type="file" accept=".json,application/json"></label>
+    <div class="hint">地图和人员文件会真实进入初始化；人数由人员 JSON 决定，不在页面内补造。</div>
+    <div class="title" style="margin-top:12px">标准场景模板</div>
+    <div class="template-grid">
+      <button data-template="classroom">教室</button>
+      <button data-template="mall">商场</button>
+      <button data-template="canteen">食堂</button>
+      <button data-template="dormitory">宿舍</button>
+    </div>
+    <div class="hint" id="templateHint">模板可直接预览；运行前请导入与该场景匹配的人员位置文件。</div>
+
+    <hr>
+    <div class="section-kicker">RUNTIME PARAMETERS</div>
+    <div class="title">本次运行参数 <span class="pill">直传 runtime</span></div>
+    <label>人数（由人员文件决定） <input id="totalPersons" value="等待初始化" disabled></label>
+    <label>random_seed（留空时读取 YAML）<input id="randomSeed" type="number" value="42"></label>
+    <div class="row"><label>time_step / s<input id="timeStep" type="number" min="0.01" max="60" step="0.01" value="0.5"></label><label>最大步数<input id="maxSteps" type="number" min="1" max="5000" value="500"></label></div>
+    <div class="hint">time_step 真实决定模拟时间与日志时间轴；最大步数真实决定 runtime 停止上限。</div>
+    <div class="title" style="margin-top:12px">C 配置文件 <span class="pill">部分字段生效</span></div>
+    <div class="row">
+      <button id="yamlBtn">导入 YAML</button>
+      <button id="clearYaml">清除 YAML</button>
+    </div>
+    <input id="yamlFile" type="file" accept=".yaml,.yml,text/yaml,application/x-yaml" hidden>
+    <div class="hint" id="configHint">未选择 YAML；仓库样例固定读取正式 config_template.yaml。</div>
+    <div class="hint">当前真实作用：校验 total_persons、提供 scene_name，并在 random_seed 留空时提供 seed。relation_intensity / profile / group_config 不会重新生成人员，也不改变 B 每步移动。</div>
+
+    <details class="diagnostics">
+      <summary>待接入参数与 C 静态字段</summary>
+      <div class="hint">scene、profile、relation_intensity 与 group_config 由 YAML/人员文件记录。当前人员已预生成，C 每步行为尚未进入 B 移动决策，因此此处不提供会造成误解的滑块。</div>
+      <label>relation_intensity <input value="由 YAML 记录；当前不改变 B 移动" disabled></label>
+      <label>profile_ratios / group_config<input value="只用于上游生成人员；本页不重新生成" disabled></label>
+      <label>C 每步策略 <input value="待 C→B person_id 契约接入" disabled></label>
+    </details>
+
+    <details class="diagnostics">
+      <summary>烟雾输入</summary>
+      <div class="hint" id="smokeInputHint">烟源只来自地图 cell.type = smoke_source；烟场只绘制 B 返回的 smoke_matrix。</div>
+    </details>
+
+  </aside>
+
+  <section class="panel canvas-wrap" id="runtime">
+    <div class="toolbar">
+      <button id="initBtn" class="good">初始化仿真</button>
+      <select id="speedSelect" aria-label="播放速度" style="width:92px;height:34px;padding:4px 6px">
+        <option value="150">快速</option>
+        <option value="300" selected>标准</option>
+        <option value="600">慢速</option>
+      </select>
+      <div class="layer-controls" aria-label="真实数据图层">
+        <label><input id="layerPeople" type="checkbox" disabled>人员</label>
+        <label><input id="layerExits" type="checkbox" disabled>出口</label>
+        <label><input id="layerSmoke" type="checkbox" disabled>烟雾</label>
+        <label><input id="layerOccupancy" type="checkbox" disabled>累计占用</label>
+        <label><input id="layerTrajectories" type="checkbox" disabled>轨迹</label>
+      </div>
+      <div class="spacer"></div>
+      <span id="timeText">step 0 / 0.0s</span>
+      <button id="resetBtn" class="danger run-control">重置</button>
+      <button id="pauseBtn" class="run-control">暂停</button>
+      <button id="stepBtn" class="run-control">单步</button>
+      <button id="startBtn" class="primary run-control">开始</button>
+    </div>
+    <canvas id="view"></canvas>
+    <div class="layer-notice" id="layerNotice">图层等待真实运行数据。</div>
+    <div class="legend">
+      <span><i class="swatch" style="background:#e9eef5"></i>free</span>
+      <span><i class="swatch" style="background:#253244"></i>wall</span>
+      <span><i class="swatch" style="background:#8a94a3"></i>obstacle</span>
+      <span><i class="swatch" style="background:#22c55e"></i>exit</span>
+      <span><i class="swatch" style="background:#f97316"></i>smoke source</span>
+      <span><i class="swatch" style="background:#2563eb"></i>person</span>
+    </div>
+  </section>
+
+  <aside class="panel side runtime-side">
+    <div class="section-kicker">LIVE RUN</div>
+    <div class="title">运行状态 <span class="pill">真实快照</span></div>
+    <div class="run-summary" id="runSummary">请先导入场景地图。</div>
+    <div class="title">核心指标</div>
+    <div class="kv"><span>当前 step</span><b id="runtimeStep">0</b></div>
+    <div class="kv"><span>当前模拟时间</span><b id="simTime">0.0 s</b></div>
+    <div class="kv"><span>人员总数</span><b id="peopleCount">NA</b></div>
+    <div class="kv"><span>已撤离</span><b id="evacCount">0</b></div>
+    <div class="kv"><span>撤离率</span><b id="evacRate">NA</b></div>
+    <div class="kv"><span>滞留人数</span><b id="remainingCount">NA</b></div>
+    <div class="kv"><span>总疏散时间</span><b id="totalEvacTime">NA</b></div>
+    <div class="kv"><span>平均疏散时间</span><b id="meanEvacTime">NA</b></div>
+    <div class="kv"><span>T90</span><b id="t90Time">NA</b></div>
+    <div class="kv"><span>最大烟雾</span><b id="smokeMax">NA</b></div>
+    <div class="action-grid">
+      <button id="exportBtn">导出结果包</button>
+      <button id="refreshAnalysis">刷新真实分析</button>
+      <button id="clearLog">清空日志</button>
+    </div>
+    <details class="diagnostics">
+      <summary>数据契约与参数效力</summary>
+      <div class="kv"><span>生效参数</span><b id="effectiveParams">等待初始化</b></div>
+      <div class="kv"><span>C 配置来源</span><b id="configSourceValue">NA</b></div>
+      <div class="kv"><span>B runtime API</span><b id="runtimeApi">NA</b></div>
+      <div class="kv"><span>C 每步行为</span><b id="behaviorStatus">待接入</b></div>
+      <div class="kv"><span>actual_exit</span><b id="actualExitStatus">NA · 上游未提供</b></div>
+      <div class="kv"><span>risk</span><b id="riskStatus">NA · 上游未提供</b></div>
+    </details>
+    <details class="diagnostics" id="historyPanel">
+      <summary>历史实验（真实输出）</summary>
+      <div class="hint">仅扫描 outputs/experiments 与 outputs/integrated；不会创建示例历史。</div>
+      <button id="refreshHistory">刷新历史</button>
+      <div id="historyList" class="history-list"><div class="hint">展开后刷新。</div></div>
+      <div id="historyDetail" class="history-detail">未选择历史实验。</div>
+    </details>
+    <details class="diagnostics">
+      <summary>开发诊断</summary>
+      <div class="status" id="statusBox">请先导入地图。</div>
+      <div class="kv"><span>Grid 尺寸</span><b id="gridSize">NA</b></div>
+      <div class="kv"><span>烟源数</span><b id="smokeSourceCount">NA</b></div>
+      <div class="kv"><span>烟雾契约</span><b id="smokeContract">NA</b></div>
+      <div class="kv"><span>重叠元胞</span><b id="overlapCount">0</b></div>
+      <div class="kv"><span>最近一步耗时</span><b id="stepLatency">NA</b></div>
+      <div class="kv output-path"><span>输出目录</span><b id="outputDir">NA</b></div>
+    </details>
+    <details class="diagnostics">
+      <summary>原始运行日志</summary>
+      <div class="log" id="log"></div>
+    </details>
+  </aside>
+
+  <section class="insights" id="analysis" aria-label="真实运行分析面板">
+    <section class="insight-panel figure-panel">
+      <div class="insight-title-row"><div class="insight-title">疏散人数-时间曲线</div><span class="figure-meta" id="curveNote">本次运行尚无分析数据。</span></div>
+      <div class="figure-wrap" id="curveFigure"><div class="figure-placeholder">运行后点击“刷新真实分析”。</div></div>
+    </section>
+    <section class="insight-panel">
+      <div class="insight-title">出口利用率</div>
+      <div id="exitBars" class="real-note">NA：尚未收到实际出口字段 actual_exit。</div>
+    </section>
+    <section class="insight-panel">
+      <div class="insight-title">风险、烟雾与冲突诊断</div>
+      <div class="metric-grid">
+        <div class="metric"><span>平均风险</span><b id="avgRisk">NA</b></div>
+        <div class="metric"><span>平均剂量</span><b id="avgDose">NA</b></div>
+        <div class="metric"><span>活动重叠元胞</span><b id="insightOverlap">0</b></div>
+        <div class="metric"><span>最大烟雾</span><b id="insightSmoke">NA</b></div>
+      </div>
+    </section>
+    <section class="insight-panel figure-panel">
+      <div class="insight-title-row">
+        <div class="insight-title">累计占用热力图</div>
+        <span class="info-tooltip" tabindex="0" aria-label="查看数据来源">!</span>
+        <div class="info-tooltip-content" id="dataProvenance"><b>数据来源：</b>本次运行日志和仿真快照。风险、剂量、实际出口只在上游实际返回时展示；缺失字段为 NA。B 当前未公开个人风险结果，平均风险显示 NA。</div>
+      </div>
+      <div class="figure-wrap" id="heatmapFigure"><div class="figure-placeholder">运行后点击“刷新真实分析”。</div></div>
+    </section>
+  </section>
+</main>
+
+<div class="editor-modal" id="editorModal" role="dialog" aria-modal="true" aria-label="地图编辑器">
+  <div class="editor-dialog">
+    <header><strong>实验性地图编辑</strong><span class="hint">确认后才替换本次运行的地图</span></header>
+    <iframe id="mapEditorFrame" title="A 地图编辑器集成版" src="/visualization/prototype/map_editor_integrated.html"></iframe>
+    <div class="editor-actions"><button id="cancelMapEdit">取消编辑</button><button id="confirmMapEdit" class="primary">确认编辑</button></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const canvas = $("view");
+  const ctx = canvas.getContext("2d");
+  let snapshot = null;
+  let activeSession = false;
+  let timer = null;
+  let pending = false;
+  let autoPlaying = false;
+  let autoDelayMs = 300;
+  let lastOutputDir = "";
+  let selectedTemplate = null;
+  let personTransition = null;
+  let personTransitionFrame = null;
+  let logLayers = null;
+  let sessionFinished = false;
+  let lastAnalysisStep = -1;
+  let pauseRequested = false;
+  let currentMapData = null;
+  let currentMapName = "";
+  let editorReady = false;
+
+  function setConfigState(message, state = ""){
+    const hint = $("configHint");
+    hint.textContent = message;
+    hint.className = `hint${state ? ` ${state}` : ""}`;
+  }
+
+  const colors = {
+    free: "#e9eef5",
+    wall: "#253244",
+    obstacle: "#8a94a3",
+    exit: "#22c55e",
+    smoke_source: "#f97316",
+    sign: "#facc15",
+    guide_zone: "#38bdf8",
+    safe_zone: "#a78bfa"
+  };
+
+  function log(message){
+    const now = new Date().toLocaleTimeString();
+    $("log").textContent = `[${now}] ${message}\n` + $("log").textContent;
+  }
+
+  function setStatus(message, mode){
+    $("statusBox").textContent = message;
+    $("runSummary").textContent = String(message || "").split("\n")[0] || "等待运行。";
+    if(mode) $("modeBadge").textContent = mode;
+  }
+
+  function setRunControlsBusy(busy){
+    $("stepBtn").disabled = busy || sessionFinished;
+    ["resetBtn", "initBtn", "sampleBtn"].forEach(id => { $(id).disabled = busy; });
+    $("startBtn").disabled = busy || autoPlaying || sessionFinished;
+    $("startBtn").textContent = busy ? "计算中" : (autoPlaying ? "运行中" : "开始");
+    $("pauseBtn").disabled = !autoPlaying;
+  }
+
+  function resize(){
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+    canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    draw();
+    drawInsights();
+  }
+
+  async function readFilePayload(input){
+    const file = input.files && input.files[0];
+    if(!file) return null;
+    const suffix = file.name.toLowerCase().split(".").pop();
+    const isPng = suffix === "png" || file.type === "image/png";
+    const content = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error(`无法读取文件：${file.name}`));
+      reader.onload = () => resolve(String(reader.result || ""));
+      if(isPng) reader.readAsDataURL(file);
+      else reader.readAsText(file, "utf-8");
+    });
+    return isPng ? {name:file.name, data_url:content} : {name:file.name, text:content};
+  }
+
+  async function api(path, payload = {}){
+    const response = await fetch(path, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json().catch(() => ({ok:false, error:"服务端返回不可解析数据"}));
+    if(!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    return data;
+  }
+
+  function normalizeCell(value){
+    return String(value || "free").toLowerCase();
+  }
+
+  function layerEnabled(id){
+    const control = $(id);
+    return !control || (!control.disabled && control.checked);
+  }
+
+  function setLayerAvailability(id, available, defaultChecked){
+    const control = $(id);
+    const wasDisabled = control.disabled;
+    control.disabled = !available;
+    if(!available) control.checked = false;
+    else if(wasDisabled) control.checked = defaultChecked;
+  }
+
+  function drawGrid(grid, ox, oy, cell){
+    const rows = grid.cell_type || [];
+    for(let y=0; y<grid.height; y++){
+      for(let x=0; x<grid.width; x++){
+        const type = normalizeCell(rows[y] && rows[y][x]);
+        const visibleType = type === "exit" && !layerEnabled("layerExits")
+          ? "free"
+          : (type === "smoke_source" && !layerEnabled("layerSmoke") ? "free" : type);
+        ctx.fillStyle = colors[visibleType] || colors.free;
+        ctx.fillRect(ox + x * cell, oy + y * cell, Math.ceil(cell), Math.ceil(cell));
+        if(cell >= 7){
+          ctx.strokeStyle = "rgba(80,96,120,.16)";
+          ctx.strokeRect(ox + x * cell, oy + y * cell, cell, cell);
+        }
+        if(type === "exit" && layerEnabled("layerExits") && cell >= 8){
+          ctx.fillStyle = "#fff";
+          ctx.font = `700 ${Math.max(8, Math.min(14, cell * .42))}px Arial`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("EXIT", ox + (x + .5) * cell, oy + (y + .5) * cell);
+        }
+      }
+    }
+  }
+
+  function drawField(field, grid, ox, oy, cell){
+    if(!Array.isArray(field)) return;
+    let max = 0;
+    field.forEach(row => Array.isArray(row) && row.forEach(v => { if(Number(v) > max) max = Number(v); }));
+    if(max <= 0) return;
+    field.forEach((row, y) => {
+      if(!Array.isArray(row)) return;
+      row.forEach((raw, x) => {
+        const value = Math.max(0, Math.min(1, Number(raw) / 10));
+        if(value <= 0) return;
+        ctx.fillStyle = `rgba(249,115,22,${0.12 + value * .48})`;
+        ctx.fillRect(ox + x * cell, oy + y * cell, cell, cell);
+      });
+    });
+  }
+
+  function drawSmokeSources(sources, grid, ox, oy, cell){
+    if(!Array.isArray(sources)) return;
+    sources.forEach(source => {
+      const x = Number(source && source.x), y = Number(source && source.y);
+      if(!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= grid.width || y >= grid.height) return;
+      const px = ox + (x + .5) * cell;
+      const py = oy + (y + .5) * cell;
+      ctx.beginPath();
+      ctx.fillStyle = "#f97316";
+      ctx.strokeStyle = "#fff7ed";
+      ctx.lineWidth = Math.max(1.5, cell * .1);
+      ctx.arc(px, py, Math.max(3, Math.min(9, cell * .28)), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+  }
+
+  function drawCumulativeOccupancy(grid, ox, oy, cell){
+    if(!layerEnabled("layerOccupancy") || !logLayers) return;
+    const field = logLayers.cumulative_occupancy;
+    if(!Array.isArray(field)) return;
+    const values = field.flat().map(Number).filter(value => Number.isFinite(value) && value > 0);
+    const maximum = values.length ? Math.max(...values) : 0;
+    if(maximum <= 0) return;
+    field.forEach((row, y) => Array.isArray(row) && row.forEach((raw, x) => {
+      const value = Number(raw);
+      if(!Number.isFinite(value) || value <= 0 || x >= grid.width || y >= grid.height) return;
+      const ratio = value / maximum;
+      ctx.fillStyle = `rgba(220,38,38,${0.08 + ratio * 0.48})`;
+      ctx.fillRect(ox + x * cell, oy + y * cell, cell, cell);
+    }));
+  }
+
+  function drawTrajectories(grid, ox, oy, cell){
+    if(!layerEnabled("layerTrajectories") || !logLayers || !logLayers.trajectories) return;
+    Object.entries(logLayers.trajectories).forEach(([personId, points]) => {
+      if(!Array.isArray(points) || points.length < 2) return;
+      const hash = [...personId].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+      ctx.beginPath();
+      ctx.strokeStyle = `hsla(${hash * 47 % 360},65%,38%,.48)`;
+      ctx.lineWidth = Math.max(1, Math.min(2.5, cell * .08));
+      points.forEach((point, index) => {
+        const x = Number(point.x), y = Number(point.y);
+        if(!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x >= grid.width || y >= grid.height) return;
+        const px = ox + (x + .5) * cell, py = oy + (y + .5) * cell;
+        if(index === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+    });
+  }
+
+  function personKey(person){
+    if(!person) return null;
+    const value = person.person_id ?? person.id;
+    return value === undefined || value === null ? null : String(value);
+  }
+
+  function personDisplayPosition(person){
+    const transition = personTransition && personTransition.get(personKey(person));
+    if(!transition) return {x:Number(person.x), y:Number(person.y)};
+    const progress = Math.min(1, Math.max(0, (performance.now() - transition.startedAt) / transition.duration));
+    return {
+      x: transition.from.x + (transition.to.x - transition.from.x) * progress,
+      y: transition.from.y + (transition.to.y - transition.from.y) * progress
+    };
+  }
+
+  function drawPeople(people, grid, ox, oy, cell){
+    (people || []).forEach(person => {
+      if(person.evacuated) return;
+      const position = personDisplayPosition(person);
+      const x = position.x, y = position.y;
+      if(!Number.isFinite(x) || !Number.isFinite(y)) return;
+      const px = ox + (x + .5) * cell;
+      const py = oy + (y + .5) * cell;
+      ctx.beginPath();
+      ctx.fillStyle = "#2563eb";
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = Math.max(1.5, cell * .08);
+      ctx.arc(px, py, Math.max(3, Math.min(8, cell * .32)), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+  }
+
+  function startPersonTransition(previous, next){
+    if(personTransitionFrame) cancelAnimationFrame(personTransitionFrame);
+    personTransitionFrame = null;
+    personTransition = null;
+    if(!previous || !Array.isArray(previous.people) || !next || !Array.isArray(next.people)) return;
+    const before = new Map(previous.people.map(person => [personKey(person), person]).filter(([key]) => key !== null));
+    const transitions = new Map();
+    next.people.forEach(person => {
+      if(!person || person.evacuated) return;
+      const key = personKey(person);
+      const oldPerson = key === null ? null : before.get(key);
+      if(!oldPerson || oldPerson.evacuated) return;
+      const from = {x:Number(oldPerson.x), y:Number(oldPerson.y)};
+      const to = {x:Number(person.x), y:Number(person.y)};
+      if(!Number.isFinite(from.x) || !Number.isFinite(from.y) || !Number.isFinite(to.x) || !Number.isFinite(to.y)) return;
+      if(from.x !== to.x || from.y !== to.y) transitions.set(key, {from, to, startedAt:performance.now(), duration:260});
+    });
+    if(!transitions.size) return;
+    personTransition = transitions;
+    const animate = () => {
+      draw();
+      const running = [...transitions.values()].some(item => performance.now() - item.startedAt < item.duration);
+      if(running) personTransitionFrame = requestAnimationFrame(animate);
+      else { personTransition = null; personTransitionFrame = null; draw(); }
+    };
+    personTransitionFrame = requestAnimationFrame(animate);
+  }
+
+  function draw(){
+    const w = canvas.clientWidth || 1;
+    const h = canvas.clientHeight || 1;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#f8fafc";
+    ctx.fillRect(0, 0, w, h);
+    if(!snapshot || !snapshot.grid){
+      ctx.fillStyle = "#64748b";
+      ctx.font = "700 18px Microsoft YaHei";
+      ctx.textAlign = "center";
+      ctx.fillText("等待 A 地图导入", w/2, h/2);
+      return;
+    }
+    const grid = snapshot.grid;
+    const pad = 24;
+    const cell = Math.max(2, Math.min((w - pad * 2) / grid.width, (h - pad * 2) / grid.height));
+    const ox = (w - cell * grid.width) / 2;
+    const oy = (h - cell * grid.height) / 2;
+    drawGrid(grid, ox, oy, cell);
+    drawCumulativeOccupancy(grid, ox, oy, cell);
+    if(layerEnabled("layerSmoke")){
+      drawField(snapshot.fields && snapshot.fields.smoke_field, grid, ox, oy, cell);
+      drawSmokeSources(snapshot.fields && snapshot.fields.smoke_sources, grid, ox, oy, cell);
+    }
+    drawTrajectories(grid, ox, oy, cell);
+    if(layerEnabled("layerPeople")) drawPeople(snapshot.people, grid, ox, oy, cell);
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(ox, oy, grid.width * cell, grid.height * cell);
+  }
+
+  function inspectSnapshot(){
+    const people = snapshot && Array.isArray(snapshot.people) ? snapshot.people : [];
+    const evacuated = people.filter(p => p.evacuated).length;
+    const smoke = snapshot && snapshot.fields && snapshot.fields.smoke_field;
+    let maxSmoke = null;
+    if(Array.isArray(smoke)){
+      const values = smoke.flat().map(Number).filter(Number.isFinite);
+      if(values.length) maxSmoke = Math.max(...values);
+    }
+    const occupied = new Map();
+    people.filter(p => !p.evacuated).forEach(person => {
+      const key = `${person.x},${person.y}`;
+      occupied.set(key, (occupied.get(key) || 0) + 1);
+    });
+    const overlapCells = [...occupied.values()].filter(count => count > 1).length;
+    const rows = snapshot && snapshot.grid && Array.isArray(snapshot.grid.cell_type)
+      ? snapshot.grid.cell_type : [];
+    const sourceCells = new Set();
+    let exitCount = 0;
+    rows.forEach((row, y) => Array.isArray(row) && row.forEach((cell, x) => {
+      const type = normalizeCell(cell);
+      if(type === "smoke_source") sourceCells.add(`${x},${y}`);
+      if(type === "exit") exitCount += 1;
+    }));
+    const runtimeSources = snapshot && snapshot.fields && Array.isArray(snapshot.fields.smoke_sources)
+      ? snapshot.fields.smoke_sources : [];
+    runtimeSources.forEach(source => {
+      const x = Number(source && source.x), y = Number(source && source.y);
+      if(Number.isInteger(x) && Number.isInteger(y)) sourceCells.add(`${x},${y}`);
+    });
+    return {
+      people, evacuated, maxSmoke, smokeActive:maxSmoke !== null && maxSmoke > 0,
+      overlapCells, smokeSourceCount:sourceCells.size, runtimeSmokeSourceCount:runtimeSources.length,
+      exitCount
+    };
+  }
+
+  function refreshStats(extra = {}){
+    const observed = inspectSnapshot();
+    const grid = snapshot && snapshot.grid;
+    $("gridSize").textContent = grid ? `${grid.width} x ${grid.height}` : "NA";
+    const hasPeople = activeSession && observed.people.length > 0;
+    $("peopleCount").textContent = hasPeople ? observed.people.length : "NA";
+    $("totalPersons").value = hasPeople ? String(observed.people.length) : "由人员文件决定";
+    $("evacCount").textContent = observed.evacuated;
+    $("evacRate").textContent = hasPeople ? `${(observed.evacuated / observed.people.length * 100).toFixed(1)}%` : "NA";
+    $("remainingCount").textContent = hasPeople ? String(observed.people.length - observed.evacuated) : "NA";
+    $("smokeSourceCount").textContent = grid ? observed.smokeSourceCount : "NA";
+    $("smokeMax").textContent = observed.maxSmoke === null ? "NA" : observed.maxSmoke.toFixed(3);
+    $("smokeContract").textContent = observed.maxSmoke === null
+      ? "NA"
+      : (observed.smokeSourceCount === 0 ? "无烟源" : (!observed.smokeActive ? "待 B 首步更新" : (observed.maxSmoke <= 10 ? "正常 (0~10)" : "超出 0~10")));
+    $("overlapCount").textContent = observed.overlapCells;
+    if(extra.diagnostics && Number.isFinite(Number(extra.diagnostics.request_processing_ms))){
+      $("stepLatency").textContent = `${Number(extra.diagnostics.request_processing_ms).toFixed(1)} ms`;
+    }
+    const currentStep = snapshot ? Number(snapshot.step || 0) : 0;
+    const simulatedTime = snapshot ? Number(snapshot.time_s || 0) : 0;
+    $("runtimeStep").textContent = String(currentStep);
+    $("simTime").textContent = `${timeValue(simulatedTime)} s`;
+    $("timeText").textContent = `step ${currentStep} / ${timeValue(simulatedTime)}s`;
+    if(extra.output_dir){
+      lastOutputDir = extra.output_dir;
+      $("outputDir").textContent = extra.output_dir;
+      $("outputDir").title = extra.output_dir;
+    }
+    setLayerAvailability("layerPeople", hasPeople, true);
+    setLayerAvailability("layerExits", Boolean(grid && observed.exitCount > 0), true);
+    setLayerAvailability("layerSmoke", Boolean(grid && observed.smokeSourceCount > 0), true);
+    setLayerAvailability("layerOccupancy", activeSession, false);
+    setLayerAvailability("layerTrajectories", activeSession, false);
+    const notices = [];
+    if(!grid) notices.push("图层等待真实地图与运行数据");
+    else if(observed.smokeSourceCount === 0) notices.push("当前场景无烟源；不生成视觉烟雾");
+    else if(grid && !observed.smokeActive) notices.push("烟雾图层等待真实 smoke_matrix 非零值");
+    if(layerEnabled("layerOccupancy") && !logLayers) notices.push("累计占用等待 people_log 分析");
+    if(layerEnabled("layerTrajectories") && !logLayers) notices.push("轨迹等待 people_log 分析");
+    if(!activeSession && grid) notices.push("人员、轨迹与累计占用需初始化后启用");
+    $("layerNotice").textContent = notices.join("；") || "当前图层均来自真实快照与 people_log";
+    $("smokeInputHint").textContent = grid && observed.smokeSourceCount === 0
+      ? "当前场景无 smoke_source，烟雾图层保持为空。"
+      : "烟源来自地图；烟场只绘制 B 返回的 smoke_matrix。";
+    return observed;
+  }
+
+  function applySnapshot(next, extra = {}){
+    const previousSnapshot = snapshot;
+    if(extra.resetHistory) logLayers = null;
+    snapshot = next;
+    startPersonTransition(previousSnapshot, next);
+    const observed = refreshStats(extra);
+    draw();
+    drawInsights(observed);
+    return observed;
+  }
+
+  function finiteMean(values){
+    const numeric = values
+      .filter(value => value !== null && value !== undefined && value !== "")
+      .map(Number)
+      .filter(Number.isFinite);
+    return numeric.length ? numeric.reduce((sum, value) => sum + value, 0) / numeric.length : null;
+  }
+
+  function textValue(value, digits = 3){
+    return Number.isFinite(value) ? Number(value).toFixed(digits) : "NA";
+  }
+
+  function timeValue(value){
+    const numeric = Number(value);
+    if(!Number.isFinite(numeric)) return "NA";
+    return numeric.toFixed(3).replace(/\.?0+$/, "");
+  }
+
+  function drawInsights(observed = inspectSnapshot()){
+    const people = snapshot && Array.isArray(snapshot.people) ? snapshot.people : [];
+    const riskMean = finiteMean(people.map(person => person && person.risk));
+    const doseMean = finiteMean(people.map(person => person && person.dose));
+    $("avgRisk").textContent = textValue(riskMean);
+    $("avgDose").textContent = textValue(doseMean);
+    $("riskStatus").textContent = riskMean === null ? "NA · 上游未提供" : "已收到真实字段";
+    $("insightOverlap").textContent = String(observed.overlapCells);
+    $("insightSmoke").textContent = textValue(observed.maxSmoke);
+
+    const actualExits = {};
+    people.forEach(person => {
+      if(person && person.evacuated && person.actual_exit){
+        const exitId = String(person.actual_exit);
+        actualExits[exitId] = (actualExits[exitId] || 0) + 1;
+      }
+    });
+    renderActualExitDistribution(actualExits);
+    const riskNote = riskMean === null ? "B 当前未公开个人风险结果，平均风险显示 NA。" : "";
+    $("dataProvenance").innerHTML = `<b>数据来源：</b>本次运行日志和仿真快照。风险、剂量、实际出口只在上游实际返回时展示；缺失字段为 NA。${riskNote}`;
+  }
+
+  function metricMap(rows){
+    return new Map((rows || []).map(row => [String(row.metric_name || ""), row.value]));
+  }
+
+  function setAnalysisFigure(containerId, svg, emptyMessage){
+    const container = $(containerId);
+    if(!svg){
+      container.innerHTML = `<div class="figure-placeholder">${emptyMessage}</div>`;
+      return;
+    }
+    const image = document.createElement("img");
+    image.alt = containerId === "curveFigure" ? "疏散人数-时间曲线" : "累计占用热力图";
+    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    container.replaceChildren(image);
+  }
+
+  function resetDerivedAnalysis(message = "等待本次运行的真实日志。"){
+    ["totalEvacTime", "meanEvacTime", "t90Time"].forEach(id => { $(id).textContent = "NA"; });
+    $("exitBars").textContent = "NA：尚未收到实际出口字段 actual_exit。";
+    $("actualExitStatus").textContent = "NA · 上游未提供";
+    setAnalysisFigure("curveFigure", "", message);
+    setAnalysisFigure("heatmapFigure", "", message);
+    $("curveNote").textContent = "本次运行尚无分析数据。";
+  }
+
+  function renderActualExitDistribution(distribution){
+    const values = distribution && typeof distribution === "object" && !Array.isArray(distribution)
+      ? Object.entries(distribution) : [];
+    const total = values.reduce((sum, [, count]) => sum + Number(count || 0), 0);
+    const container = $("exitBars");
+    container.replaceChildren();
+    if(total <= 0){
+      container.textContent = "NA：仅统计 B 返回的 actual_exit；当前运行未提供该字段。";
+      $("actualExitStatus").textContent = "NA · 上游未提供";
+      return;
+    }
+    values.forEach(([name, count], index) => {
+      const percent = Number(count) / total * 100;
+      const row = document.createElement("div");
+      row.className = "bar-row";
+      const label = document.createElement("span");
+      label.textContent = String(name);
+      const track = document.createElement("div");
+      track.className = "bar-track";
+      const bar = document.createElement("div");
+      bar.className = `bar-fill${index % 2 ? " green" : ""}`;
+      bar.style.width = `${percent}%`;
+      const value = document.createElement("b");
+      value.textContent = `${percent.toFixed(1)}%`;
+      track.appendChild(bar);
+      row.append(label, track, value);
+      container.appendChild(row);
+    });
+    $("actualExitStatus").textContent = "已收到真实字段";
+  }
+
+  function metricText(metrics, key, suffix = ""){
+    const value = metrics.get(key);
+    return value === undefined || value === null || value === "" || value === "NA"
+      ? "NA"
+      : `${value}${suffix}`;
+  }
+
+  function renderAnalysisMetrics(data){
+    const summary = data.summary || {};
+    const metrics = metricMap(data.metrics);
+    $("peopleCount").textContent = textValue(Number(summary.initial_population), 0);
+    $("evacCount").textContent = textValue(Number(summary.evacuated_count), 0);
+    $("evacRate").textContent = Number.isFinite(Number(summary.evacuation_rate)) ? `${(Number(summary.evacuation_rate) * 100).toFixed(1)}%` : "NA";
+    $("remainingCount").textContent = textValue(Number(summary.remaining_count), 0);
+    $("totalEvacTime").textContent = metricText(metrics, "total_evacuation_time_s", " s");
+    $("meanEvacTime").textContent = metricText(metrics, "mean_evacuation_time_s", " s");
+    $("t90Time").textContent = metricText(metrics, "t90_time_s", " s");
+    renderActualExitDistribution(data.week6_metrics && data.week6_metrics.exit_distribution);
+  }
+
+  async function refreshCoreMetrics(){
+    if(!activeSession) return;
+    const response = await fetch("/api/session/metrics");
+    const data = await response.json().catch(() => ({ok:false, error:"指标结果无法解析"}));
+    if(!response.ok || !data.ok) throw new Error(data.error || "无法刷新真实指标");
+    renderAnalysisMetrics(data);
+  }
+
+  function historyValue(value, suffix = ""){
+    return value === undefined || value === null || value === "" || value === "NA" ? "NA" : `${value}${suffix}`;
+  }
+
+  function showHistoryError(error){
+    const detail = error && error.message ? error.message : String(error || "unknown error");
+    $("historyDetail").textContent = "历史实验暂不可用。请在开发诊断查看详情。";
+    log(`历史实验读取失败：${detail}`);
+  }
+
+  async function loadHistoryDetail(id){
+    const response = await fetch(`/api/experiments/${encodeURIComponent(id)}`);
+    const payload = await response.json().catch(() => ({ok:false, error:"历史实验无法解析"}));
+    if(!response.ok || !payload.ok) throw new Error(payload.error || "无法读取历史实验");
+    const item = payload.experiment || {};
+    const summary = item.summary || {};
+    const historyMetrics = item.metrics || {};
+    renderAnalysisMetrics({
+      summary: {
+        initial_population: historyMetrics.total_population,
+        evacuated_count: historyMetrics.evacuated_count,
+        evacuation_rate: historyMetrics.evacuation_rate,
+        remaining_count: historyMetrics.remaining_count,
+      },
+      metrics: item.metric_rows || [],
+      week6_metrics: historyMetrics,
+    });
+    $("historyDetail").textContent = `ID: ${summary.experiment_id || "NA"}\nseed: ${historyValue(summary.random_seed)} · 状态: ${historyValue(summary.status)}\n人数: ${historyValue(summary.total_persons)} · 撤离率: ${historyValue(summary.evacuation_rate)}\n总疏散: ${historyValue(summary.total_evacuation_time_s," s")} · 平均: ${historyValue(summary.mean_evacuation_time_s," s")} · T90: ${historyValue(summary.t90_time_s," s")}\n结果包: ${historyValue(summary.result_package && summary.result_package.status)}\n路径: ${historyValue(summary.output_dir)}`;
+    if(item.evacuation_curve_svg) setAnalysisFigure("curveFigure", item.evacuation_curve_svg, "历史实验无真实曲线。");
+    if(item.occupancy_heatmap_svg) setAnalysisFigure("heatmapFigure", item.occupancy_heatmap_svg, "历史实验无真实累计占用图。");
+  }
+
+  async function refreshHistory(){
+    const response = await fetch("/api/experiments");
+    const payload = await response.json().catch(() => ({ok:false, error:"历史列表无法解析"}));
+    if(!response.ok || !payload.ok) throw new Error(payload.error || "无法扫描历史实验");
+    const items = payload.experiments || [];
+    const list = $("historyList");
+    list.textContent = "";
+    if(!items.length){ list.innerHTML = '<div class="hint">未发现可读取的真实输出。</div>'; return; }
+    items.forEach(item => {
+      const button = document.createElement("button");
+      button.className = "history-item";
+      button.textContent = `${item.experiment_id || item.id} · seed ${historyValue(item.random_seed)} · ${historyValue(item.status)} · ${historyValue(item.evacuation_rate)}`;
+      button.onclick = () => loadHistoryDetail(item.id).catch(showHistoryError);
+      list.appendChild(button);
+    });
+  }
+
+  async function refreshLogLayers(){
+    if(!activeSession) return;
+    const response = await fetch("/api/session/layers");
+    const data = await response.json().catch(() => ({ok:false, error:"日志图层无法解析"}));
+    if(!response.ok || !data.ok) throw new Error(data.error || "无法刷新真实日志图层");
+    logLayers = data.layers || null;
+    draw();
+    refreshStats();
+  }
+
+  async function refreshRealAnalysis(){
+    if(!activeSession){
+      log("请先初始化仿真，再刷新真实分析。");
+      return;
+    }
+    const response = await fetch("/api/session/analysis");
+    const data = await response.json().catch(() => ({ok:false, error:"分析结果无法解析"}));
+    if(!response.ok || !data.ok) throw new Error(data.error || "无法生成真实分析");
+    const summary = data.summary || {};
+    renderAnalysisMetrics(data);
+    logLayers = data.layers || null;
+    lastAnalysisStep = Number(summary.total_steps ?? -1);
+    setAnalysisFigure("curveFigure", data.evacuation_curve_svg, "暂无可用于绘图的真实日志。");
+    setAnalysisFigure("heatmapFigure", data.occupancy_heatmap_svg, "暂无可用于绘图的真实日志。");
+    $("curveNote").textContent = `已记录 ${summary.total_steps ?? "NA"} 步 · 已撤离 ${summary.evacuated_count ?? "NA"}/${summary.initial_population ?? "NA"}`;
+    draw();
+    refreshStats();
+    log("已刷新本次运行的 CSV 分析图表");
+  }
+
+  function showEffectiveRuntime(result, configSource){
+    const params = result.runtime_parameters || {};
+    const seed = params.random_seed === null || params.random_seed === undefined ? "随机" : params.random_seed;
+    $("effectiveParams").textContent = `seed=${seed} · dt=${params.time_step_s ?? "NA"}s · max=${params.max_steps ?? "NA"}`;
+    $("configSourceValue").textContent = configSource;
+    const meta = result.snapshot && result.snapshot.adapter_meta || {};
+    $("runtimeApi").textContent = meta.b_runtime_api || "run_one_step(c_step_data)";
+    $("behaviorStatus").textContent = String(meta.behavior_input || "未提供").startsWith("empty mapping")
+      ? "待接入 · 当前空映射"
+      : String(meta.behavior_input || "未提供");
+  }
+
+  function validateEditableMap(data){
+    if(!data || typeof data !== "object" || !Number.isInteger(data.width) || !Number.isInteger(data.height) || !Array.isArray(data.cells) || data.cells.length !== data.width * data.height){
+      throw new Error("JSON 地图必须包含完整 width、height 与 cells 网格");
+    }
+    data.cells.forEach((cell, index) => {
+      if(!cell || typeof cell !== "object" || !Number.isInteger(cell.x) || !Number.isInteger(cell.y) || typeof cell.type !== "string"){
+        throw new Error(`cells[${index}] 缺少 x/y/type`);
+      }
+    });
+  }
+
+  function currentMapPayload(){
+    if(currentMapData) return {map_data:currentMapData, source_name:currentMapName || "edited_map.json"};
+    return null;
+  }
+
+  async function previewCurrentMap(){
+    const payload = currentMapPayload();
+    if(!payload) throw new Error("当前没有可编辑 JSON 地图");
+    const result = await api("/api/map/preview-data", payload);
+    selectedTemplate = null;
+    activeSession = false;
+    sessionFinished = false;
+    stopTimer();
+    resetDerivedAnalysis("初始化仿真后显示本次运行曲线。");
+    applySnapshot(result.snapshot, {resetHistory:true});
+    const meta = result.map_meta || {};
+    const smokeSources = Number((meta.cell_counts || {}).smoke_source || 0);
+    $("mapEditorHint").textContent = `当前 JSON 地图：${currentMapName}；已编辑内容将直接用于自动分配与 runtime。烟源 ${smokeSources} 个。`;
+    $("editMapBtn").disabled = false;
+    $("autoPositionBtn").disabled = false;
+    setStatus(`地图已显示：${currentMapName}\n当前状态：内存 JSON${smokeSources ? `；烟源 ${smokeSources} 个` : "；无烟源"}`, "地图预览");
+    return result;
+  }
+
+  function openMapEditor(){
+    if(!currentMapData){ setStatus("请先导入 JSON 地图；PNG 暂不支持在线编辑。", "编辑不可用"); return; }
+    const frame = $("mapEditorFrame");
+    if(!editorReady || !frame.contentWindow || typeof frame.contentWindow.loadMapData !== "function"){
+      setStatus("地图编辑器仍在加载，请稍后再试。", "编辑器加载中");
+      return;
+    }
+    frame.contentWindow.loadMapData(structuredClone(currentMapData));
+    $("editorModal").classList.add("open");
+  }
+
+  async function confirmMapEdit(){
+    const frame = $("mapEditorFrame");
+    const edited = frame.contentWindow && frame.contentWindow.getMapData && frame.contentWindow.getMapData();
+    validateEditableMap(edited);
+    currentMapData = edited;
+    $("editorModal").classList.remove("open");
+    await previewCurrentMap();
+    $("mapEditorHint").textContent = `地图已编辑：${currentMapName}；确认后的同一份地图将进入自动分配和 runtime。`;
+    log("地图编辑已确认，currentMapData 已替换");
+  }
+
+  function cancelMapEdit(){
+    $("editorModal").classList.remove("open");
+    setStatus("已取消地图编辑；当前地图未改变。", "地图未改变");
+  }
+
+  async function previewMap(){
+    if(location.protocol === "file:"){
+      setStatus("请通过本地服务打开页面：python -m experiments.web_runtime_server", "需要启动服务");
+      return;
+    }
+    const mapFile = await readFilePayload($("mapFile"));
+    if(!mapFile){ setStatus("请选择 A 地图文件。", "等待地图"); return; }
+    if(String(mapFile.name || "").toLowerCase().endsWith(".json")){
+      try{
+        const parsed = JSON.parse(mapFile.text);
+        validateEditableMap(parsed);
+        currentMapData = parsed;
+        currentMapName = mapFile.name;
+        return previewCurrentMap();
+      }catch(error){
+        currentMapData = null;
+        throw new Error(`JSON 地图无法进入在线编辑：${error.message}`);
+      }
+    }
+    currentMapData = null;
+    currentMapName = mapFile.name;
+    $("editMapBtn").disabled = true;
+    $("autoPositionBtn").disabled = true;
+    $("mapEditorHint").textContent = "PNG / CSV 保留原导入运行方式；在线编辑当前仅支持 JSON 地图。";
+    const result = await api("/api/map/preview", {map_file:mapFile, source_name:mapFile.name});
+    selectedTemplate = null;
+    $("templateHint").textContent = "当前使用手动上传地图；模板选择已取消。";
+    activeSession = false;
+    sessionFinished = false;
+    stopTimer();
+    resetDerivedAnalysis("初始化仿真后显示本次运行曲线。");
+    applySnapshot(result.snapshot, {resetHistory:true});
+    const meta = result.map_meta || {};
+    const smokeSources = Number((meta.cell_counts || {}).smoke_source || 0);
+    setStatus(`地图已显示。\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\n烟源: ${smokeSources}${smokeSources ? " 个；启动联调后显示 B 烟雾" : " 个；当前地图无 smoke_source，因此不会产生烟雾"}\ncell_type: ${JSON.stringify(meta.cell_counts || {})}`, "地图预览");
+    log(`地图预览成功：${mapFile.name}`);
+  }
+
+  async function previewTemplate(templateId){
+    if(location.protocol === "file:"){
+      setStatus("标准模板需要本地服务：python -m experiments.web_runtime_server", "需要启动服务");
+      return;
+    }
+    const result = await api("/api/template/preview", {template_id:templateId});
+    currentMapData = null;
+    currentMapName = "";
+    $("editMapBtn").disabled = true;
+    $("autoPositionBtn").disabled = true;
+    $("mapEditorHint").textContent = "标准模板保留原有流程；在线编辑与自动位置分配当前仅支持上传 JSON 地图。";
+    selectedTemplate = templateId;
+    activeSession = false;
+    sessionFinished = false;
+    stopTimer();
+    resetDerivedAnalysis("初始化仿真后显示本次运行曲线。");
+    applySnapshot(result.snapshot, {resetHistory:true});
+    const meta = result.map_meta || {};
+    const smokeSources = Number((meta.cell_counts || {}).smoke_source || 0);
+    $("templateHint").textContent = `已选择 ${templateId} 模板。启动联调时请上传 C 生成人员后、经 A 按该模板分配坐标的人员文件。`;
+    setStatus(`A 标准模板已显示：${templateId}\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\n地图烟源: ${smokeSources} 个\n下一步：上传 C 生成人员、经 A 按该模板分配坐标后的文件，再启动联调。`, "模板预览");
+    log(`A 标准模板预览成功：${templateId}`);
+  }
+
+  function runtimeParameterPayload(){
+    const seedRaw = $("randomSeed").value.trim();
+    const randomSeed = seedRaw === "" ? null : Number(seedRaw);
+    const timeStep = Number($("timeStep").value);
+    const maxSteps = Number($("maxSteps").value);
+    if(seedRaw !== "" && !Number.isInteger(randomSeed)) throw new Error("random_seed 必须是整数或留空");
+    if(!Number.isFinite(timeStep) || timeStep <= 0 || timeStep > 60) throw new Error("time_step 必须在 0 到 60 秒之间");
+    if(!Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 5000) throw new Error("最大步数必须是 1 到 5000 的整数");
+    return {random_seed:randomSeed, time_step_s:timeStep, max_steps:maxSteps};
+  }
+
+  async function initSession(){
+    if(pending){ log("当前单步正在计算，请等待完成后再初始化。"); return; }
+    if(location.protocol === "file:"){
+      setStatus("真实联调需要本地服务：python -m experiments.web_runtime_server", "需要启动服务");
+      return;
+    }
+    const [mapFile, populationFile, uploadedYaml] = await Promise.all([
+      readFilePayload($("mapFile")),
+      readFilePayload($("populationFile")),
+      readFilePayload($("yamlFile"))
+    ]);
+    if((!mapFile && !currentMapData && !selectedTemplate) || !populationFile){
+      setStatus("启动 A+B+C 联调需要 A 地图或标准模板，以及 C 人群输出。", "缺少输入");
+      return;
+    }
+    const yaml = uploadedYaml;
+    const configSource = uploadedYaml ? `外部 YAML (${uploadedYaml.name})` : "未提供 YAML";
+    const runtimeParameters = {yaml_file:yaml, ...runtimeParameterPayload()};
+    const result = await api(
+      selectedTemplate ? "/api/session/template" : "/api/session",
+      selectedTemplate
+        ? {template_id:selectedTemplate, population_file:populationFile, ...runtimeParameters}
+        : {...(currentMapData ? {map_data:currentMapData} : {map_file:mapFile}), population_file:populationFile, ...runtimeParameters}
+    );
+    activeSession = true;
+    sessionFinished = false;
+    pauseRequested = false;
+    lastAnalysisStep = -1;
+    stopTimer();
+    resetDerivedAnalysis("正在读取初始化日志。");
+    applySnapshot(result.snapshot, {output_dir:result.output_dir, resetHistory:true});
+    showEffectiveRuntime(result, configSource);
+    refreshRealAnalysis().catch(error => log(`初始化后分析未刷新：${error.message}`));
+    const meta = result.snapshot.adapter_meta || {};
+    const behaviorStatus = String(meta.behavior_input || "未提供").startsWith("empty mapping")
+      ? "未接入（空映射）"
+      : String(meta.behavior_input || "未提供");
+    const drawingStatus = String(meta.upstream_animation || "").startsWith("suppressed")
+      ? "D Canvas（B 重复绘图已关闭）"
+      : String(meta.upstream_animation || "D Canvas");
+    const observed = inspectSnapshot();
+    const smokeStatus = observed.runtimeSmokeSourceCount
+      ? `烟雾: 已接入 B 运行时烟源 ${observed.runtimeSmokeSourceCount} 个；${observed.smokeActive ? "已显示" : "等待 B 首步更新"}`
+      : (observed.smokeSourceCount
+        ? `烟雾: ${observed.smokeActive ? "已显示" : "已接入，等待 B 首步更新"}`
+        : "烟雾: 当前场景无 smoke_source，烟雾图层已禁用");
+    setStatus(`A+B+C 文件联调已初始化\nB: ${meta.b_runtime_api || "run_one_step(c_step_data)"}\nC 人员: 已接入\nC 配置: ${configSource}\nC 每步行为: ${behaviorStatus}\n${smokeStatus}\n绘图: ${drawingStatus}`, "真实联调");
+    log("A+B+C 联调初始化成功");
+  }
+
+  async function initAutoPositionSession(){
+    if(pending){ log("当前单步正在计算，请等待完成后再初始化。"); return; }
+    if(!currentMapData){
+      setStatus("自动位置分配需要当前导入并确认的 JSON 地图。", "自动分配不可用");
+      return;
+    }
+    const [populationFile, uploadedYaml] = await Promise.all([
+      readFilePayload($("populationFile")), readFilePayload($("yamlFile"))
+    ]);
+    if(!populationFile){ setStatus("请先选择人员 JSON。", "缺少人员输入"); return; }
+    const result = await api("/api/session/auto-position", {
+      map_data:currentMapData,
+      population_file:populationFile,
+      yaml_file:uploadedYaml,
+      ...runtimeParameterPayload()
+    });
+    activeSession = true;
+    sessionFinished = false;
+    pauseRequested = false;
+    lastAnalysisStep = -1;
+    stopTimer();
+    resetDerivedAnalysis("正在读取自动分配后的初始化日志。");
+    applySnapshot(result.snapshot, {output_dir:result.output_dir, resetHistory:true});
+    showEffectiveRuntime(result, uploadedYaml ? `外部 YAML (${uploadedYaml.name})` : "未提供 YAML");
+    const allocation = result.auto_positioning || {};
+    $("mapEditorHint").textContent = `已由 A 自动分配 ${allocation.person_count ?? "NA"} 人；编辑后的 currentMapData 已进入 runtime。`;
+    setStatus(`人员位置已由 A 自动分配并完成 runtime 初始化\n人数：${allocation.person_count ?? "NA"}\n来源：${allocation.source || "allocate_positions"}`, "自动分配已初始化");
+    log("编辑后地图已用于 A 自动位置分配和 B runtime 初始化");
+  }
+
+  async function loadSample(){
+    if(pending){ log("当前单步正在计算，请等待完成后再加载样例。"); return; }
+    if(location.protocol === "file:"){
+      setStatus("仓库样例需要本地服务：python -m experiments.web_runtime_server", "需要启动服务");
+      return;
+    }
+    const result = await api("/api/session/sample", runtimeParameterPayload());
+    currentMapData = null;
+    currentMapName = "";
+    $("editMapBtn").disabled = true;
+    $("autoPositionBtn").disabled = true;
+    $("mapEditorHint").textContent = "仓库样例保留原有流程；在线编辑与自动位置分配当前仅支持上传 JSON 地图。";
+    activeSession = true;
+    sessionFinished = false;
+    pauseRequested = false;
+    lastAnalysisStep = -1;
+    stopTimer();
+    resetDerivedAnalysis("正在读取仓库样例日志。");
+    applySnapshot(result.snapshot, {output_dir:result.output_dir, resetHistory:true});
+    showEffectiveRuntime(result, "control/config_template.yaml（仓库正式配置）");
+    refreshRealAnalysis().catch(error => log(`样例分析未刷新：${error.message}`));
+    const meta = result.snapshot.adapter_meta || {};
+    const behaviorStatus = String(meta.behavior_input || "未提供").startsWith("empty mapping")
+      ? "未接入（空映射）"
+      : String(meta.behavior_input || "未提供");
+    setStatus(`仓库样例已加载\nB: ${meta.b_runtime_api || "run_one_step(c_step_data)"}\nC 人员 + 配置: 已接入\nC 每步行为: ${behaviorStatus}\n烟雾: 当前样例无烟源`, "仓库样例");
+    log("仓库样例初始化成功");
+  }
+
+  async function stepOnce(){
+    if(!activeSession){ log("当前只有地图预览，未启动 B 联调。"); return; }
+    if(pending) return;
+    pending = true;
+    setRunControlsBusy(true);
+    $("stepLatency").textContent = "计算中";
+    setStatus(`B 正在计算 step ${Number(snapshot && snapshot.step || 0) + 1}。\n最新版烟雾模型可能需要十几秒，请勿重置或重复点击。`, "计算中");
+    try{
+      const result = await api("/api/session/step", {});
+      sessionFinished = Boolean(result.finished);
+      const observed = applySnapshot(result.snapshot, {output_dir:result.output_dir, diagnostics:result.diagnostics});
+      refreshCoreMetrics().catch(error => log(`本步指标未刷新：${error.message}`));
+      if(layerEnabled("layerOccupancy") || layerEnabled("layerTrajectories")){
+        refreshLogLayers().catch(error => log(`日志图层未刷新：${error.message}`));
+      }
+      if(result.finished || !autoPlaying || result.snapshot.step - lastAnalysisStep >= 25){
+        refreshRealAnalysis().catch(error => log(`分析图表未刷新：${error.message}`));
+      }
+      const warnings = [];
+      const smokeContractViolated = observed.maxSmoke !== null && observed.maxSmoke > 10;
+      if(observed.overlapCells > 0) warnings.push(`检测到 ${observed.overlapCells} 个活动人员重叠元胞`);
+      if(smokeContractViolated) warnings.push(`烟雾最大值 ${observed.maxSmoke.toFixed(3)} 超出 B 约定 0~10`);
+      const completed = observed.people.length > 0 && observed.evacuated === observed.people.length;
+      const runState = completed
+        ? "全员疏散完成"
+        : (result.finished ? "已达到最大步数" : (pauseRequested ? "已暂停" : (autoPlaying ? "连续运行中" : "单步完成")));
+      const warningText = warnings.length
+        ? `\n契约诊断：${warnings.join("；")}。D 保留原始数据，未伪造或静默修正。`
+        : "";
+      setStatus(
+        `${runState}：step ${result.snapshot.step}，当前模拟时间 ${timeValue(result.snapshot.time_s || 0)} s，已撤离 ${observed.evacuated}/${observed.people.length}。${warningText}${smokeContractViolated ? "\n烟雾越界，连续运行已自动暂停。" : ""}`,
+        warnings.length ? "契约告警" : runState
+      );
+      if(smokeContractViolated){
+        stopTimer();
+        log(`烟雾在 step ${result.snapshot.step} 超出 0~10，动画已自动暂停`);
+      }
+      if(result.snapshot.step <= 5 || result.snapshot.step % 10 === 0 || result.finished || warnings.length){
+        log(`step ${result.snapshot.step}，已撤离 ${$("evacCount").textContent}，后台 ${$("stepLatency").textContent}`);
+      }
+      if(result.finished) stopTimer();
+    }catch(error){
+      stopTimer();
+      setStatus(`B step 调用失败：${error.message}\nD 未改 B 核心，请交给 B 后续确认。`, "联调错误");
+      log(`step 失败：${error.message}`);
+    }finally{
+      pending = false;
+      setRunControlsBusy(false);
+    }
+  }
+
+  function scheduleNextStep(){
+    if(!autoPlaying || !activeSession || pending) return;
+    timer = setTimeout(async () => {
+      timer = null;
+      await stepOnce();
+      scheduleNextStep();
+    }, autoDelayMs);
+  }
+
+  function startTimer(){
+    if(!activeSession){ log("请先启动 A+B+C 联调或仓库样例。"); return; }
+    if(sessionFinished){ log("本次运行已结束；如需重新运行，请点击重置。"); return; }
+    if(pending || autoPlaying){ log("当前正在计算，请等待本步完成。 "); return; }
+    pauseRequested = false;
+    autoPlaying = true;
+    autoDelayMs = Math.max(100, Number($("speedSelect").value) || 300);
+    setStatus(`连续运行已开始：从 step ${Number(snapshot && snapshot.step || 0)} 继续。播放速度只影响页面请求间隔，不改变模型。`, "连续运行");
+    setRunControlsBusy(false);
+    stepOnce().then(scheduleNextStep);
+  }
+
+  function stopTimer(){
+    if(timer) clearInterval(timer);
+    if(timer) clearTimeout(timer);
+    timer = null;
+    autoPlaying = false;
+    setRunControlsBusy(pending);
+  }
+
+  function pauseRun(){
+    const wasPlaying = autoPlaying;
+    pauseRequested = true;
+    stopTimer();
+    if(activeSession && wasPlaying){
+      setStatus(`已暂停：step ${Number(snapshot && snapshot.step || 0)}，当前模拟时间 ${timeValue(snapshot && snapshot.time_s || 0)} s。`, "已暂停");
+      refreshRealAnalysis().catch(error => log(`暂停后分析未刷新：${error.message}`));
+    }
+  }
+
+  async function resetSession(){
+    if(pending){ log("当前单步正在计算，不能重置。请等待完成或点击暂停停止后续自动步骤。"); return; }
+    if(!activeSession){ snapshot = null; draw(); refreshStats(); setStatus("已清空预览。", "等待导入地图"); return; }
+    const result = await api("/api/session/reset", {});
+    sessionFinished = false;
+    pauseRequested = false;
+    lastAnalysisStep = -1;
+    stopTimer();
+    resetDerivedAnalysis("正在读取重置后的新日志。");
+    applySnapshot(result.snapshot, {output_dir:result.output_dir, resetHistory:true});
+    showEffectiveRuntime(result, $("configSourceValue").textContent);
+    refreshRealAnalysis().catch(error => log(`重置后分析未刷新：${error.message}`));
+    setStatus(`已重置。新的输出目录：${result.output_dir}`, "已重置");
+    log("联调会话已重置");
+  }
+
+  async function exportPackage(){
+    if(pending){ log("当前单步正在计算，请等待完成后再导出。 "); return; }
+    if(!activeSession){ log("没有活动联调会话，暂不能导出结果包。"); return; }
+    const response = await fetch("/api/session/export");
+    if(!response.ok){
+      const data = await response.json().catch(() => ({error:"导出失败"}));
+      throw new Error(data.error || "导出失败");
+    }
+    const blob = await response.blob();
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = (response.headers.get("Content-Disposition") || "").match(/filename="?(.*?)"?$/)?.[1] || "d_runtime_result_package.zip";
+    link.click();
+    URL.revokeObjectURL(link.href);
+    log(`已导出结果包；本地输出目录：${lastOutputDir || "见 outputs/experiments"}`);
+  }
+
+  $("previewMap").onclick = () => previewMap().catch(error => setStatus(`地图导入失败：${error.message}`, "导入失败"));
+  $("mapFile").onchange = () => previewMap().catch(error => setStatus(`地图导入失败：${error.message}`, "导入失败"));
+  $("mapEditorFrame").addEventListener("load", () => { editorReady = true; });
+  $("editMapBtn").onclick = openMapEditor;
+  $("cancelMapEdit").onclick = cancelMapEdit;
+  $("confirmMapEdit").onclick = () => confirmMapEdit().catch(error => setStatus(`地图编辑确认失败：${error.message}`, "编辑失败"));
+  $("autoPositionBtn").onclick = () => initAutoPositionSession().catch(error => setStatus(`自动位置分配失败：${error.message}`, "自动分配失败"));
+  document.querySelectorAll("[data-template]").forEach(button => {
+    button.onclick = () => previewTemplate(button.dataset.template).catch(error => setStatus(`模板导入失败：${error.message}`, "导入失败"));
+  });
+  $("yamlBtn").onclick = () => $("yamlFile").click();
+  $("yamlFile").onchange = () => {
+    setConfigState(
+      $("yamlFile").files[0] ? `已选择外部 YAML：${$("yamlFile").files[0].name}` : "未选择 YAML",
+      $("yamlFile").files[0] ? "success" : ""
+    );
+  };
+  $("clearYaml").onclick = () => { $("yamlFile").value = ""; setConfigState("未选择 YAML。", ""); };
+  ["layerPeople", "layerExits", "layerSmoke", "layerOccupancy", "layerTrajectories"].forEach(id => {
+    $(id).onchange = () => {
+      draw(); refreshStats();
+      if(activeSession && (id === "layerOccupancy" || id === "layerTrajectories") && $(id).checked && !logLayers){
+        refreshLogLayers().catch(error => setStatus(`日志图层加载失败：${error.message}`, "图层失败"));
+      }
+    };
+  });
+  $("initBtn").onclick = () => initSession().catch(error => setStatus(`联调初始化失败：${error.message}`, "初始化失败"));
+  $("sampleBtn").onclick = () => loadSample().catch(error => setStatus(`仓库样例失败：${error.message}`, "样例失败"));
+  $("startBtn").onclick = startTimer;
+  $("pauseBtn").onclick = pauseRun;
+  $("stepBtn").onclick = () => { pauseRequested = false; stepOnce(); };
+  $("resetBtn").onclick = () => resetSession().catch(error => setStatus(`重置失败：${error.message}`, "重置失败"));
+  $("exportBtn").onclick = () => exportPackage().catch(error => setStatus(`导出失败：${error.message}`, "导出失败"));
+  $("refreshAnalysis").onclick = () => refreshRealAnalysis().catch(error => setStatus(`刷新真实分析失败：${error.message}`, "分析失败"));
+  $("refreshHistory").onclick = () => refreshHistory().catch(showHistoryError);
+  document.querySelectorAll(".top-nav a").forEach(link => {
+    link.onclick = event => {
+      event.preventDefault();
+      const target = document.querySelector(link.getAttribute("href"));
+      if(target) target.scrollIntoView({behavior:"smooth", block:"nearest"});
+      document.querySelectorAll(".top-nav a").forEach(item => item.classList.toggle("active", item === link));
+    };
+  });
+  $("clearLog").onclick = () => $("log").textContent = "";
+  window.addEventListener("resize", resize);
+  resize();
+  refreshStats();
+  setRunControlsBusy(false);
+  log("统一前端已加载");
+})();
+</script>
+</body>
+</html>

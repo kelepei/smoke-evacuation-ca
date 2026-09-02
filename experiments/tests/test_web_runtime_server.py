@@ -208,6 +208,62 @@ class WebRuntimeServerTests(unittest.TestCase):
                 server.server_close()
                 worker.join(timeout=5)
 
+    def test_edited_map_data_flows_to_preview_auto_positioning_and_runtime(self) -> None:
+        server = DWebRuntimeServer(("127.0.0.1", 0), RuntimeRequestHandler, root=Path.cwd())
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        base_url = f"http://127.0.0.1:{server.server_port}"
+
+        def post(route: str, body: dict[str, object]) -> dict[str, object]:
+            request = Request(
+                base_url + route,
+                data=json.dumps(body).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            with urlopen(request, timeout=10) as response:
+                return json.loads(response.read().decode("utf-8"))
+
+        try:
+            with tempfile.TemporaryDirectory() as raw:
+                map_path, population_path = self._write_inputs(Path(raw))
+                edited_map = json.loads(map_path.read_text(encoding="utf-8"))
+                for cell in edited_map["cells"]:
+                    if (cell["x"], cell["y"]) == (1, 1):
+                        cell["type"] = "wall"
+                edited_map["editor_marker"] = "kept-through-session"
+                preview = post("/api/map/preview-data", {"map_data": edited_map, "source_name": "edited.json"})
+                self.assertEqual("wall", preview["snapshot"]["grid"]["cell_type"][1][1])
+
+                initial = post(
+                    "/api/session/auto-position",
+                    {
+                        "map_data": edited_map,
+                        "population_file": {
+                            "name": population_path.name,
+                            "text": population_path.read_text(encoding="utf-8"),
+                        },
+                        "random_seed": 44,
+                        "time_step_s": 0.25,
+                        "max_steps": 8,
+                    },
+                )
+                self.assertEqual(2, initial["auto_positioning"]["person_count"])
+                self.assertEqual(44, initial["auto_positioning"]["random_seed"])
+                self.assertEqual("wall", initial["snapshot"]["grid"]["cell_type"][1][1])
+                saved_map = json.loads(server.session.input_files["map"].read_text(encoding="utf-8"))
+                self.assertEqual("kept-through-session", saved_map["editor_marker"])
+                self.assertTrue(server.session.input_files["map"].name == "current_map.json")
+                stepped = post("/api/session/step", {})
+                self.assertGreater(max(max(row) for row in stepped["snapshot"]["fields"]["smoke_field"]), 0.0)
+        finally:
+            try:
+                post("/api/session/close", {})
+            finally:
+                server.shutdown()
+                server.close_session()
+                server.server_close()
+                worker.join(timeout=5)
+
     def test_standard_template_preview_uses_a_loader_grid(self) -> None:
         server = DWebRuntimeServer(("127.0.0.1", 0), RuntimeRequestHandler, root=Path.cwd())
         worker = threading.Thread(target=server.serve_forever, daemon=True)
