@@ -28,6 +28,18 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
             self.assertIn(marker, self.page)
         self.assertIn("PNG / CSV 保留原导入运行方式", self.page)
 
+    def test_ui_polish_keeps_dynamic_controls_stable_and_figures_readable(self) -> None:
+        self.assertIn('id="autoPositionBtn" disabled>自动分配人员</button>', self.page)
+        self.assertNotIn("自动分配并初始化</button>", self.page)
+        self.assertNotIn('busy ? "计算中..."', self.page)
+        self.assertIn('busy ? "计算中"', self.page)
+        self.assertIn('class="primary run-control">开始</button>', self.page)
+        self.assertLess(self.page.index('id="speedSelect"'), self.page.index('id="resetBtn"'))
+        self.assertLess(self.page.index('id="resetBtn"'), self.page.index('id="startBtn"'))
+        self.assertIn('class="figure-meta" id="curveNote"', self.page)
+        self.assertIn('class="info-tooltip"', self.page)
+        self.assertIn('class="info-tooltip-content" id="dataProvenance"', self.page)
+
     def test_integrated_editor_explicitly_supports_smoke_source(self) -> None:
         self.assertIn('data-type="smoke_source"', self.editor)
         self.assertIn('smoke_source:{label:"烟源"', self.editor)
