@@ -124,7 +124,10 @@ def build_scene_from_upstream_inputs(
     config: DSceneConfigView,
 ) -> tuple[ScenarioConfig, dict[str, Any]]:
     grid = load_grid_via_a(map_path)
-    exits = [Exit(id=f"exit_{index:02d}") for index, _ in enumerate(exit_cells(grid), start=1)]
+    exits = [
+        Exit(id=f"exit_{index:02d}", x=int(x), y=int(y))
+        for index, (x, y) in enumerate(exit_cells(grid), start=1)
+    ]
     smoke_sources = [
         SmokeSource(x=x, y=y, intensity=1.0)
         for x, y in smoke_source_cells(grid)
