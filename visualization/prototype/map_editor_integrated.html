@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CA Map Editor</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:#f5f5f5;color:#222}
+.toolbar{min-height:64px;padding:10px 14px;background:#fff;border-bottom:1px solid #ddd;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.toolbar-group{display:flex;align-items:center;gap:5px;padding-right:10px;margin-right:4px;border-right:1px solid #ddd}
+.toolbar-group:last-child{border-right:none}
+button,.file-label{font:inherit;padding:6px 10px;border:1px solid #ccc;border-radius:5px;background:#fff;cursor:pointer}
+button:hover,.file-label:hover{background:#f0f0f0}
+button.active{background:#333;color:#fff;border-color:#333}
+.file-label{display:inline-flex;align-items:center}
+#fileInput{display:none}
+.status{margin-left:auto;font-size:13px;color:#555;white-space:nowrap}
+.main{height:calc(100vh - 64px);display:flex;overflow:hidden}
+.side{width:230px;background:#fff;border-right:1px solid #ddd;padding:14px;overflow-y:auto}
+.side.right{border-right:none;border-left:1px solid #ddd;width:250px}
+.panel-title{font-weight:700;margin:4px 0 12px}
+.hint{font-size:13px;line-height:1.65;color:#666}
+.shortcut{display:grid;grid-template-columns:42px 1fr;gap:6px;margin-bottom:7px;font-size:13px}
+kbd{display:inline-block;padding:2px 6px;border:1px solid #bbb;border-radius:4px;background:#fafafa;text-align:center}
+.center{flex:1;min-width:0;position:relative;background:#e9e9e9;display:flex;justify-content:center;align-items:center;overflow:auto}
+#mapCanvas{background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15);cursor:crosshair;image-rendering:pixelated}
+.info-row{margin:7px 0;font-size:13px;word-break:break-all}
+.legend{display:grid;grid-template-columns:18px 1fr;gap:7px;align-items:center;font-size:13px;margin:7px 0}
+.legend-color{width:18px;height:18px;border:1px solid #999}
+.selection,.message{margin-top:12px;padding:9px;background:#f7f7f7;border-radius:5px;font-size:12px;line-height:1.6;word-break:break-word}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="toolbar-group">
+    <button data-type="free">1 空地</button>
+    <button data-type="wall">2 墙</button>
+    <button data-type="obstacle">3 障碍</button>
+    <button data-type="exit">4 出口</button>
+    <button data-type="smoke_source">5 烟源</button>
+  </div>
+
+  <div class="toolbar-group">
+    <button data-semantic="classroom">W 教室</button>
+    <button data-semantic="corridor">E 走廊</button>
+    <button data-semantic="stair">R 楼梯</button>
+    <button data-semantic="shop">T 商店</button>
+    <button data-semantic="hall">Y 大厅</button>
+    <button data-semantic="canteen">U 食堂</button>
+    <button data-semantic="dorm">I 宿舍</button>
+    <button data-semantic="library">O 图书馆</button>
+    <button data-semantic="hospital">P 医院</button>
+  </div>
+
+  <div class="toolbar-group">
+    <button id="saveBtn">保存 JSON</button>
+    <button id="clearSemanticBtn">清除语义</button>
+  </div>
+
+  <div class="status" id="status">等待导入地图</div>
+</div>
+
+<div class="main">
+  <aside class="side">
+    <div class="panel-title">地图编辑器</div>
+    <div class="hint">这是 A 的 Python MapEditor 的 Web 版参考实现。编辑对象是当前内存中的 Grid 数据。</div>
+    <hr>
+
+    <div class="panel-title">元胞类型</div>
+    <div class="shortcut"><kbd>1</kbd><span>空地 FREE</span></div>
+    <div class="shortcut"><kbd>2</kbd><span>墙 WALL</span></div>
+    <div class="shortcut"><kbd>3</kbd><span>障碍 OBSTACLE</span></div>
+    <div class="shortcut"><kbd>4</kbd><span>出口 EXIT</span></div>
+    <div class="shortcut"><kbd>5</kbd><span>烟源 SMOKE_SOURCE</span></div>
+
+    <div class="panel-title" style="margin-top:16px">语义类型</div>
+    <div class="shortcut"><kbd>W</kbd><span>教室</span></div>
+    <div class="shortcut"><kbd>E</kbd><span>走廊</span></div>
+    <div class="shortcut"><kbd>R</kbd><span>楼梯</span></div>
+    <div class="shortcut"><kbd>T</kbd><span>商店</span></div>
+    <div class="shortcut"><kbd>Y</kbd><span>大厅</span></div>
+    <div class="shortcut"><kbd>U</kbd><span>食堂</span></div>
+    <div class="shortcut"><kbd>I</kbd><span>宿舍</span></div>
+    <div class="shortcut"><kbd>O</kbd><span>图书馆</span></div>
+    <div class="shortcut"><kbd>P</kbd><span>医院</span></div>
+
+    <div class="hint"><strong>鼠标：</strong>左键拖拽框选区域并批量修改。语义模式下，仅修改 FREE 元胞，与 Python 版 MapEditor 保持一致。</div>
+    <div class="selection" id="selectionInfo">当前未选择区域</div>
+  </aside>
+
+  <section class="center">
+    <canvas id="mapCanvas"></canvas>
+  </section>
+
+  <aside class="side right">
+    <div class="panel-title">地图信息</div>
+    <div class="info-row">名称：<span id="mapName">-</span></div>
+    <div class="info-row">宽度：<span id="mapWidth">-</span></div>
+    <div class="info-row">高度：<span id="mapHeight">-</span></div>
+    <div class="info-row">Cell Size：<span id="cellSize">-</span> m</div>
+
+    <hr>
+    <div class="panel-title">图例</div>
+    <div class="legend">
+      <div class="legend-color" style="background:#fff"></div><span>空地 FREE</span>
+      <div class="legend-color" style="background:#111"></div><span>墙 WALL</span>
+      <div class="legend-color" style="background:#999"></div><span>障碍 OBSTACLE</span>
+      <div class="legend-color" style="background:#35a853"></div><span>出口 EXIT</span>
+      <div class="legend-color" style="background:#f97316"></div><span>烟源 SMOKE_SOURCE</span>
+    </div>
+
+    <hr>
+    <div class="panel-title">当前操作</div>
+    <div class="message" id="currentMode">当前模式：类型 → 空地 (free)</div>
+    <div class="message">D 集成时可调用 <code>loadMapData(mapData)</code> 加载当前地图，并调用 <code>getMapData()</code> 取得编辑后的统一 JSON。</div>
+  </aside>
+</div>
+
+<script>
+"use strict";
+
+const canvas=document.getElementById("mapCanvas");
+const ctx=canvas.getContext("2d");
+
+let gridData=null;
+let editMode="type";
+let currentType="free";
+let currentSemantic=null;
+let dragStart=null;
+let dragEnd=null;
+let isDragging=false;
+let cellPixelSize=25;
+
+const TYPE_INFO={
+  free:{label:"空地",color:"#fff"},
+  wall:{label:"墙",color:"#111"},
+  obstacle:{label:"障碍",color:"#999"},
+  exit:{label:"出口",color:"#35a853"},
+  smoke_source:{label:"烟源",color:"#f97316"}
+};
+
+const SEMANTIC_LABEL={
+  classroom:"教室",corridor:"走廊",stair:"楼梯",shop:"商店",
+  hall:"大厅",canteen:"食堂",dorm:"宿舍",library:"图书馆",hospital:"医院"
+};
+
+function normalizeMapData(data){
+  if(!data||typeof data!=="object") throw new Error("地图数据不是有效 JSON 对象");
+  if(!Number.isInteger(data.width)||!Number.isInteger(data.height)) throw new Error("地图缺少有效 width / height");
+  if(!Array.isArray(data.cells)) throw new Error("地图缺少 cells 数组");
+
+  const expected=data.width*data.height;
+  if(data.cells.length!==expected){
+    throw new Error(`cells 数量错误：当前 ${data.cells.length}，理论应为 ${expected}`);
+  }
+
+  data.name=data.name||"edited_map";
+  data.cell_size=typeof data.cell_size==="number"?data.cell_size:0.5;
+
+  data.cells.forEach((cell,index)=>{
+    if(typeof cell.x!=="number"||typeof cell.y!=="number"){
+      cell.x=index%data.width;
+      cell.y=Math.floor(index/data.width);
+    }
+    cell.type=cell.type||"free";
+    if(!("room_id" in cell)) cell.room_id=null;
+    if(!("semantic" in cell)) cell.semantic=null;
+    if(!("smoke" in cell)) cell.smoke=0;
+    if(!("risk" in cell)) cell.risk=0;
+    if(!("guidance" in cell)) cell.guidance=0;
+  });
+
+  return data;
+}
+
+function loadMapData(data){
+  gridData=normalizeMapData(data);
+  dragStart=null; dragEnd=null; isDragging=false;
+  updateMapInfo(); resizeCanvas(); draw();
+  setStatus(`已加载地图：${gridData.name} ${gridData.width}×${gridData.height}`);
+}
+
+function getMapData(){
+  return gridData?JSON.parse(JSON.stringify(gridData)):null;
+}
+
+function calculateCellSize(){
+  if(!gridData) return 25;
+  const center=document.querySelector(".center");
+  const w=Math.max(300,center.clientWidth-30);
+  const h=Math.max(300,center.clientHeight-30);
+  return Math.max(4,Math.min(35,Math.floor(Math.min(w/gridData.width,h/gridData.height))));
+}
+
+function resizeCanvas(){
+  if(!gridData){canvas.width=600;canvas.height=600;return}
+  cellPixelSize=calculateCellSize();
+  canvas.width=gridData.width*cellPixelSize;
+  canvas.height=gridData.height*cellPixelSize;
+}
+
+function getCell(x,y){
+  if(!gridData||x<0||x>=gridData.width||y<0||y>=gridData.height) return null;
+  return gridData.cells[y*gridData.width+x];
+}
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if(!gridData) return;
+
+  for(let y=0;y<gridData.height;y++){
+    for(let x=0;x<gridData.width;x++){
+      const cell=getCell(x,y);
+      if(cell) drawCell(cell);
+    }
+  }
+
+  drawGridLines();
+  if(dragStart&&dragEnd) drawSelection();
+}
+
+function drawCell(cell){
+  const x=cell.x*cellPixelSize;
+  const y=cell.y*cellPixelSize;
+  const info=TYPE_INFO[cell.type]||TYPE_INFO.free;
+
+  ctx.fillStyle=info.color;
+  ctx.fillRect(x,y,cellPixelSize,cellPixelSize);
+
+  if(cell.semantic&&SEMANTIC_LABEL[cell.semantic]&&cellPixelSize>=12){
+    ctx.fillStyle=cell.type==="wall"?"#fff":"#333";
+    ctx.font=`${Math.max(8,Math.floor(cellPixelSize*.38))}px sans-serif`;
+    ctx.textAlign="center";
+    ctx.textBaseline="middle";
+    ctx.fillText(SEMANTIC_LABEL[cell.semantic].slice(0,2),x+cellPixelSize/2,y+cellPixelSize/2);
+  }
+}
+
+function drawGridLines(){
+  ctx.strokeStyle="#d0d0d0";
+  ctx.lineWidth=.5;
+  ctx.beginPath();
+
+  for(let x=0;x<=gridData.width;x++){
+    const px=x*cellPixelSize+.5;
+    ctx.moveTo(px,0);
+    ctx.lineTo(px,gridData.height*cellPixelSize);
+  }
+  for(let y=0;y<=gridData.height;y++){
+    const py=y*cellPixelSize+.5;
+    ctx.moveTo(0,py);
+    ctx.lineTo(gridData.width*cellPixelSize,py);
+  }
+  ctx.stroke();
+}
+
+function drawSelection(){
+  const xmin=Math.min(dragStart.x,dragEnd.x);
+  const xmax=Math.max(dragStart.x,dragEnd.x);
+  const ymin=Math.min(dragStart.y,dragEnd.y);
+  const ymax=Math.max(dragStart.y,dragEnd.y);
+
+  ctx.fillStyle="rgba(0,102,255,.12)";
+  ctx.fillRect(xmin*cellPixelSize,ymin*cellPixelSize,
+               (xmax-xmin+1)*cellPixelSize,(ymax-ymin+1)*cellPixelSize);
+
+  ctx.strokeStyle="#06f";
+  ctx.lineWidth=2;
+  ctx.strokeRect(xmin*cellPixelSize+1,ymin*cellPixelSize+1,
+                 (xmax-xmin+1)*cellPixelSize-2,
+                 (ymax-ymin+1)*cellPixelSize-2);
+}
+
+function applyTypeToRegion(xmin,ymin,xmax,ymax){
+  let changed=0;
+  for(let y=ymin;y<=ymax;y++){
+    for(let x=xmin;x<=xmax;x++){
+      const cell=getCell(x,y);
+      if(!cell) continue;
+      cell.type=currentType;
+      changed++;
+    }
+  }
+  setStatus(`批量修改元胞类型：${currentType}，共 ${changed} 个`);
+}
+
+function applySemanticToRegion(xmin,ymin,xmax,ymax){
+  if(!currentSemantic) return;
+  let changed=0,skipped=0;
+
+  for(let y=ymin;y<=ymax;y++){
+    for(let x=xmin;x<=xmax;x++){
+      const cell=getCell(x,y);
+      if(!cell) continue;
+
+      if(cell.type==="free"){
+        cell.semantic=currentSemantic;
+        changed++;
+      }else{
+        skipped++;
+      }
+    }
+  }
+
+  setStatus(`批量设置区域语义：${currentSemantic}，修改 ${changed} 个，跳过 ${skipped} 个非空地元胞`);
+}
+
+function clearSemanticRegion(xmin,ymin,xmax,ymax){
+  let changed=0;
+  for(let y=ymin;y<=ymax;y++){
+    for(let x=xmin;x<=xmax;x++){
+      const cell=getCell(x,y);
+      if(!cell) continue;
+      cell.semantic=null;
+      changed++;
+    }
+  }
+  setStatus(`已清除区域语义，共 ${changed} 个元胞`);
+}
+
+function getCanvasCell(event){
+  if(!gridData) return null;
+  const rect=canvas.getBoundingClientRect();
+  const sx=canvas.width/rect.width;
+  const sy=canvas.height/rect.height;
+  const px=(event.clientX-rect.left)*sx;
+  const py=(event.clientY-rect.top)*sy;
+  const x=Math.floor(px/cellPixelSize);
+  const y=Math.floor(py/cellPixelSize);
+
+  if(x<0||x>=gridData.width||y<0||y>=gridData.height) return null;
+  return {x,y};
+}
+
+canvas.addEventListener("mousedown",event=>{
+  if(event.button!==0) return;
+  const pos=getCanvasCell(event);
+  if(!pos) return;
+  dragStart=pos;
+  dragEnd=pos;
+  isDragging=true;
+  updateSelectionInfo();
+  draw();
+});
+
+canvas.addEventListener("mousemove",event=>{
+  if(!isDragging) return;
+  const pos=getCanvasCell(event);
+  if(!pos) return;
+  dragEnd=pos;
+  updateSelectionInfo();
+  draw();
+});
+
+canvas.addEventListener("mouseup",event=>{
+  if(event.button!==0||!isDragging) return;
+
+  const pos=getCanvasCell(event);
+  if(pos) dragEnd=pos;
+
+  if(!dragStart||!dragEnd){
+    isDragging=false;
+    return;
+  }
+
+  const xmin=Math.min(dragStart.x,dragEnd.x);
+  const xmax=Math.max(dragStart.x,dragEnd.x);
+  const ymin=Math.min(dragStart.y,dragEnd.y);
+  const ymax=Math.max(dragStart.y,dragEnd.y);
+
+  if(editMode==="type") applyTypeToRegion(xmin,ymin,xmax,ymax);
+  else if(editMode==="semantic") applySemanticToRegion(xmin,ymin,xmax,ymax);
+
+  dragStart=null;
+  dragEnd=null;
+  isDragging=false;
+  updateSelectionInfo();
+  draw();
+});
+
+window.addEventListener("mouseup",()=>{if(isDragging)isDragging=false});
+
+document.addEventListener("keydown",event=>{
+  if(["INPUT","TEXTAREA","SELECT"].includes(event.target.tagName)) return;
+  const key=event.key.toLowerCase();
+
+  const typeMap={"1":"free","2":"wall","3":"obstacle","4":"exit","5":"smoke_source"};
+  const semanticMap={
+    w:"classroom",e:"corridor",r:"stair",t:"shop",y:"hall",
+    u:"canteen",i:"dorm",o:"library",p:"hospital"
+  };
+
+  if(typeMap[key]) setTypeMode(typeMap[key]);
+  else if(semanticMap[key]) setSemanticMode(semanticMap[key]);
+  else if(key==="escape"){
+    dragStart=null;dragEnd=null;isDragging=false;
+    setTypeMode(currentType);
+    updateSelectionInfo();
+    draw();
+  }
+});
+
+function setTypeMode(type){
+  editMode="type";
+  currentType=type;
+  currentSemantic=null;
+  updateModeUI();
+  draw();
+}
+
+function setSemanticMode(semantic){
+  editMode="semantic";
+  currentSemantic=semantic;
+  updateModeUI();
+  draw();
+}
+
+document.querySelectorAll("[data-type]").forEach(btn=>{
+  btn.addEventListener("click",()=>setTypeMode(btn.dataset.type));
+});
+
+document.querySelectorAll("[data-semantic]").forEach(btn=>{
+  btn.addEventListener("click",()=>setSemanticMode(btn.dataset.semantic));
+});
+
+document.getElementById("clearSemanticBtn").addEventListener("click",()=>{
+  if(!gridData){setStatus("当前没有地图");return}
+
+  if(!dragStart||!dragEnd){
+    setStatus("请先拖拽框选需要清除语义的区域");
+    return;
+  }
+
+  const xmin=Math.min(dragStart.x,dragEnd.x);
+  const xmax=Math.max(dragStart.x,dragEnd.x);
+  const ymin=Math.min(dragStart.y,dragEnd.y);
+  const ymax=Math.max(dragStart.y,dragEnd.y);
+
+  clearSemanticRegion(xmin,ymin,xmax,ymax);
+  draw();
+});
+
+document.getElementById("saveBtn").addEventListener("click",()=>{
+  if(!gridData){alert("当前没有地图");return}
+
+  const data=getMapData();
+  const blob=new Blob(
+    [JSON.stringify(data,null,4)],
+    {type:"application/json;charset=utf-8"}
+  );
+
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download=`${data.name||"edited_map"}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+
+  setStatus(`JSON 已导出：${data.name||"edited_map"}.json`);
+});
+
+function updateMapInfo(){
+  if(!gridData) return;
+  document.getElementById("mapName").textContent=gridData.name;
+  document.getElementById("mapWidth").textContent=gridData.width;
+  document.getElementById("mapHeight").textContent=gridData.height;
+  document.getElementById("cellSize").textContent=gridData.cell_size;
+}
+
+function updateModeUI(){
+  const mode=document.getElementById("currentMode");
+
+  if(editMode==="type"){
+    mode.textContent=`当前模式：类型 → ${TYPE_INFO[currentType].label} (${currentType})`;
+  }else{
+    mode.textContent=`当前模式：语义 → ${SEMANTIC_LABEL[currentSemantic]||currentSemantic}`;
+  }
+
+  document.querySelectorAll("[data-type],[data-semantic]").forEach(b=>b.classList.remove("active"));
+
+  const selector=editMode==="type"
+    ? `[data-type="${currentType}"]`
+    : `[data-semantic="${currentSemantic}"]`;
+
+  const button=document.querySelector(selector);
+  if(button) button.classList.add("active");
+}
+
+function updateSelectionInfo(){
+  const element=document.getElementById("selectionInfo");
+
+  if(!dragStart||!dragEnd){
+    element.textContent="当前未选择区域";
+    return;
+  }
+
+  const xmin=Math.min(dragStart.x,dragEnd.x);
+  const xmax=Math.max(dragStart.x,dragEnd.x);
+  const ymin=Math.min(dragStart.y,dragEnd.y);
+  const ymax=Math.max(dragStart.y,dragEnd.y);
+  const width=xmax-xmin+1;
+  const height=ymax-ymin+1;
+
+  element.textContent=
+    `选区：(${xmin}, ${ymin}) → (${xmax}, ${ymax})\n`+
+    `大小：${width} × ${height}\n`+
+    `元胞数：${width*height}`;
+}
+
+function setStatus(text){
+  document.getElementById("status").textContent=text;
+}
+
+window.addEventListener("resize",()=>{
+  resizeCanvas();
+  draw();
+});
+
+updateModeUI();
+resizeCanvas();
+draw();
+
+/* D 集成时使用的两个接口 */
+window.loadMapData=loadMapData;
+window.getMapData=getMapData;
+</script>
+</body>
+</html>
