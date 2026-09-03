@@ -12,7 +12,7 @@
   h1{font-size:17px;margin:0;font-weight:800}
   .top-nav{display:flex;gap:4px;margin-left:14px;height:100%;align-items:center}.top-nav a{padding:8px 10px;color:#b9c6d8;text-decoration:none;font-size:13px;border-bottom:2px solid transparent}.top-nav a.active{color:#fff;border-bottom-color:#3b82f6}
   .badge{margin-left:auto;padding:6px 11px;border:1px solid rgba(255,255,255,.2);border-radius:999px;background:rgba(4,31,67,.45);color:#dbeafe;font-size:12px}
-  main{height:calc(100vh - 56px);display:grid;grid-template-columns:292px minmax(560px,1fr) 340px;grid-template-rows:minmax(0,1fr) 232px;gap:10px;padding:10px}
+  main{height:calc(100vh - 56px);display:grid;grid-template-columns:320px minmax(560px,1fr) 368px;grid-template-rows:minmax(0,1fr) 232px;gap:10px;padding:10px}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);min-width:0;overflow:hidden}
   .side{padding:12px;overflow-y:auto;overflow-x:hidden}
   .runtime-side{display:flex;min-height:0;flex-direction:column}
@@ -37,17 +37,18 @@
   input:disabled,textarea:disabled{background:#eef2f6;color:#667589}
   textarea{min-height:96px;resize:vertical;font-family:Consolas,monospace;font-size:12px}
   .canvas-wrap{position:relative;height:100%;display:flex;flex-direction:column}
-  .toolbar{height:50px;min-height:50px;flex:0 0 50px;display:flex;align-items:center;gap:7px;padding:7px 9px;overflow:hidden;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fbfdff,#f2f7fc)}
-  .toolbar .spacer{flex:1}
-  .run-control{flex:0 0 62px;min-width:62px;white-space:nowrap}
-  .layer-controls{display:flex;flex:0 0 auto;align-items:center;gap:8px;flex-wrap:nowrap;white-space:nowrap;padding-left:4px;border-left:1px solid #d5dfeb;font-size:12px;color:#475569}.layer-controls label{display:flex;align-items:center;gap:4px;margin:0;color:inherit}.layer-controls label:has(input:disabled){color:#94a3b8}.layer-controls input{width:auto;margin:0}
-  #timeText{flex:0 0 150px;width:150px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
-  .layer-notice{position:absolute;right:12px;top:55px;width:min(420px,calc(100% - 24px));height:32px;display:block;padding:6px 9px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;border:1px solid #cbd5e1;border-radius:6px;background:rgba(255,255,255,.94);color:#475569;font-size:11px;pointer-events:none}
-  canvas{width:100%;height:100%;display:block;background:#f8fafc}
+  .toolbar{height:50px;min-height:50px;flex:0 0 50px;display:flex;align-items:center;gap:4px;padding:7px;overflow:hidden;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fbfdff,#f2f7fc)}
+  .toolbar .spacer{flex:0 0 0;min-width:0}
+  .init-control{flex:0 0 88px;min-width:88px;white-space:nowrap}
+  .run-control{flex:0 0 56px;min-width:56px;white-space:nowrap}
+  .layer-controls{display:flex;flex:0 0 auto;align-items:center;gap:4px;flex-wrap:nowrap;white-space:nowrap;padding-left:3px;border-left:1px solid #d5dfeb;font-size:11px;color:#475569}.layer-controls label{display:flex;align-items:center;gap:2px;margin:0;color:inherit}.layer-controls label:has(input:disabled){color:#94a3b8}.layer-controls input{width:auto;margin:0}
+  #timeText{flex:0 0 86px;width:86px;text-align:right;white-space:nowrap;font-size:11px;font-variant-numeric:tabular-nums}
+  .layer-notice{position:absolute;left:12px;right:auto;top:55px;width:auto;max-width:180px;height:32px;display:block;padding:6px 9px;overflow:hidden;white-space:nowrap;text-align:left;text-overflow:ellipsis;border:1px solid #cbd5e1;border-radius:6px;background:rgba(255,255,255,.94);color:#475569;font-size:11px;pointer-events:none}
+  canvas{width:100%;height:auto;min-height:0;flex:1 1 auto;display:block;background:#f8fafc}
   .legend{position:absolute;left:12px;bottom:12px;display:flex;flex-direction:column;gap:4px;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-size:11px;pointer-events:none}
   .swatch{width:13px;height:13px;display:inline-block;border-radius:3px;margin-right:4px;border:1px solid rgba(0,0,0,.12);vertical-align:-2px}
   .status{flex:0 0 auto;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;padding:9px;border:1px solid #bfd2ea;background:#f0f6ff;border-radius:7px;color:#35506f;font-size:12px;min-height:68px;max-height:140px;overflow-y:auto;overflow-x:hidden}
-  .run-summary{padding:11px;border:1px solid #bcd3ef;background:linear-gradient(135deg,#eef6ff,#f9fcff);border-radius:8px;color:#184c85;font-size:13px;font-weight:800;box-shadow:inset 3px 0 #2b78db}
+  .run-summary{height:62px;min-height:62px;max-height:62px;padding:11px;overflow:hidden;border:1px solid #bcd3ef;background:linear-gradient(135deg,#eef6ff,#f9fcff);border-radius:8px;color:#184c85;font-size:13px;font-weight:800;line-height:20px;box-shadow:inset 3px 0 #2b78db}
   details.diagnostics{margin-top:10px;border-top:1px solid #d6dee8;padding-top:8px;color:#53657b;font-size:12px}details.diagnostics summary{cursor:pointer;font-weight:800;color:#334155}details.diagnostics[open] summary{margin-bottom:8px}
   .kv{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);align-items:start;gap:8px;border-bottom:1px dashed #d6dee8;padding:6px 0;font-size:13px}
   .kv>*{min-width:0}
@@ -144,8 +145,8 @@
 
   <section class="panel canvas-wrap" id="runtime">
     <div class="toolbar">
-      <button id="initBtn" class="good">初始化仿真</button>
-      <select id="speedSelect" aria-label="播放速度" style="width:92px;height:34px;padding:4px 6px">
+      <button id="initBtn" class="good init-control">初始化仿真</button>
+      <select id="speedSelect" aria-label="播放速度" style="width:78px;height:34px;padding:4px 5px">
         <option value="150">快速</option>
         <option value="300" selected>标准</option>
         <option value="600">慢速</option>
@@ -327,7 +328,9 @@
 
   function setStatus(message, mode){
     $("statusBox").textContent = message;
-    $("runSummary").textContent = String(message || "").split("\n")[0] || "等待运行。";
+    const summary = String(message || "").split("\n")[0] || "等待运行。";
+    $("runSummary").textContent = summary;
+    $("runSummary").title = summary;
     if(mode) $("modeBadge").textContent = mode;
   }
 
@@ -655,9 +658,18 @@
     if(layerEnabled("layerOccupancy") && !logLayers) notices.push("累计占用等待 people_log 分析");
     if(layerEnabled("layerTrajectories") && !logLayers) notices.push("轨迹等待 people_log 分析");
     if(!activeSession && grid) notices.push("人员、轨迹与累计占用需初始化后启用");
-    const noticeText = notices.join("；") || "当前图层均来自真实快照与 people_log";
+    const noticeDetail = notices.join("；") || "当前图层均来自真实快照与 people_log";
+    const noticeText = !grid
+      ? "图层等待运行数据"
+      : (observed.smokeSourceCount === 0
+        ? "当前场景无烟源"
+        : (!observed.smokeActive
+          ? "烟雾数据待运行"
+          : ((layerEnabled("layerOccupancy") || layerEnabled("layerTrajectories")) && !logLayers
+            ? "分析图层待刷新"
+            : "真实运行图层")));
     $("layerNotice").textContent = noticeText;
-    $("layerNotice").title = noticeText;
+    $("layerNotice").title = noticeDetail;
     $("smokeInputHint").textContent = grid && observed.smokeSourceCount === 0
       ? "当前场景无 smoke_source，烟雾图层保持为空。"
       : "烟源来自地图；烟场只绘制 B 返回的 smoke_matrix。";
