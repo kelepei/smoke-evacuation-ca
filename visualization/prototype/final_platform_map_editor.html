@@ -37,11 +37,12 @@
   input:disabled,textarea:disabled{background:#eef2f6;color:#667589}
   textarea{min-height:96px;resize:vertical;font-family:Consolas,monospace;font-size:12px}
   .canvas-wrap{position:relative;height:100%;display:flex;flex-direction:column}
-  .toolbar{min-height:50px;display:flex;align-items:center;gap:7px;padding:7px 9px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fbfdff,#f2f7fc)}
+  .toolbar{height:50px;min-height:50px;flex:0 0 50px;display:flex;align-items:center;gap:7px;padding:7px 9px;overflow:hidden;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fbfdff,#f2f7fc)}
   .toolbar .spacer{flex:1}
   .run-control{flex:0 0 62px;min-width:62px;white-space:nowrap}
-  .layer-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-left:4px;border-left:1px solid #d5dfeb;font-size:12px;color:#475569}.layer-controls label{display:flex;align-items:center;gap:4px;margin:0;color:inherit}.layer-controls label:has(input:disabled){color:#94a3b8}.layer-controls input{width:auto;margin:0}
-  .layer-notice{position:absolute;right:12px;top:55px;max-width:320px;padding:6px 9px;border:1px solid #cbd5e1;border-radius:6px;background:rgba(255,255,255,.94);color:#475569;font-size:11px;pointer-events:none}
+  .layer-controls{display:flex;flex:0 0 auto;align-items:center;gap:8px;flex-wrap:nowrap;white-space:nowrap;padding-left:4px;border-left:1px solid #d5dfeb;font-size:12px;color:#475569}.layer-controls label{display:flex;align-items:center;gap:4px;margin:0;color:inherit}.layer-controls label:has(input:disabled){color:#94a3b8}.layer-controls input{width:auto;margin:0}
+  #timeText{flex:0 0 150px;width:150px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .layer-notice{position:absolute;right:12px;top:55px;width:min(420px,calc(100% - 24px));height:32px;display:block;padding:6px 9px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;border:1px solid #cbd5e1;border-radius:6px;background:rgba(255,255,255,.94);color:#475569;font-size:11px;pointer-events:none}
   canvas{width:100%;height:100%;display:block;background:#f8fafc}
   .legend{position:absolute;left:12px;bottom:12px;display:flex;flex-direction:column;gap:4px;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-size:11px;pointer-events:none}
   .swatch{width:13px;height:13px;display:inline-block;border-radius:3px;margin-right:4px;border:1px solid rgba(0,0,0,.12);vertical-align:-2px}
@@ -77,6 +78,7 @@
   .info-tooltip{display:inline-grid;place-items:center;width:18px;height:18px;margin-left:auto;border:1px solid #94a3b8;border-radius:50%;background:#f8fafc;color:#475569;font-size:12px;font-weight:800;line-height:1;cursor:help}.info-tooltip-content{position:absolute;z-index:3;top:26px;right:0;width:min(340px,90vw);padding:9px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#475569;font-size:11px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.16);opacity:0;visibility:hidden;transform:translateY(-3px);transition:opacity .15s ease,transform .15s ease,visibility .15s}.info-tooltip:hover+.info-tooltip-content,.info-tooltip:focus+.info-tooltip-content{opacity:1;visibility:visible;transform:translateY(0)}
   .history-list{display:grid;gap:6px;margin-top:7px}.history-item{width:100%;height:auto;min-height:32px;padding:6px 7px;text-align:left;font-size:11px;font-weight:600}.history-item.active{border-color:#1769e0;background:#eff6ff}.history-detail{margin-top:7px;color:#475569;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
   .editor-modal{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(15,23,42,.55)}.editor-modal.open{display:flex}.editor-dialog{width:min(1440px,96vw);height:min(900px,92vh);display:flex;flex-direction:column;overflow:hidden;border-radius:10px;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.28)}.editor-dialog header{height:auto;min-height:50px;padding:8px 12px;background:#fff;color:var(--ink);box-shadow:none;border-bottom:1px solid var(--line)}.editor-dialog header strong{margin-right:auto}.editor-dialog iframe{width:100%;min-height:0;flex:1;border:0}.editor-actions{display:flex;justify-content:flex-end;gap:8px;padding:8px 12px;border-top:1px solid var(--line)}
+  .choice-dialog{width:min(520px,92vw);overflow:hidden;border-radius:10px;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.28)}.choice-dialog header{height:auto;min-height:50px;padding:12px 16px;background:#fff;color:var(--ink);box-shadow:none;border-bottom:1px solid var(--line)}.choice-dialog-content{padding:16px;color:#475569;line-height:1.7}.choice-dialog-content strong{color:#1e3a5f}.choice-actions{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid var(--line)}.choice-actions button{height:auto;min-height:34px;padding:7px 12px}
   @media(max-width:1180px){body{overflow:auto}.top-nav{display:none}main{height:auto;min-height:calc(100vh - 56px);grid-template-columns:280px minmax(420px,1fr);grid-template-rows:minmax(560px,70vh) auto auto}.config-side{grid-column:1;grid-row:1}.canvas-wrap{grid-column:2;grid-row:1}.runtime-side{grid-column:1 / 3;grid-row:2}.insights{grid-column:1 / 3;grid-row:3;grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media(max-width:760px){main{grid-template-columns:1fr;grid-template-rows:auto}.config-side,.canvas-wrap,.runtime-side,.insights{grid-column:1;grid-row:auto}.insights{grid-template-columns:1fr}.canvas-wrap{height:70vh}.layer-controls{display:none}}
 </style>
@@ -135,7 +137,7 @@
 
     <details class="diagnostics">
       <summary>烟雾输入</summary>
-      <div class="hint" id="smokeInputHint">烟源只来自地图 cell.type = smoke_source；烟场只绘制 B 返回的 smoke_matrix。</div>
+      <div class="hint" id="smokeInputHint">烟源只来自地图 cell.type = smoke_source；导入已有烟源时由用户选择保留或清除，烟场只绘制 B 返回的 smoke_matrix。</div>
     </details>
 
   </aside>
@@ -263,6 +265,20 @@
   </div>
 </div>
 
+<div class="editor-modal" id="smokeImportModal" role="dialog" aria-modal="true" aria-labelledby="smokeImportTitle">
+  <div class="choice-dialog">
+    <header><strong id="smokeImportTitle">检测到已有烟源</strong></header>
+    <div class="choice-dialog-content">
+      导入地图中包含 <strong id="importedSmokeCount">0</strong> 个烟源。请选择本次运行如何处理：保留地图中的烟源，或清除后在地图编辑器中重新设置。
+    </div>
+    <div class="choice-actions">
+      <button id="cancelSmokeImport">取消导入</button>
+      <button id="clearImportedSmoke" class="danger">清除后重新设置</button>
+      <button id="keepImportedSmoke" class="primary">保留已有烟源</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (() => {
   const $ = id => document.getElementById(id);
@@ -285,6 +301,7 @@
   let currentMapData = null;
   let currentMapName = "";
   let editorReady = false;
+  let smokeImportResolver = null;
 
   function setConfigState(message, state = ""){
     const hint = $("configHint");
@@ -638,7 +655,9 @@
     if(layerEnabled("layerOccupancy") && !logLayers) notices.push("累计占用等待 people_log 分析");
     if(layerEnabled("layerTrajectories") && !logLayers) notices.push("轨迹等待 people_log 分析");
     if(!activeSession && grid) notices.push("人员、轨迹与累计占用需初始化后启用");
-    $("layerNotice").textContent = notices.join("；") || "当前图层均来自真实快照与 people_log";
+    const noticeText = notices.join("；") || "当前图层均来自真实快照与 people_log";
+    $("layerNotice").textContent = noticeText;
+    $("layerNotice").title = noticeText;
     $("smokeInputHint").textContent = grid && observed.smokeSourceCount === 0
       ? "当前场景无 smoke_source，烟雾图层保持为空。"
       : "烟源来自地图；烟场只绘制 B 返回的 smoke_matrix。";
@@ -882,6 +901,31 @@
     });
   }
 
+  function importedSmokeSourceCount(data){
+    return data.cells.reduce((count, cell) => count + (cell.type === "smoke_source" ? 1 : 0), 0);
+  }
+
+  function chooseImportedSmokeSources(count){
+    $("importedSmokeCount").textContent = String(count);
+    $("smokeImportModal").classList.add("open");
+    return new Promise(resolve => { smokeImportResolver = resolve; });
+  }
+
+  function finishSmokeImportChoice(choice){
+    $("smokeImportModal").classList.remove("open");
+    const resolve = smokeImportResolver;
+    smokeImportResolver = null;
+    if(resolve) resolve(choice);
+  }
+
+  function clearImportedSmokeSources(data){
+    const cleaned = structuredClone(data);
+    cleaned.cells.forEach(cell => {
+      if(cell.type === "smoke_source") cell.type = "free";
+    });
+    return cleaned;
+  }
+
   function currentMapPayload(){
     if(currentMapData) return {map_data:currentMapData, source_name:currentMapName || "edited_map.json"};
     return null;
@@ -944,9 +988,27 @@
       try{
         const parsed = JSON.parse(mapFile.text);
         validateEditableMap(parsed);
-        currentMapData = parsed;
+        const importedSmokeSources = importedSmokeSourceCount(parsed);
+        let smokeChoice = "none";
+        if(importedSmokeSources > 0){
+          smokeChoice = await chooseImportedSmokeSources(importedSmokeSources);
+          if(smokeChoice === "cancel"){
+            setStatus("已取消地图导入；当前地图未改变。", "取消导入");
+            return;
+          }
+        }
+        currentMapData = smokeChoice === "clear" ? clearImportedSmokeSources(parsed) : parsed;
         currentMapName = mapFile.name;
-        return previewCurrentMap();
+        const result = await previewCurrentMap();
+        if(smokeChoice === "clear"){
+          $("mapEditorHint").textContent = `已清除导入地图中的 ${importedSmokeSources} 个烟源；点击“编辑地图”可重新设置。`;
+          setStatus(`地图已显示：${currentMapName}\n已清除导入烟源：${importedSmokeSources} 个\n下一步：点击“编辑地图”重新设置烟源。`, "等待设置烟源");
+          log(`已按用户选择清除 ${importedSmokeSources} 个导入烟源`);
+        }else if(smokeChoice === "keep"){
+          $("mapEditorHint").textContent = `已保留导入地图中的 ${importedSmokeSources} 个烟源；仍可点击“编辑地图”调整。`;
+          log(`已按用户选择保留 ${importedSmokeSources} 个导入烟源`);
+        }
+        return result;
       }catch(error){
         currentMapData = null;
         throw new Error(`JSON 地图无法进入在线编辑：${error.message}`);
@@ -1244,6 +1306,9 @@
   $("editMapBtn").onclick = openMapEditor;
   $("cancelMapEdit").onclick = cancelMapEdit;
   $("confirmMapEdit").onclick = () => confirmMapEdit().catch(error => setStatus(`地图编辑确认失败：${error.message}`, "编辑失败"));
+  $("cancelSmokeImport").onclick = () => finishSmokeImportChoice("cancel");
+  $("clearImportedSmoke").onclick = () => finishSmokeImportChoice("clear");
+  $("keepImportedSmoke").onclick = () => finishSmokeImportChoice("keep");
   $("autoPositionBtn").onclick = () => initAutoPositionSession().catch(error => setStatus(`自动位置分配失败：${error.message}`, "自动分配失败"));
   document.querySelectorAll("[data-template]").forEach(button => {
     button.onclick = () => previewTemplate(button.dataset.template).catch(error => setStatus(`模板导入失败：${error.message}`, "导入失败"));

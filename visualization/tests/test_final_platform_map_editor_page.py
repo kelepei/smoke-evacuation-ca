@@ -39,11 +39,28 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
         self.assertIn('class="figure-meta" id="curveNote"', self.page)
         self.assertIn('class="info-tooltip"', self.page)
         self.assertIn('class="info-tooltip-content" id="dataProvenance"', self.page)
+        self.assertIn('.toolbar{height:50px;min-height:50px;flex:0 0 50px', self.page)
+        self.assertIn('#timeText{flex:0 0 150px;width:150px', self.page)
+        self.assertIn('flex-wrap:nowrap;white-space:nowrap', self.page)
+        self.assertIn('$("layerNotice").title = noticeText', self.page)
 
     def test_integrated_editor_explicitly_supports_smoke_source(self) -> None:
         self.assertIn('data-type="smoke_source"', self.editor)
         self.assertIn('smoke_source:{label:"烟源"', self.editor)
         self.assertIn('"5":"smoke_source"', self.editor)
+
+    def test_imported_smoke_sources_require_an_explicit_user_choice(self) -> None:
+        for marker in (
+            'id="smokeImportModal"',
+            'id="keepImportedSmoke"',
+            'id="clearImportedSmoke"',
+            'id="cancelSmokeImport"',
+            'await chooseImportedSmokeSources(importedSmokeSources)',
+            'cell.type = "free"',
+        ):
+            self.assertIn(marker, self.page)
+        self.assertIn("const cleaned = structuredClone(data)", self.page)
+        self.assertNotIn("Math.random", self.page)
 
     def test_integrated_editor_keeps_the_a_data_round_trip_contract(self) -> None:
         self.assertIn("function loadMapData(data)", self.editor)
