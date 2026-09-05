@@ -161,14 +161,33 @@ def _filter_by_profile(profiles: List[str], profile_type: str) -> List[int]:
 
 def generate_profiles_from_config(scene_config) -> List[str]:
     """
-    根据 SceneConfig 生成角色列表
+    根据 SceneConfig 生成角色列表。
+
+    使用最大余数法（Largest Remainder Method）按比例精确分配人数，
+    保证给定人数下各类角色数量与配置比例完全一致（例如 34 人按
+    0.9/0.1 精确得到 31/3），再随机打乱顺序。
     """
     n = scene_config.total_persons
     dist = scene_config.profile_ratios
     types = list(dist.keys())
-    probs = np.array(list(dist.values()))
-    probs = probs / probs.sum()
-    return [str(x) for x in np.random.choice(types, size=n, p=probs)]
+    weights = np.array([max(0.0, float(dist[t])) for t in types], dtype=float)
+    if weights.sum() <= 0.0:
+        weights = np.ones(len(types), dtype=float)
+    weights = weights / weights.sum()
+
+    exact = weights * n
+    counts = np.floor(exact).astype(int)
+    remaining = n - int(counts.sum())
+    if remaining > 0:
+        order = np.argsort(-(exact - counts))
+        for idx in order[:remaining]:
+            counts[int(idx)] += 1
+
+    profiles: List[str] = []
+    for profile_type, count in zip(types, counts):
+        profiles.extend([str(profile_type)] * int(count))
+    np.random.shuffle(profiles)
+    return profiles
 
 
 # ============================================================
