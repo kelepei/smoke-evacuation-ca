@@ -132,6 +132,9 @@ class SignageModel:
         # 指示牌列表
         self.signages: List[Signage] = []
 
+        # 错误信息中宣称的"安全出口"（误导用）；None 表示关闭误导
+        self.misleading_exit: Optional[str] = None
+
         # 引导效用缓存: {(x, y): utility}
         self.utility_cache: Dict[Tuple[int, int], float] = {}
 
@@ -176,6 +179,15 @@ class SignageModel:
                           target_exit=initial_exit, direction=direction)
         self.signages.append(signage)
         return signage_id
+
+    def set_misleading_exit(self, exit_id: Optional[str]) -> None:
+        """设置/关闭错误信息宣称的安全出口。
+
+        当行人处于 MISINFORMED 状态时，指示牌引导会被反向利用：
+        向该"错误出口"方向移动会获得高引导效用，从而模拟错误出口
+        信息把人引向错误方向造成的延误/拥堵。传入 None 关闭。
+        """
+        self.misleading_exit = exit_id
 
     def update_dynamic_signages(self, all_persons: List,
                                 smoke_grid: Optional[np.ndarray],
@@ -350,13 +362,14 @@ class SignageModel:
 
         效用 = 基础效用 × 方向一致性 × 距离衰减
 
+        若行人处于 MISINFORMED 且设置了 misleading_exit，会额外获得朝
+        "错误出口"方向的高引导效用，用于模拟错误出口信息把人引向错误
+        方向造成的延误/拥堵。
+
         :param person: 行人对象（需要有 x, y 属性）
         :param target_cell: 目标元胞 (tx, ty)
         :return: guidance_utility (0-1)
         """
-        if not self.signages:
-            return 0.0
-
         px, py = person.x, person.y
         tx, ty = target_cell
 
@@ -367,6 +380,18 @@ class SignageModel:
         move_dir = self.quantize_direction(dx, dy)
 
         max_utility = 0.0
+
+        # 错误出口误导：MISINFORMED 行人相信"错误出口"才是安全出口，
+        # 朝该出口方向移动会得到高引导效用（即使没有部署任何指示牌）。
+        if self.misleading_exit and getattr(person, "info_state", None) == "MISINFORMED":
+            exit_pos = self._get_exit_position(self.misleading_exit)
+            if exit_pos is not None:
+                exx, eyy = exit_pos
+                ddx, ddy = exx - px, eyy - py
+                if ddx != 0 or ddy != 0:
+                    false_dir = self.quantize_direction(ddx, ddy)
+                    if move_dir == false_dir:
+                        max_utility = max(max_utility, 1.0)
 
         for signage in self.signages:
             if signage.direction is None:
