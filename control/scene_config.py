@@ -63,6 +63,7 @@ class SceneConfig:
     relation_intensity: float = 0.7
     enable_directional_override: bool = True
     auto_assign_single_groups: bool = True
+    map_file: Optional[str] = None  # 所选 A 地图 JSON 路径（可选）
 
 
 # ============================================================
@@ -88,6 +89,7 @@ FIELD_ALIASES = {
     "has_staff_customer_prob": ["员工顾客概率", "员工-顾客概率"],
     "has_doctor_patient_prob": ["医生病人概率", "医生-病人概率"],
     "stranger_ratio": ["陌生人比例", "陌生人占比"],
+    "map_file": ["地图文件", "地图"],
 }
 
 
@@ -363,6 +365,12 @@ class SceneConfigGenerator:
         else:
             random_seed = None
 
+        map_file = normalized.get("map_file", None)
+        if not isinstance(map_file, str) or not map_file.strip():
+            map_file = None
+        else:
+            map_file = map_file.strip()
+
         profile_ratios = normalized.get("profile_ratios", {"student": 0.8, "teacher": 0.1, "staff": 0.1})
         if isinstance(profile_ratios, dict):
             profile_ratios = normalize_profile_ratios(profile_ratios)
@@ -420,6 +428,7 @@ class SceneConfigGenerator:
             group_config=group_config,
             relation_intensity=relation_intensity,
             random_seed=random_seed,
+            map_file=map_file,
         )
 
 
@@ -488,6 +497,9 @@ def _generate_from_config(config, people_output="output_people.json",
 
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if map_file is None:
+        config_map = getattr(config, "map_file", None)
+        map_file = config_map if config_map else None
+    if map_file is None:
         default_map = os.path.join(project_root, "maps", "edited_map.json")
         if os.path.exists(default_map):
             map_file = default_map
@@ -496,8 +508,9 @@ def _generate_from_config(config, people_output="output_people.json",
 
     if map_file and os.path.exists(map_file):
         from control.position_allocator import allocate_people_position
-        allocate_people_position(people_output, map_file, position_output)
-        print(f"[OK] 已生成带位置文件: {position_output}")
+        seed = getattr(config, "random_seed", None)
+        allocate_people_position(people_output, map_file, position_output, seed=seed)
+        print(f"[OK] 已生成带位置文件: {position_output}（地图: {map_file}）")
     else:
         print(f"[WARN] 未找到地图文件（{map_file}），跳过位置分配")
     return builder, persons
@@ -510,6 +523,21 @@ def generate_population(yaml_file="config_template.yaml",
     """读取 YAML 配置 → 生成人群/关系 → 分配位置（main.py 与命令行共用入口）"""
     config = SceneConfigGenerator.load_config_from_yaml(yaml_file)
     return _generate_from_config(config, people_output, map_file, position_output)
+
+
+def resolve_map_file(yaml_file="config_template.yaml", explicit_map=None):
+    """确定本次运行使用的地图：显式指定 > YAML 的 map_file > 默认 maps/edited_map.json"""
+    if explicit_map:
+        return str(explicit_map)
+    try:
+        config = SceneConfigGenerator.load_config_from_yaml(yaml_file)
+        yaml_map = getattr(config, "map_file", None)
+        if yaml_map:
+            return str(yaml_map)
+    except Exception:
+        pass
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(project_root, "maps", "edited_map.json")
 
 
 CONFIG_TEMPLATE = """
