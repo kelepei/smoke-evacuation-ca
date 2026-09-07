@@ -38,9 +38,10 @@
   textarea{min-height:96px;resize:vertical;font-family:Consolas,monospace;font-size:12px}
   .canvas-wrap{position:relative;height:100%;display:flex;flex-direction:column}
   .toolbar{height:50px;min-height:50px;flex:0 0 50px;display:flex;align-items:center;gap:4px;padding:7px;overflow:hidden;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fbfdff,#f2f7fc)}
-  .toolbar .spacer{flex:0 0 0;min-width:0}
+  .toolbar .spacer{flex:1 1 auto;min-width:0}
   .init-control{flex:0 0 88px;min-width:88px;white-space:nowrap}
   .run-control{flex:0 0 56px;min-width:56px;white-space:nowrap}
+  .run-controls{display:flex;align-items:center;gap:4px;flex:0 0 auto;margin-left:4px}
   .layer-controls{display:flex;flex:0 0 auto;align-items:center;gap:4px;flex-wrap:nowrap;white-space:nowrap;padding-left:3px;border-left:1px solid #d5dfeb;font-size:11px;color:#475569}.layer-controls label{display:flex;align-items:center;gap:2px;margin:0;color:inherit}.layer-controls label:has(input:disabled){color:#94a3b8}.layer-controls input{width:auto;margin:0}
   #timeText{flex:0 0 86px;width:86px;text-align:right;white-space:nowrap;font-size:11px;font-variant-numeric:tabular-nums}
   .layer-notice{position:absolute;left:12px;right:auto;top:55px;width:auto;max-width:180px;height:32px;display:block;padding:6px 9px;overflow:hidden;white-space:nowrap;text-align:left;text-overflow:ellipsis;border:1px solid #cbd5e1;border-radius:6px;background:rgba(255,255,255,.94);color:#475569;font-size:11px;pointer-events:none}
@@ -70,6 +71,8 @@
   .insight-title{font-weight:800;margin-bottom:8px;color:#1e293b}.insight-title-row{position:relative;display:flex;align-items:center;gap:8px;min-height:20px;margin-bottom:8px}.insight-title-row .insight-title{margin:0}.figure-meta{color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .figure-wrap{height:150px;min-height:0;flex:0 0 150px;display:grid;place-items:center;border:1px solid #e1e8f0;background:#fff;border-radius:7px;overflow:hidden}.figure-wrap img{display:block;width:100%;height:100%;max-width:100%;max-height:100%;min-height:0;object-fit:contain}.figure-placeholder{color:var(--muted);font-size:12px;text-align:center;padding:16px}
   .figure-panel .figure-wrap{height:auto;flex:1 1 auto}
+  .figure-expand{width:28px;height:28px;min-width:28px;padding:0;display:grid;place-items:center;border-color:#cbd5e1;color:#475569;font-size:18px;line-height:1;font-weight:700}.figure-expand:hover{color:#1559bc;border-color:#9db9df;background:#f4f8fd}
+  .figure-modal{position:fixed;inset:0;z-index:30;display:none;align-items:center;justify-content:center;padding:4vh 5vw;background:rgba(15,23,42,.62)}.figure-modal.open{display:flex}.figure-dialog{width:min(1680px,90vw);height:min(980px,90vh);display:flex;flex-direction:column;overflow:hidden;border-radius:10px;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.32)}.figure-dialog header{height:auto;min-height:52px;display:flex;align-items:center;padding:9px 12px;background:#fff;color:var(--ink);box-shadow:none;border-bottom:1px solid var(--line)}.figure-dialog header strong{margin-right:auto}.figure-dialog-body{min-height:0;flex:1;display:grid;place-items:center;padding:16px;background:#f8fafc}.figure-dialog-body img{display:block;width:100%;height:100%;object-fit:contain}.figure-dialog .close-figure{min-width:68px;padding:0 12px}
   .metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .metric{padding:8px;border:1px solid #dbe4ef;border-radius:7px;background:#f8fafc;min-width:0}
   .metric span{display:block;color:var(--muted);font-size:12px}.metric b{display:block;margin-top:3px;font-size:18px;overflow-wrap:anywhere}
@@ -160,10 +163,12 @@
       </div>
       <div class="spacer"></div>
       <span id="timeText">step 0 / 0.0s</span>
-      <button id="resetBtn" class="danger run-control">重置</button>
-      <button id="pauseBtn" class="run-control">暂停</button>
-      <button id="stepBtn" class="run-control">单步</button>
-      <button id="startBtn" class="primary run-control">开始</button>
+      <div class="run-controls" aria-label="运行控制">
+        <button id="resetBtn" class="danger run-control">重置</button>
+        <button id="pauseBtn" class="run-control">暂停</button>
+        <button id="stepBtn" class="run-control">单步</button>
+        <button id="startBtn" class="primary run-control">开始</button>
+      </div>
     </div>
     <canvas id="view"></canvas>
     <div class="layer-notice" id="layerNotice">图层等待真实运行数据。</div>
@@ -231,7 +236,7 @@
 
   <section class="insights" id="analysis" aria-label="真实运行分析面板">
     <section class="insight-panel figure-panel">
-      <div class="insight-title-row"><div class="insight-title">疏散人数-时间曲线</div><span class="figure-meta" id="curveNote">本次运行尚无分析数据。</span></div>
+      <div class="insight-title-row"><div class="insight-title">疏散人数-时间曲线</div><span class="figure-meta" id="curveNote">本次运行尚无分析数据。</span><button class="figure-expand" type="button" data-figure="curveFigure" data-title="疏散人数-时间曲线" aria-label="放大查看疏散人数-时间曲线" title="放大查看">⛶</button></div>
       <div class="figure-wrap" id="curveFigure"><div class="figure-placeholder">运行后点击“刷新真实分析”。</div></div>
     </section>
     <section class="insight-panel">
@@ -250,6 +255,7 @@
     <section class="insight-panel figure-panel">
       <div class="insight-title-row">
         <div class="insight-title">累计占用热力图</div>
+        <button class="figure-expand" type="button" data-figure="heatmapFigure" data-title="累计占用热力图" aria-label="放大查看累计占用热力图" title="放大查看">⛶</button>
         <span class="info-tooltip" tabindex="0" aria-label="查看数据来源">!</span>
         <div class="info-tooltip-content" id="dataProvenance"><b>数据来源：</b>本次运行日志和仿真快照。风险、剂量、实际出口只在上游实际返回时展示；缺失字段为 NA。B 当前未公开个人风险结果，平均风险显示 NA。</div>
       </div>
@@ -277,6 +283,13 @@
       <button id="clearImportedSmoke" class="danger">清除后重新设置</button>
       <button id="keepImportedSmoke" class="primary">保留已有烟源</button>
     </div>
+  </div>
+</div>
+
+<div class="figure-modal" id="figureModal" role="dialog" aria-modal="true" aria-labelledby="figureModalTitle">
+  <div class="figure-dialog">
+    <header><strong id="figureModalTitle">图表放大查看</strong><button id="closeFigureModal" class="close-figure" type="button">关闭</button></header>
+    <div class="figure-dialog-body" id="figureModalBody"><div class="figure-placeholder">暂无可放大的真实图表。</div></div>
   </div>
 </div>
 
@@ -741,6 +754,27 @@
     image.alt = containerId === "curveFigure" ? "疏散人数-时间曲线" : "累计占用热力图";
     image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
     container.replaceChildren(image);
+  }
+
+  function openFigureModal(figureId, title){
+    const source = $(figureId).querySelector("img");
+    const body = $("figureModalBody");
+    $("figureModalTitle").textContent = title;
+    body.replaceChildren();
+    if(source){
+      const image = source.cloneNode(true);
+      image.alt = title;
+      body.appendChild(image);
+    }else{
+      body.innerHTML = '<div class="figure-placeholder">当前尚无可放大的真实图表。</div>';
+    }
+    $("figureModal").classList.add("open");
+    $("closeFigureModal").focus();
+  }
+
+  function closeFigureModal(){
+    $("figureModal").classList.remove("open");
+    $("figureModalBody").replaceChildren();
   }
 
   function resetDerivedAnalysis(message = "等待本次运行的真实日志。"){
@@ -1350,6 +1384,12 @@
   $("exportBtn").onclick = () => exportPackage().catch(error => setStatus(`导出失败：${error.message}`, "导出失败"));
   $("refreshAnalysis").onclick = () => refreshRealAnalysis().catch(error => setStatus(`刷新真实分析失败：${error.message}`, "分析失败"));
   $("refreshHistory").onclick = () => refreshHistory().catch(showHistoryError);
+  document.querySelectorAll(".figure-expand").forEach(button => {
+    button.onclick = () => openFigureModal(button.dataset.figure, button.dataset.title);
+  });
+  $("closeFigureModal").onclick = closeFigureModal;
+  $("figureModal").onclick = event => { if(event.target === $("figureModal")) closeFigureModal(); };
+  document.addEventListener("keydown", event => { if(event.key === "Escape" && $("figureModal").classList.contains("open")) closeFigureModal(); });
   document.querySelectorAll(".top-nav a").forEach(link => {
     link.onclick = event => {
       event.preventDefault();
