@@ -80,6 +80,13 @@ GUIDE_PARAMS = {
     },
 }
 
+# 引导员标记颜色（供 B/D 可视化区分引导员与普通行人）
+GUIDE_COLORS = {
+    "security": "#ff7f0e",   # 安保：橙色
+    "staff": "#1f77b4",      # 员工：蓝色
+    "teacher": "#2ca02c",    # 教师：绿色
+}
+
 
 class GuideAgent:
     """单个引导员"""
@@ -126,6 +133,11 @@ class GuideAgent:
             "active": self.active,
             "guided_count": self.guided_count,
             "path_history": self.path_history[-20:],
+            # 供 B/D 用不同颜色标记引导员
+            "role": "guide",
+            "marker": "guide",
+            "color": GUIDE_COLORS.get(self.profile, GUIDE_COLORS["staff"]),
+            "is_guide": True,
         }
 
 
@@ -151,6 +163,10 @@ class GuideAgentModel:
         self._next_guide_id = 0
         self.step_stats = defaultdict(int)
         self.guide_influence_cache: Dict[int, dict] = {}
+
+        # 引导目标出口（如"较远的出口"）；None 表示未进入引导模式（仅巡查）
+        self.target_exit: Optional[str] = None
+        self.guidance_active = False
 
     # ============================================================
     # 引导员管理
@@ -184,6 +200,28 @@ class GuideAgentModel:
                 self.guides.remove(guide)
                 return True
         return False
+
+    def activate_guidance(self, exit_id: str,
+                          strategy: GuideMoveStrategy = GuideMoveStrategy.TOWARD_EXIT) -> None:
+        """火灾/警报发生后切换为引导模式：所有引导员带人前往指定出口。
+
+        典型用法：未发生火灾时引导员执行 PATROL（地图各处巡查），
+        警报触发后调用本方法，让引导员把人群带向"较远的出口"。
+        """
+        self.target_exit = exit_id
+        self.guidance_active = True
+        for guide in self.guides:
+            guide.strategy = strategy
+            guide.escort_target = exit_id
+
+    def deactivate_guidance(self,
+                            strategy: GuideMoveStrategy = GuideMoveStrategy.PATROL) -> None:
+        """回到非火灾状态的巡查模式。"""
+        self.target_exit = None
+        self.guidance_active = False
+        for guide in self.guides:
+            guide.strategy = strategy
+            guide.escort_target = None
 
     # ============================================================
     # 引导员移动更新
@@ -244,8 +282,18 @@ class GuideAgentModel:
         if not exits:
             return
 
-        nearest_exit = min(exits, key=lambda e: (e[1] - guide.x) ** 2 + (e[2] - guide.y) ** 2)
-        _, target_x, target_y = nearest_exit
+        # 优先前往引导员被指定的出口（可实现"引导人群去较远出口"）
+        chosen = None
+        if self.target_exit:
+            for eid, ex, ey in exits:
+                if eid == self.target_exit:
+                    chosen = (eid, ex, ey)
+                    break
+
+        if chosen is None:
+            chosen = min(exits, key=lambda e: (e[1] - guide.x) ** 2 + (e[2] - guide.y) ** 2)
+
+        _, target_x, target_y = chosen
         self._move_toward_point(guide, target_x, target_y)
 
     def _move_toward_crowd(self, guide: GuideAgent, all_persons: List, _current_step: int):
