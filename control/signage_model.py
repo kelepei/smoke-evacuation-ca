@@ -135,6 +135,10 @@ class SignageModel:
         # 错误信息中宣称的"安全出口"（误导用）；None 表示关闭误导
         self.misleading_exit: Optional[str] = None
 
+        # 引导员希望人群前往的"指定出口"（如较远的出口）；None 表示关闭
+        self.guided_exit: Optional[str] = None
+        self.guided_person_ids: Optional[set] = None
+
         # 引导效用缓存: {(x, y): utility}
         self.utility_cache: Dict[Tuple[int, int], float] = {}
 
@@ -188,6 +192,16 @@ class SignageModel:
         信息把人引向错误方向造成的延误/拥堵。传入 None 关闭。
         """
         self.misleading_exit = exit_id
+
+    def set_guided_exit(self, exit_id: Optional[str], person_ids=None) -> None:
+        """设置引导员希望人群前往的指定出口（如较远的出口）。
+
+        - exit_id: 目标出口 id；None 关闭。
+        - person_ids: 只引导这部分行人（对应"引导部分人群"）；None 表示
+          对所有处于 GUIDED 状态的行人生效。
+        """
+        self.guided_exit = exit_id
+        self.guided_person_ids = None if person_ids is None else {int(p) for p in person_ids}
 
     def update_dynamic_signages(self, all_persons: List,
                                 smoke_grid: Optional[np.ndarray],
@@ -392,6 +406,20 @@ class SignageModel:
                     false_dir = self.quantize_direction(ddx, ddy)
                     if move_dir == false_dir:
                         max_utility = max(max_utility, 1.0)
+
+        # 引导员定向：被引导的行人（GUIDED）朝指定出口方向移动获得高效用，
+        # 从而真正走向"较远的出口"而不是最近的出口。
+        if self.guided_exit and getattr(person, "info_state", None) == "GUIDED":
+            pid = getattr(person, "id", None)
+            if self.guided_person_ids is None or (pid is not None and int(pid) in self.guided_person_ids):
+                exit_pos = self._get_exit_position(self.guided_exit)
+                if exit_pos is not None:
+                    exx, eyy = exit_pos
+                    gdx, gdy = exx - px, eyy - py
+                    if gdx != 0 or gdy != 0:
+                        guided_dir = self.quantize_direction(gdx, gdy)
+                        if move_dir == guided_dir:
+                            max_utility = max(max_utility, 1.0)
 
         for signage in self.signages:
             if signage.direction is None:
