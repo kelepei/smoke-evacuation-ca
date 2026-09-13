@@ -412,7 +412,8 @@ def generate_group_position(
 
 def allocate_positions(
         people,
-        map_data
+        map_data,
+        seed=None
 ) -> None:
     """
     平台正式调用接口。
@@ -436,6 +437,10 @@ def allocate_positions(
         raise ValueError(
             "people 必须是列表"
         )
+
+    # 可选随机种子：传入后同一地图/人群可复现同一批初始位置
+    if seed is not None:
+        random.seed(int(seed))
 
     validate_map_data(
         map_data
@@ -627,7 +632,8 @@ def validate_allocated_positions(
 def allocate_people_position(
         people_file,
         map_file,
-        output_file
+        output_file,
+        seed=None
 ) -> Path:
     """
     文件模式。
@@ -659,7 +665,8 @@ def allocate_people_position(
 
     allocate_positions(
         people,
-        map_data
+        map_data,
+        seed=seed
     )
 
     validate_allocated_positions(
