@@ -65,6 +65,11 @@ class SceneConfig:
     auto_assign_single_groups: bool = True
     map_file: Optional[str] = None  # 所选 A 地图 JSON 路径（可选）
 
+    # ---- 信息传播 / 警报（新增）----
+    initial_informed_ratio: float = 0.15   # 火灾初期已知道险情的人员比例
+    alarm_enabled: bool = True             # 烟雾达阈值时是否触发警报广播
+    alarm_smoke_threshold: float = 3.0     # 警报触发的烟雾浓度阈值
+
 
 # ============================================================
 # 中文字段别名映射（用户可使用中文键名）
@@ -90,6 +95,9 @@ FIELD_ALIASES = {
     "has_doctor_patient_prob": ["医生病人概率", "医生-病人概率"],
     "stranger_ratio": ["陌生人比例", "陌生人占比"],
     "map_file": ["地图文件", "地图"],
+    "initial_informed_ratio": ["初始知情比例", "先知情比例", "初始知情率"],
+    "alarm_enabled": ["警报启用", "启用警报"],
+    "alarm_smoke_threshold": ["警报阈值", "烟雾报警阈值"],
 }
 
 
@@ -371,6 +379,20 @@ class SceneConfigGenerator:
         else:
             map_file = map_file.strip()
 
+        try:
+            initial_informed_ratio = float(normalized.get("initial_informed_ratio", 0.15))
+        except (TypeError, ValueError):
+            initial_informed_ratio = 0.15
+        initial_informed_ratio = max(0.0, min(1.0, initial_informed_ratio))
+
+        alarm_enabled = bool(normalized.get("alarm_enabled", True))
+        try:
+            alarm_smoke_threshold = float(normalized.get("alarm_smoke_threshold", 3.0))
+        except (TypeError, ValueError):
+            alarm_smoke_threshold = 3.0
+        if alarm_smoke_threshold < 0:
+            alarm_smoke_threshold = 0.0
+
         profile_ratios = normalized.get("profile_ratios", {"student": 0.8, "teacher": 0.1, "staff": 0.1})
         if isinstance(profile_ratios, dict):
             profile_ratios = normalize_profile_ratios(profile_ratios)
@@ -429,6 +451,9 @@ class SceneConfigGenerator:
             relation_intensity=relation_intensity,
             random_seed=random_seed,
             map_file=map_file,
+            initial_informed_ratio=initial_informed_ratio,
+            alarm_enabled=alarm_enabled,
+            alarm_smoke_threshold=alarm_smoke_threshold,
         )
 
 
