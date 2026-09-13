@@ -99,6 +99,11 @@ class InformationDiffusionEngine:
         self.propagation_log: List[Dict[str, Any]] = []
         self.step_stats = defaultdict(int)
 
+        # 初始知情比例 / 警报状态（新增）
+        self.initial_informed_ratio = 0.0
+        self.alarm_triggered = False
+        self.alarm_trigger_step: Optional[int] = None
+
     def update_all(self, all_persons: List, current_step: int,
                    smoke_grid: Optional[np.ndarray] = None) -> Dict[str, int]:
         """执行所有信息传播方式"""
@@ -138,6 +143,73 @@ class InformationDiffusionEngine:
             self._apply_relation_spread(all_persons, current_step)
 
         return dict(self.step_stats)
+
+    # ============================================================
+    # 初始知情人员 + 警报广播（新增）
+    # ============================================================
+
+    def initialize_initial_informed(self, all_persons: List, current_step: int = 0,
+                                    ratio: float = 0.15,
+                                    source: int = -3,
+                                    state: str = "ALERTED") -> int:
+        """让一定比例的人员在火灾初期就先知道险情。
+
+        这些人是信息传播的"种子"，其余人员只能通过局部口头传播/
+        关系传播逐步获知（对应"人接收信息的延迟"验收项）。
+        返回被置为知情状态的人数。
+        """
+        ratio = max(0.0, min(1.0, float(ratio)))
+        if ratio <= 0.0 or not all_persons:
+            return 0
+
+        target_state = InfoState.ALERTED if str(state).upper() != "CONFIRMED" else InfoState.CONFIRMED
+        count = max(1, int(round(len(all_persons) * ratio)))
+        candidates = list(all_persons)
+        np.random.shuffle(candidates)
+
+        informed = 0
+        for person in candidates[:count]:
+            pid = int(person.id)
+            if self.info_engine.transition_state(
+                pid, target_state, current_step,
+                source=source, method="initial_witness"
+            ):
+                informed += 1
+                self._log_propagation(source, pid, current_step,
+                                      "initial_witness", "火灾初期目击/先知情人员")
+        self.initial_informed_ratio = ratio
+        self.step_stats["initial_informed"] = informed
+        return informed
+
+    def trigger_alarm(self, all_persons: List, current_step: int,
+                      source: int = -1, confirmed: bool = True) -> int:
+        """警报广播：烟雾浓度达到阈值时，通知全部人员疏散。
+
+        由 B 的警报器信号触发（当前在 main.py 中按烟雾阈值触发）。
+        UNKNOWN -> ALERTED；若 confirmed 为 True 再 ALERTED -> CONFIRMED。
+        返回本次新通知到的人数。
+        """
+        notified = 0
+        for person in all_persons:
+            pid = int(person.id)
+            state = self.info_engine.get_state_value(pid)
+            if state == "UNKNOWN":
+                if self.info_engine.transition_state(
+                    pid, InfoState.ALERTED, current_step,
+                    source=source, method="alarm_broadcast"
+                ):
+                    notified += 1
+                    self._log_propagation(source, pid, current_step,
+                                          "alarm_broadcast", "警报广播")
+            if confirmed and self.info_engine.get_state_value(pid) == "ALERTED":
+                self.info_engine.transition_state(
+                    pid, InfoState.CONFIRMED, current_step,
+                    source=source, method="alarm_confirm"
+                )
+        self.alarm_triggered = True
+        self.alarm_trigger_step = current_step
+        self.step_stats["alarm_notified"] = notified
+        return notified
 
     # ============================================================
     # 1. 广播
