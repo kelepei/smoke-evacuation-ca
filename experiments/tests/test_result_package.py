@@ -18,11 +18,14 @@ class ResultPackageTests(unittest.TestCase):
             run_dir = root / "run_01"
             run_dir.mkdir()
             with (run_dir / "people_log.csv").open("w", encoding="utf-8", newline="") as handle:
-                writer = csv.DictWriter(handle, fieldnames=["step", "time_s", "person_id", "x", "y", "evacuated"])
+                writer = csv.DictWriter(handle, fieldnames=[
+                    "step", "time_s", "person_id", "x", "y", "evacuated",
+                    "actual_exit_cell", "actual_exit_entity",
+                ])
                 writer.writeheader()
                 writer.writerows([
                     {"step": 0, "time_s": 0, "person_id": 1, "x": 1, "y": 1, "evacuated": False},
-                    {"step": 1, "time_s": 0.5, "person_id": 1, "x": 2, "y": 1, "evacuated": True},
+                    {"step": 1, "time_s": 0.5, "person_id": 1, "x": 2, "y": 1, "evacuated": True, "actual_exit_cell": "exit_01", "actual_exit_entity": "exit_entity_01"},
                 ])
             (run_dir / "event_log.csv").write_text("event_type\nevac_success\n", encoding="utf-8")
             map_path = root / "map.json"; map_path.write_text("{}", encoding="utf-8")
@@ -54,7 +57,10 @@ class ResultPackageTests(unittest.TestCase):
                 )
                 metadata = json.loads(archive.read("run_01/metadata.json"))
                 configuration = json.loads(archive.read("run_01/config.json"))
+                people_log = archive.read("run_01/people_log.csv").decode("utf-8")
                 self.assertIn("累计占用热力图", archive.read("run_01/occupancy_heatmap.svg").decode("utf-8"))
+                self.assertIn("actual_exit_entity", people_log)
+                self.assertIn("exit_entity_01", people_log)
         self.assertEqual(metadata["summary"]["evacuated_count"], 1)
         self.assertEqual(metadata["summary"]["last_successful_exit_time"], 0.5)
         self.assertEqual(metadata["random_seed"], 17)

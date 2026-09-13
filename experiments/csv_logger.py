@@ -30,6 +30,8 @@ PEOPLE_LOG_FIELDS = [
     "status",
     "target_exit",
     "actual_exit",
+    "actual_exit_cell",
+    "actual_exit_entity",
     "evacuated",
     "smoke",
     "smoke_concentration",
@@ -327,9 +329,14 @@ class CsvExperimentLogger:
                     f"snapshot.people[{index}].status conflicts with evacuated=false"
                 )
             actual_exit = raw_person.get("actual_exit")
-            if not raw_evacuated and actual_exit not in (None, ""):
+            actual_exit_cell = raw_person.get("actual_exit_cell", actual_exit)
+            actual_exit_entity = raw_person.get("actual_exit_entity")
+            if not raw_evacuated and any(
+                value not in (None, "")
+                for value in (actual_exit, actual_exit_cell, actual_exit_entity)
+            ):
                 raise CsvLogError(
-                    f"snapshot.people[{index}].actual_exit requires evacuated=true"
+                    f"snapshot.people[{index}] exit identifiers require evacuated=true"
                 )
 
             smoke_concentration = raw_person.get("smoke_concentration")
@@ -375,6 +382,8 @@ class CsvExperimentLogger:
                 "status": status,
                 "target_exit": raw_person.get("target_exit"),
                 "actual_exit": actual_exit,
+                "actual_exit_cell": actual_exit_cell,
+                "actual_exit_entity": actual_exit_entity,
                 "evacuated": raw_evacuated,
                 "smoke": raw_person.get("smoke", smoke_concentration),
                 "smoke_concentration": smoke_concentration,

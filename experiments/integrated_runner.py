@@ -27,6 +27,7 @@ import numpy as np
 
 from core.schema import CellType, Exit, Person, Relation, ScenarioConfig, SmokeSource
 from experiments.b_runtime_adapter import EvacEngineRuntimeAdapter
+from experiments.exit_topology import ExitEntity, entity_id_by_cell, extract_exit_entities
 from experiments.run_artifacts import write_run_artifacts
 from experiments.runner import SimulationRunner
 from visualization.scene_input_adapter import (
@@ -127,6 +128,8 @@ class IntegratedScenario:
     person_count: int
     relation_count: int
     smoke_source_count: int
+    exit_entities: tuple[ExitEntity, ...]
+    exit_entity_by_cell_id: dict[str, str]
 
 
 def build_integrated_scenario(
@@ -201,11 +204,20 @@ def build_integrated_scenario(
         relation.source_person_b_id = source["source_person_b_id"]
         relations.append(relation)
 
+    # B keeps one Exit object per traversable exit cell.  D additionally keeps
+    # a 4-connected entity topology for records and analysis; the topology
+    # must not change B's cell-level movement or exit IDs.
+    exit_entities = extract_exit_entities(grid)
+    entity_by_coordinate = entity_id_by_cell(exit_entities)
     exits = [
         Exit(id=f"exit_{index + 1}", x=int(cell.x), y=int(cell.y))
         for index, cell in enumerate(grid.cells)
         if _cell_type_value(cell) == CellType.EXIT.value
     ]
+    exit_entity_by_cell_id = {
+        str(exit_obj.id): entity_by_coordinate[(int(exit_obj.x), int(exit_obj.y))]
+        for exit_obj in exits
+    }
     smoke_sources = [
         SmokeSource(x=int(cell.x), y=int(cell.y), intensity=1.0)
         for cell in grid.cells
@@ -247,6 +259,8 @@ def build_integrated_scenario(
         person_count=len(persons),
         relation_count=len(relations),
         smoke_source_count=len(smoke_sources),
+        exit_entities=exit_entities,
+        exit_entity_by_cell_id=exit_entity_by_cell_id,
     )
 
 
@@ -264,6 +278,8 @@ def integrated_simulation_factory(
             np.random.seed(seed)
         wrapped = EvacEngineRuntimeAdapter(
             EvacEngine(scenario.config),
+            exit_entities=scenario.exit_entities,
+            exit_entity_by_cell_id=scenario.exit_entity_by_cell_id,
             adapter_meta={
                 "map_path": str(scenario.map_path),
                 "population_path": str(scenario.population_path),

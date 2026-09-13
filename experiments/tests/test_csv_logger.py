@@ -30,6 +30,10 @@ def make_snapshot(
                 "status": "EVACUATED" if person_1_evacuated else None,
                 "target_exit": None,
                 "actual_exit": "exit_01" if person_1_evacuated else None,
+                "actual_exit_cell": "exit_01" if person_1_evacuated else None,
+                "actual_exit_entity": (
+                    "exit_entity_01" if person_1_evacuated else None
+                ),
                 "evacuated": person_1_evacuated,
                 "smoke_concentration": 0.0,
                 "risk": None,
@@ -84,6 +88,10 @@ class CsvExperimentLoggerTests(unittest.TestCase):
                 ["false", "false"],
             )
             self.assertEqual(people_rows[0]["risk"], "")
+            self.assertEqual(people_rows[2]["actual_exit_cell"], "exit_01")
+            self.assertEqual(
+                people_rows[2]["actual_exit_entity"], "exit_entity_01"
+            )
             self.assertEqual(len(event_rows), 1)
             self.assertEqual(event_rows[0]["event_type"], "evac_success")
             self.assertEqual(event_rows[0]["person_id"], "1")

@@ -373,6 +373,10 @@ class CaSnapshotAdapter:
                 normalized_info_history = list(info_history)
             else:
                 normalized_info_history = [info_history]
+            actual_exit = _optional_attr(person, "actual_exit")
+            actual_exit_cell = _optional_attr(person, "actual_exit_cell")
+            if actual_exit_cell is None:
+                actual_exit_cell = actual_exit
             people.append(
                 {
                     "person_id": person_id,
@@ -381,7 +385,11 @@ class CaSnapshotAdapter:
                     "heading": _heading_value(_optional_attr(person, "heading")),
                     "status": _enum_value(status),
                     "target_exit": target_exit,
-                    "actual_exit": _optional_attr(person, "actual_exit"),
+                    # ``actual_exit`` is the untouched B cell-level value.
+                    # Entity aliases are D-side metadata for aggregation only.
+                    "actual_exit": actual_exit,
+                    "actual_exit_cell": actual_exit_cell,
+                    "actual_exit_entity": _optional_attr(person, "actual_exit_entity"),
                     "evacuated": evacuated,
                     "smoke": smoke_concentration,
                     "smoke_concentration": smoke_concentration,
@@ -489,6 +497,7 @@ class CaSnapshotAdapter:
             },
             "people": people,
             "exits": exits,
+            "exit_entities": list(_optional_attr(simulation, "exit_entities") or []),
             "fields": {
                 "smoke_field": smoke_field,
                 "smoke_sources": smoke_sources,

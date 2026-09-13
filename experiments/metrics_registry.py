@@ -43,7 +43,7 @@ METRIC_REGISTRY: tuple[MetricDefinition, ...] = (
     MetricDefinition("avg_smoke", "平均人员烟雾暴露", "concentration", "people_log smoke/smoke_concentration", "NA: runtime did not log person smoke"),
     MetricDefinition("avg_dose", "平均剂量", "dose", "people_log dose", "NA: B did not provide dose"),
     MetricDefinition("avg_risk", "平均风险", "risk", "people_log risk", "NA: B did not provide risk"),
-    MetricDefinition("exit_utilization", "出口利用率", "NA", "people_log actual_exit", "NA: B did not provide actual_exit"),
+    MetricDefinition("exit_utilization", "出口利用率", "NA", "people_log actual_exit_entity, fallback actual_exit", "NA: B did not provide actual_exit"),
 )
 
 

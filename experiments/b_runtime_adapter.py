@@ -96,6 +96,8 @@ class EvacEngineRuntimeAdapter:
         behavior_provider: BehaviorProvider | None = None,
         render_upstream_animation: bool = False,
         adapter_meta: Mapping[str, Any] | None = None,
+        exit_entities: Any = None,
+        exit_entity_by_cell_id: Mapping[str, str] | None = None,
     ) -> None:
         for name in ("scene", "grid", "person_map", "smoke_matrix"):
             if not hasattr(engine, name):
@@ -112,6 +114,12 @@ class EvacEngineRuntimeAdapter:
             )
         self._engine = engine
         self._behavior_provider = behavior_provider
+        self._exit_entities = self._normalize_exit_entities(exit_entities)
+        self._exit_entity_by_cell_id = {
+            str(cell_id): str(entity_id)
+            for cell_id, entity_id in (exit_entity_by_cell_id or {}).items()
+            if cell_id not in (None, "") and entity_id not in (None, "")
+        }
         if not isinstance(render_upstream_animation, bool):
             raise TypeError("render_upstream_animation must be boolean")
         self._render_upstream_animation = render_upstream_animation
@@ -164,6 +172,10 @@ class EvacEngineRuntimeAdapter:
             ),
             "runtime_instance_defaults": sorted(set(initialized_fields)),
             "missing_fields_are_null": True,
+            "exit_topology": {
+                "entity_count": len(self._exit_entities),
+                "cell_to_entity": dict(self._exit_entity_by_cell_id),
+            },
         }
         if adapter_meta:
             self.d_adapter_meta.update(dict(adapter_meta))
@@ -206,6 +218,29 @@ class EvacEngineRuntimeAdapter:
     def current_step(self) -> int:
         return int(self._engine.current_step)
 
+    @property
+    def exit_entities(self) -> list[dict[str, Any]]:
+        """D-only physical-exit metadata; B still uses individual exit cells."""
+
+        return [dict(entity) for entity in self._exit_entities]
+
+    @staticmethod
+    def _normalize_exit_entities(raw_entities: Any) -> list[dict[str, Any]]:
+        if raw_entities is None:
+            return []
+        result: list[dict[str, Any]] = []
+        for entity in raw_entities:
+            if hasattr(entity, "as_dict") and callable(entity.as_dict):
+                entity = entity.as_dict()
+            if not isinstance(entity, Mapping):
+                raise TypeError("exit_entities entries must be mappings or expose as_dict()")
+            entity_id = entity.get("exit_entity_id")
+            member_cells = entity.get("member_cells")
+            if entity_id in (None, "") or not isinstance(member_cells, (list, tuple)):
+                raise ValueError("exit entity requires exit_entity_id and member_cells")
+            result.append(dict(entity))
+        return result
+
     def init_simulation(self) -> None:
         """B initializes state in ``EvacEngine.__init__``."""
 
@@ -227,6 +262,22 @@ class EvacEngineRuntimeAdapter:
             self._run_one_step(dict(behavior))
         else:
             self._engine.step()
+        self._record_exit_entity_ids()
+
+    def _record_exit_entity_ids(self) -> None:
+        """Attach D aliases after B has recorded its original cell-level ID."""
+
+        if not self._exit_entity_by_cell_id:
+            return
+        for person in self._engine.person_map.values():
+            actual_exit = getattr(person, "actual_exit", None)
+            if actual_exit in (None, ""):
+                continue
+            actual_exit_cell = str(actual_exit)
+            setattr(person, "actual_exit_cell", actual_exit_cell)
+            entity_id = self._exit_entity_by_cell_id.get(actual_exit_cell)
+            if entity_id is not None:
+                setattr(person, "actual_exit_entity", entity_id)
 
     def _run_one_step(self, behavior: dict[int, Mapping[str, Any]]) -> None:
         """Call B once while avoiding its duplicate Matplotlib renderer."""

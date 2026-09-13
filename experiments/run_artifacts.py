@@ -122,6 +122,7 @@ def write_run_artifacts(
             if isinstance(snapshot.get("grid"), Mapping)
             else None,
         },
+        "exit_entities": snapshot.get("exit_entities", []),
         "input_files": {key: str(path) for key, path in input_files.items()},
         "runtime_contract": "A Grid + C population/config + B EvacEngine through D adapters",
         "missing_upstream_fields": "CSV logger leaves unprovided upstream fields empty; D does not fabricate values.",
