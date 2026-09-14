@@ -53,6 +53,32 @@ class RunArtifactTests(unittest.TestCase):
                 "artifact-test",
             )
 
+    def test_writes_grid_space_velocity_diagnostic_without_a_physical_scale(self) -> None:
+        snapshot = {
+            "run_id": "velocity-artifact", "scenario_id": "test", "schema_version": "0.1",
+            "random_seed": 1, "step": 1, "time_s": 0.5, "time_step": 0.5,
+            "analysis_contract": {
+                "physical_scale": {"source": "unavailable", "value": None, "unit": "m"},
+                "sampling_window_s": {"source": "literature_default", "value": 2.5, "unit": "s"},
+            },
+            "grid": {"width": 2, "height": 1, "cell_type": [["free", "exit"]]},
+            "people": [], "fields": {},
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            output_dir = Path(temporary)
+            with (output_dir / "people_log.csv").open("w", encoding="utf-8", newline="") as stream:
+                writer = csv.DictWriter(stream, fieldnames=["person_id", "step", "time_s", "x", "y", "evacuated"])
+                writer.writeheader()
+                writer.writerows([
+                    {"person_id": 1, "step": 0, "time_s": 0, "x": 0, "y": 0, "evacuated": False},
+                    {"person_id": 1, "step": 1, "time_s": 0.5, "x": 1, "y": 0, "evacuated": True},
+                ])
+            write_run_artifacts(snapshot, output_dir, input_files={}, save_frame=False)
+            field = json.loads((output_dir / "velocity_vector_field.json").read_text(encoding="utf-8"))
+            self.assertEqual("diagnostic_grid_space_only", field["status"])
+            self.assertEqual("NA", field["records"][0]["speed_m_s"])
+            self.assertTrue((output_dir / "velocity_vector_field.csv").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

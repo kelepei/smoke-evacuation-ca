@@ -12,7 +12,10 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
-from experiments.crowd_metrics import write_trajectory_kinematics
+from experiments.crowd_metrics import (
+    write_trajectory_kinematics,
+    write_velocity_vector_field,
+)
 from experiments.week6_analysis import analyze_run
 
 
@@ -142,13 +145,30 @@ def write_run_artifacts(
             ),
             grid=grid if isinstance(grid, Mapping) else None,
         )
+        velocity_field = write_velocity_vector_field(
+            kinematics_path=destination / "trajectory_kinematics.csv",
+            output_path=destination / "velocity_vector_field.json",
+            csv_output_path=destination / "velocity_vector_field.csv",
+            analysis_contract=(
+                snapshot.get("analysis_contract")
+                if isinstance(snapshot.get("analysis_contract"), Mapping)
+                else None
+            ),
+        )
     else:
         kinematics = {
             "path": "trajectory_kinematics.csv",
             "status": "unavailable",
             "reason": "people_log.csv is not present",
         }
+        velocity_field = {
+            "json_path": "velocity_vector_field.json",
+            "csv_path": "velocity_vector_field.csv",
+            "status": "unavailable",
+            "reason": "trajectory_kinematics.csv is unavailable",
+        }
     config_used["trajectory_kinematics"] = kinematics
+    config_used["velocity_vector_field"] = velocity_field
     _write_json(destination / "config_used.json", config_used)
     metrics = snapshot_metrics(snapshot, destination)
     _write_json(destination / "metrics.json", metrics)
