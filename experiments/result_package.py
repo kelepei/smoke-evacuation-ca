@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from experiments.crowd_metrics import KINEMATICS_FIELDS, trajectory_kinematics
 from experiments.metrics_registry import metric_rows
 from experiments.week6_analysis import analysis_summary_csv, analyze_run
 
@@ -76,6 +77,14 @@ def _csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
     writer.writeheader()
     for row in rows:
         writer.writerow(row)
+    return stream.getvalue()
+
+
+def _trajectory_csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
+    stream = io.StringIO(newline="")
+    writer = csv.DictWriter(stream, fieldnames=KINEMATICS_FIELDS)
+    writer.writeheader()
+    writer.writerows(rows)
     return stream.getvalue()
 
 
@@ -286,6 +295,7 @@ def build_result_package(
     people_path = base / "people_log.csv"
     event_path = base / "event_log.csv"
     _read_csv(event_path)
+    people_rows = _read_csv(people_path)
     analysis = build_runtime_analysis(
         output_dir=base,
         final_snapshot=final_snapshot,
@@ -293,6 +303,15 @@ def build_result_package(
     )
     metrics = analysis["metrics"]
     summary = analysis["summary"]
+    analysis_contract = final_snapshot.get("analysis_contract")
+    if not isinstance(analysis_contract, Mapping):
+        analysis_contract = {}
+    snapshot_grid = final_snapshot.get("grid")
+    kinematics = trajectory_kinematics(
+        people_rows,
+        physical_scale=analysis_contract.get("physical_scale"),
+        grid=snapshot_grid if isinstance(snapshot_grid, Mapping) else None,
+    )
 
     metadata = {
         "run_id": run_id,
@@ -300,6 +319,7 @@ def build_result_package(
         "schema_version": final_snapshot.get("schema_version"),
         "random_seed": final_snapshot.get("random_seed"),
         "time_step_s": final_snapshot.get("time_step"),
+        "analysis_contract": analysis_contract,
         "last_step": final_snapshot.get("step"),
         "max_steps": max_steps,
         "exported_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -316,6 +336,7 @@ def build_result_package(
         "scenario_id": scenario_id,
         "random_seed": final_snapshot.get("random_seed"),
         "time_step_s": final_snapshot.get("time_step"),
+        "analysis_contract": analysis_contract,
         "max_steps": max_steps,
         "input_files": {key: path.name for key, path in input_files.items() if path.is_file()},
     }
@@ -330,6 +351,7 @@ def build_result_package(
         bundle.writestr(prefix + "occupancy_heatmap.svg", analysis["occupancy_heatmap_svg"])
         bundle.writestr(prefix + "week6_metrics.json", json.dumps(analysis["week6_metrics"], ensure_ascii=False, indent=2))
         bundle.writestr(prefix + "week6_metrics_summary.csv", analysis_summary_csv(analysis["week6_metrics"]))
+        bundle.writestr(prefix + "trajectory_kinematics.csv", _trajectory_csv_text(kinematics))
         bundle.write(people_path, prefix + "people_log.csv")
         bundle.write(event_path, prefix + "event_log.csv")
         for key, source in input_files.items():

@@ -23,6 +23,11 @@ class CaSnapshotAdapterTests(unittest.TestCase):
         initial = self.adapter.capture(self.simulation)
         self.assertEqual(initial["step"], 0)
         self.assertEqual(initial["time_s"], 0.0)
+        self.assertEqual(0.5, initial["analysis_contract"]["dt_s"]["value"])
+        self.assertEqual(
+            "unavailable",
+            initial["analysis_contract"]["physical_scale"]["source"],
+        )
         self.assertEqual(len(initial["people"]), 3)
         self.assertEqual(initial["grid"]["width"], 20)
         self.assertEqual(initial["grid"]["height"], 12)

@@ -93,6 +93,31 @@ class IntegratedRuntimeTests(unittest.TestCase):
                     population_path=people_path,
                 )
 
+    def test_physical_scale_is_explicit_and_never_inferred_from_cell_size(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            map_path, people_path = self._write_inputs(Path(raw))
+            unavailable = build_integrated_scenario(
+                map_path=map_path, population_path=people_path
+            )
+            self.assertEqual(
+                "unavailable",
+                unavailable.config.parameters["d_analysis_contract"]["physical_scale"]["source"],
+            )
+            payload = json.loads(map_path.read_text(encoding="utf-8"))
+            payload["analysis"] = {"physical_cell_size_m": 0.4}
+            map_path.write_text(json.dumps(payload), encoding="utf-8")
+            explicit = build_integrated_scenario(
+                map_path=map_path, population_path=people_path
+            )
+            self.assertEqual(
+                "explicit_map",
+                explicit.config.parameters["d_analysis_contract"]["physical_scale"]["source"],
+            )
+            self.assertEqual(
+                0.4,
+                explicit.config.parameters["d_analysis_contract"]["physical_scale"]["value"],
+            )
+
     def test_runner_uses_current_b_evac_engine_without_writing_b_code(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)

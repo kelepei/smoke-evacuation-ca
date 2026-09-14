@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
+from experiments.crowd_metrics import write_trajectory_kinematics
 from experiments.week6_analysis import analyze_run
 
 
@@ -114,6 +115,7 @@ def write_run_artifacts(
         "schema_version": snapshot.get("schema_version"),
         "random_seed": snapshot.get("random_seed"),
         "time_step_s": snapshot.get("time_step"),
+        "analysis_contract": snapshot.get("analysis_contract", {}),
         "grid": {
             "width": snapshot.get("grid", {}).get("width")
             if isinstance(snapshot.get("grid"), Mapping)
@@ -126,6 +128,27 @@ def write_run_artifacts(
         "runtime_contract": "A Grid + C population/config + B EvacEngine through D adapters",
         "missing_upstream_fields": "CSV logger leaves unprovided upstream fields empty; D does not fabricate values.",
     }
+    _write_json(destination / "config_used.json", config_used)
+    people_log_path = destination / "people_log.csv"
+    if people_log_path.is_file():
+        grid = snapshot.get("grid")
+        kinematics = write_trajectory_kinematics(
+            people_log_path=people_log_path,
+            output_path=destination / "trajectory_kinematics.csv",
+            analysis_contract=(
+                snapshot.get("analysis_contract")
+                if isinstance(snapshot.get("analysis_contract"), Mapping)
+                else None
+            ),
+            grid=grid if isinstance(grid, Mapping) else None,
+        )
+    else:
+        kinematics = {
+            "path": "trajectory_kinematics.csv",
+            "status": "unavailable",
+            "reason": "people_log.csv is not present",
+        }
+    config_used["trajectory_kinematics"] = kinematics
     _write_json(destination / "config_used.json", config_used)
     metrics = snapshot_metrics(snapshot, destination)
     _write_json(destination / "metrics.json", metrics)

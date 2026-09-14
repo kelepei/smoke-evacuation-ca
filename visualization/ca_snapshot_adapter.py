@@ -13,6 +13,8 @@ import math
 from numbers import Integral, Real
 from typing import Any, Iterable, Mapping
 
+from experiments.crowd_metrics import with_runtime_dt
+
 
 SCHEMA_VERSION = "0.1-draft"
 
@@ -276,6 +278,18 @@ class CaSnapshotAdapter:
         parameters = getattr(config, "parameters", None)
         if random_seed is None and isinstance(parameters, Mapping):
             random_seed = parameters.get("random_seed")
+        raw_analysis_contract = (
+            parameters.get("d_analysis_contract")
+            if isinstance(parameters, Mapping)
+            else None
+        )
+        try:
+            analysis_contract = with_runtime_dt(
+                raw_analysis_contract if isinstance(raw_analysis_contract, Mapping) else None,
+                dt_s=self.time_step_s,
+            )
+        except ValueError as exc:
+            raise SnapshotAdapterError("invalid D analysis contract") from exc
 
         smoke_sim = getattr(simulation, "smoke_sim", None)
         public_smoke_matrix = _optional_attr(simulation, "smoke_matrix")
@@ -468,6 +482,7 @@ class CaSnapshotAdapter:
             "missing_values_are_not_inferred": True,
             "smoke_value_domain": "B raw dimensionless concentration in [0, 10]; smoke_matrix[y][x]",
             "smoke_source_input": "B runtime smoke_sources; coordinates use (x, y)",
+            "physical_scale_warning": analysis_contract["physical_scale"].get("warning"),
         }
         extra_meta = getattr(simulation, "d_adapter_meta", None)
         if isinstance(extra_meta, Mapping):
@@ -481,6 +496,7 @@ class CaSnapshotAdapter:
             "step": step,
             "time_step": self.time_step_s,
             "time_s": step * self.time_step_s,
+            "analysis_contract": analysis_contract,
             "grid": {
                 "width": width,
                 "height": height,
