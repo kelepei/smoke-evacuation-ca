@@ -103,6 +103,10 @@ class IntegratedRuntimeTests(unittest.TestCase):
                 "unavailable",
                 unavailable.config.parameters["d_analysis_contract"]["physical_scale"]["source"],
             )
+            self.assertEqual(
+                "unavailable_physical_scale",
+                unavailable.config.parameters["d_analysis_contract"]["congestion_level"]["status"],
+            )
             payload = json.loads(map_path.read_text(encoding="utf-8"))
             payload["analysis"] = {"physical_cell_size_m": 0.4}
             map_path.write_text(json.dumps(payload), encoding="utf-8")
@@ -116,6 +120,10 @@ class IntegratedRuntimeTests(unittest.TestCase):
             self.assertEqual(
                 0.4,
                 explicit.config.parameters["d_analysis_contract"]["physical_scale"]["value"],
+            )
+            self.assertEqual(
+                "unconfigured_analysis_mesh_or_roi",
+                explicit.config.parameters["d_analysis_contract"]["congestion_level"]["status"],
             )
 
     def test_runner_uses_current_b_evac_engine_without_writing_b_code(self) -> None:

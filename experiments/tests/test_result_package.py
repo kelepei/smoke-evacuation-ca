@@ -55,6 +55,7 @@ class ResultPackageTests(unittest.TestCase):
                         "run_01/week6_metrics.json", "run_01/week6_metrics_summary.csv",
                         "run_01/trajectory_kinematics.csv", "run_01/velocity_vector_field.json",
                         "run_01/velocity_vector_field.csv",
+                        "run_01/congestion_level_field.json", "run_01/congestion_level_field.csv",
                         "run_01/metadata.json", "run_01/config.json", "run_01/inputs/map.json",
                         "run_01/inputs/population.json",
                     },
@@ -72,6 +73,8 @@ class ResultPackageTests(unittest.TestCase):
                 )
                 velocity = json.loads(archive.read("run_01/velocity_vector_field.json"))
                 self.assertEqual("diagnostic_grid_space_only", velocity["status"])
+                congestion = json.loads(archive.read("run_01/congestion_level_field.json"))
+                self.assertEqual("unavailable_physical_scale", congestion["status"])
         self.assertEqual(metadata["summary"]["evacuated_count"], 1)
         self.assertEqual(metadata["summary"]["last_successful_exit_time"], 0.5)
         self.assertEqual(metadata["random_seed"], 17)

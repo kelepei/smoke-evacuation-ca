@@ -78,6 +78,9 @@ class RunArtifactTests(unittest.TestCase):
             self.assertEqual("diagnostic_grid_space_only", field["status"])
             self.assertEqual("NA", field["records"][0]["speed_m_s"])
             self.assertTrue((output_dir / "velocity_vector_field.csv").is_file())
+            congestion = json.loads((output_dir / "congestion_level_field.json").read_text(encoding="utf-8"))
+            self.assertEqual("unavailable_physical_scale", congestion["status"])
+            self.assertTrue((output_dir / "congestion_level_field.csv").is_file())
 
 
 if __name__ == "__main__":
