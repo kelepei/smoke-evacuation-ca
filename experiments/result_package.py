@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from experiments.academic_crowd import ACADEMIC_CROWD_FIELDS, academic_crowd_fields
 from experiments.congestion_level import (
     CONGESTION_LEVEL_FIELDS,
     congestion_level_field,
@@ -109,6 +110,14 @@ def _velocity_field_csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
 def _congestion_level_csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
     stream = io.StringIO(newline="")
     writer = csv.DictWriter(stream, fieldnames=CONGESTION_LEVEL_FIELDS)
+    writer.writeheader()
+    writer.writerows(rows)
+    return stream.getvalue()
+
+
+def _academic_crowd_csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
+    stream = io.StringIO(newline="")
+    writer = csv.DictWriter(stream, fieldnames=ACADEMIC_CROWD_FIELDS)
     writer.writeheader()
     writer.writerows(rows)
     return stream.getvalue()
@@ -265,6 +274,18 @@ def build_runtime_analysis(
 
     base = Path(output_dir)
     people_rows = _read_csv(base / "people_log.csv")
+    analysis_contract = (
+        final_snapshot.get("analysis_contract", {})
+        if isinstance(final_snapshot, Mapping)
+        else {}
+    )
+    if not isinstance(analysis_contract, Mapping):
+        analysis_contract = {}
+    snapshot_grid = (
+        final_snapshot.get("grid", {}) if isinstance(final_snapshot, Mapping) else {}
+    )
+    if not isinstance(snapshot_grid, Mapping):
+        snapshot_grid = {}
     width, height = _snapshot_grid_dimensions(final_snapshot)
     visual = _log_visual_data(
         people_rows,
@@ -290,6 +311,9 @@ def build_runtime_analysis(
         "metrics": metric_rows(week6_metrics),
         "summary": summary,
         "week6_metrics": week6_metrics,
+        "academic_crowd_fields": academic_crowd_fields(
+            people_rows, grid=snapshot_grid, analysis_contract=analysis_contract
+        ),
     }
     if include_figures:
         result["evacuation_curve_svg"] = _curve_svg(
@@ -354,6 +378,12 @@ def build_result_package(
         grid=snapshot_grid if isinstance(snapshot_grid, Mapping) else {},
         analysis_contract=analysis_contract,
     )
+    academic_crowd = academic_crowd_fields(
+        people_rows,
+        grid=snapshot_grid if isinstance(snapshot_grid, Mapping) else {},
+        analysis_contract=analysis_contract,
+        kinematic_rows=kinematics,
+    )
 
     metadata = {
         "run_id": run_id,
@@ -409,6 +439,14 @@ def build_result_package(
         bundle.writestr(
             prefix + "congestion_level_field.csv",
             _congestion_level_csv_text(congestion_level["records"]),
+        )
+        bundle.writestr(
+            prefix + "academic_crowd_fields.json",
+            json.dumps(academic_crowd, ensure_ascii=False, indent=2),
+        )
+        bundle.writestr(
+            prefix + "academic_crowd_fields.csv",
+            _academic_crowd_csv_text(academic_crowd["records"]),
         )
         bundle.write(people_path, prefix + "people_log.csv")
         bundle.write(event_path, prefix + "event_log.csv")

@@ -81,6 +81,10 @@ class RunArtifactTests(unittest.TestCase):
             congestion = json.loads((output_dir / "congestion_level_field.json").read_text(encoding="utf-8"))
             self.assertEqual("unavailable_physical_scale", congestion["status"])
             self.assertTrue((output_dir / "congestion_level_field.csv").is_file())
+            academic = json.loads((output_dir / "academic_crowd_fields.json").read_text(encoding="utf-8"))
+            self.assertEqual("unavailable_physical_scale", academic["status"])
+            self.assertEqual([], academic["records"])
+            self.assertTrue((output_dir / "academic_crowd_fields.csv").is_file())
 
 
 if __name__ == "__main__":

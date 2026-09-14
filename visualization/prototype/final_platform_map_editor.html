@@ -79,6 +79,7 @@
   .bar-row{display:grid;grid-template-columns:58px 1fr 48px;gap:6px;align-items:center;margin:10px 0;font-size:12px}
   .bar-track{height:10px;overflow:hidden;background:#e2e8f0;border-radius:99px}.bar-fill{height:100%;background:#2563eb;border-radius:99px}.bar-fill.green{background:#16a34a}
   .real-note{color:var(--muted);font-size:11px;line-height:1.4;margin-top:5px}.real-note b{color:#334155}
+  .academic-selector{width:auto;min-width:112px;height:28px;padding:3px 6px;font-size:11px}.academic-note{margin:0 0 7px;color:var(--muted);font-size:11px;line-height:1.4}
   .info-tooltip{display:inline-grid;place-items:center;width:18px;height:18px;margin-left:auto;border:1px solid #94a3b8;border-radius:50%;background:#f8fafc;color:#475569;font-size:12px;font-weight:800;line-height:1;cursor:help}.info-tooltip-content{position:absolute;z-index:3;top:26px;right:0;width:min(340px,90vw);padding:9px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#475569;font-size:11px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.16);opacity:0;visibility:hidden;transform:translateY(-3px);transition:opacity .15s ease,transform .15s ease,visibility .15s}.info-tooltip:hover+.info-tooltip-content,.info-tooltip:focus+.info-tooltip-content{opacity:1;visibility:visible;transform:translateY(0)}
   .history-list{display:grid;gap:6px;margin-top:7px}.history-item{width:100%;height:auto;min-height:32px;padding:6px 7px;text-align:left;font-size:11px;font-weight:600}.history-item.active{border-color:#1769e0;background:#eff6ff}.history-detail{margin-top:7px;color:#475569;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
   .editor-modal{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(15,23,42,.55)}.editor-modal.open{display:flex}.editor-dialog{width:min(1440px,96vw);height:min(900px,92vh);display:flex;flex-direction:column;overflow:hidden;border-radius:10px;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.28)}.editor-dialog header{height:auto;min-height:50px;padding:8px 12px;background:#fff;color:var(--ink);box-shadow:none;border-bottom:1px solid var(--line)}.editor-dialog header strong{margin-right:auto}.editor-dialog iframe{width:100%;min-height:0;flex:1;border:0}.editor-actions{display:flex;justify-content:flex-end;gap:8px;padding:8px 12px;border-top:1px solid var(--line)}
@@ -254,11 +255,19 @@
     </section>
     <section class="insight-panel figure-panel">
       <div class="insight-title-row">
-        <div class="insight-title">累计占用热力图</div>
-        <button class="figure-expand" type="button" data-figure="heatmapFigure" data-title="累计占用热力图" aria-label="放大查看累计占用热力图" title="放大查看">⛶</button>
+        <div class="insight-title" id="heatmapTitle">累计占用热力图</div>
+        <select id="academicHeatmapSelect" class="academic-selector" aria-label="选择分析热力图">
+          <option value="occupancy">累计占用</option>
+          <option value="density">Density</option>
+          <option value="cl">CL</option>
+          <option value="cn">CN</option>
+          <option value="crowd_danger">Crowd Danger</option>
+        </select>
+        <button class="figure-expand" type="button" data-figure="heatmapFigure" data-title="累计占用热力图" aria-label="放大查看热力图" title="放大查看">⛶</button>
         <span class="info-tooltip" tabindex="0" aria-label="查看数据来源">!</span>
         <div class="info-tooltip-content" id="dataProvenance"><b>数据来源：</b>本次运行日志和仿真快照。风险、剂量、实际出口只在上游实际返回时展示；缺失字段为 NA。B 当前未公开个人风险结果，平均风险显示 NA。</div>
       </div>
+      <div class="academic-note" id="academicHeatmapNote">累计占用：实验过程中人员停留频度（person-step），不是 Density、CL、CN 或 Crowd Danger。</div>
       <div class="figure-wrap" id="heatmapFigure"><div class="figure-placeholder">运行后点击“刷新真实分析”。</div></div>
     </section>
   </section>
@@ -316,6 +325,7 @@
   let currentMapName = "";
   let editorReady = false;
   let smokeImportResolver = null;
+  let latestAnalysis = null;
 
   function setConfigState(message, state = ""){
     const hint = $("configHint");
@@ -756,6 +766,70 @@
     container.replaceChildren(image);
   }
 
+  const academicHeatmaps = {
+    occupancy:{title:"累计占用热力图", unit:"person-step / relative occupancy", note:"累计占用：实验过程中人员停留频度，不是 Density、CL、CN 或 Crowd Danger。"},
+    density:{title:"Density 热力图", unit:"persons/m²", note:"Density：同一分析时间窗与 mesh 上的 Voronoi 局部人员密度。"},
+    cl:{title:"CL 热力图", unit:"m⁻¹", note:"CL：局部人群运动失序程度；仅在 physical scale、analysis mesh 和 ROI 有效时计算。"},
+    cn:{title:"CN 热力图", unit:"dimensionless", note:"CN：无量纲拥堵指标；不自动作安全或危险判定。"},
+    crowd_danger:{title:"Crowd Danger 热力图", unit:"persons/m³", note:"Crowd Danger：同一 frame 的 CL × Voronoi Density 联合指标。"}
+  };
+
+  function academicFieldSpec(kind){
+    return {
+      density:{value:"density_persons_m2", validity:"density_validity"},
+      cl:{value:"cl_m_inv", validity:"cl_validity"},
+      cn:{value:"cn", validity:"cn_validity"},
+      crowd_danger:{value:"crowd_danger_persons_m3", validity:"crowd_danger_validity"}
+    }[kind];
+  }
+
+  function academicHeatmapSvg(records, kind){
+    const spec = academicFieldSpec(kind);
+    const points = (records || []).map(record => ({
+      x:Number(record.analysis_x), y:Number(record.analysis_y), value:Number(record[spec.value])
+    })).filter(point => Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.value));
+    if(!points.length) return "";
+    const minX = Math.min(...points.map(point => point.x)), maxX = Math.max(...points.map(point => point.x));
+    const minY = Math.min(...points.map(point => point.y)), maxY = Math.max(...points.map(point => point.y));
+    const spanX = Math.max(1, maxX - minX + 1), spanY = Math.max(1, maxY - minY + 1);
+    const cell = Math.max(10, Math.min(42, Math.floor(520 / Math.max(spanX, spanY))));
+    const margin = 44, top = 54, width = margin * 2 + spanX * cell, height = top + margin + spanY * cell;
+    const maximum = Math.max(...points.map(point => point.value));
+    const title = academicHeatmaps[kind].title, unit = academicHeatmaps[kind].unit;
+    const cells = points.map(point => {
+      const ratio = maximum <= 0 ? 0 : Math.max(0, Math.min(1, point.value / maximum));
+      const hue = Math.round(218 - ratio * 205);
+      return `<rect x="${margin + (point.x-minX)*cell}" y="${top + (point.y-minY)*cell}" width="${cell}" height="${cell}" fill="hsl(${hue},72%,${92-ratio*44}%)" stroke="#e2e8f0" stroke-width=".4"/>`;
+    }).join("");
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="#fff"/><text x="${margin}" y="22" font-family="Arial, Microsoft YaHei" font-size="16" fill="#18243a">${title}（真实 academic artifact）</text><text x="${margin}" y="40" font-family="Arial, Microsoft YaHei" font-size="11" fill="#556070">单位：${unit}；当前最大观测值 ${maximum.toPrecision(4)}</text>${cells}</svg>`;
+  }
+
+  function renderSelectedHeatmap(){
+    const kind = $("academicHeatmapSelect").value;
+    const meta = academicHeatmaps[kind];
+    $("heatmapTitle").textContent = meta.title;
+    $("academicHeatmapNote").textContent = meta.note;
+    const expand = document.querySelector('[data-figure="heatmapFigure"]');
+    if(expand) expand.dataset.title = meta.title;
+    if(kind === "occupancy"){
+      setAnalysisFigure("heatmapFigure", latestAnalysis && latestAnalysis.occupancy_heatmap_svg, "暂无可用于绘制的真实累计占用日志。");
+      return;
+    }
+    const academic = latestAnalysis && latestAnalysis.academic_crowd_fields;
+    if(!academic || academic.status !== "available"){
+      const reason = academic && academic.reason ? academic.reason : "当前尚无 academic analysis artifact。";
+      const explanation = academic && academic.status === "unavailable_physical_scale"
+        ? "当前场景未标定 physical_cell_size_m，无法计算正式 Density / CL / CN / Crowd Danger。"
+        : "当前场景缺少 formal academic metric 所需的有效分析契约。";
+      setAnalysisFigure("heatmapFigure", "", `${explanation}\n${reason}`);
+      return;
+    }
+    const spec = academicFieldSpec(kind);
+    const records = (academic.records || []).filter(record => record && record[spec.validity] === "valid");
+    const svg = academicHeatmapSvg(records, kind);
+    setAnalysisFigure("heatmapFigure", svg, `该指标在当前真实日志中没有足够的同 frame 有效支持；不会生成伪热图。`);
+  }
+
   function openFigureModal(figureId, title){
     const source = $(figureId).querySelector("img");
     const body = $("figureModalBody");
@@ -783,6 +857,7 @@
     $("actualExitStatus").textContent = "NA · 上游未提供";
     setAnalysisFigure("curveFigure", "", message);
     setAnalysisFigure("heatmapFigure", "", message);
+    latestAnalysis = null;
     $("curveNote").textContent = "本次运行尚无分析数据。";
   }
 
@@ -874,7 +949,11 @@
     });
     $("historyDetail").textContent = `ID: ${summary.experiment_id || "NA"}\nseed: ${historyValue(summary.random_seed)} · 状态: ${historyValue(summary.status)}\n人数: ${historyValue(summary.total_persons)} · 撤离率: ${historyValue(summary.evacuation_rate)}\n总疏散: ${historyValue(summary.total_evacuation_time_s," s")} · 平均: ${historyValue(summary.mean_evacuation_time_s," s")} · T90: ${historyValue(summary.t90_time_s," s")}\n结果包: ${historyValue(summary.result_package && summary.result_package.status)}\n路径: ${historyValue(summary.output_dir)}`;
     if(item.evacuation_curve_svg) setAnalysisFigure("curveFigure", item.evacuation_curve_svg, "历史实验无真实曲线。");
-    if(item.occupancy_heatmap_svg) setAnalysisFigure("heatmapFigure", item.occupancy_heatmap_svg, "历史实验无真实累计占用图。");
+    latestAnalysis = {
+      occupancy_heatmap_svg:item.occupancy_heatmap_svg || "",
+      academic_crowd_fields:item.academic_crowd_fields || null
+    };
+    renderSelectedHeatmap();
   }
 
   async function refreshHistory(){
@@ -917,7 +996,8 @@
     logLayers = data.layers || null;
     lastAnalysisStep = Number(summary.total_steps ?? -1);
     setAnalysisFigure("curveFigure", data.evacuation_curve_svg, "暂无可用于绘图的真实日志。");
-    setAnalysisFigure("heatmapFigure", data.occupancy_heatmap_svg, "暂无可用于绘图的真实日志。");
+    latestAnalysis = data;
+    renderSelectedHeatmap();
     $("curveNote").textContent = `已记录 ${summary.total_steps ?? "NA"} 步 · 已撤离 ${summary.evacuated_count ?? "NA"}/${summary.initial_population ?? "NA"}`;
     draw();
     refreshStats();
@@ -1384,6 +1464,7 @@
   $("exportBtn").onclick = () => exportPackage().catch(error => setStatus(`导出失败：${error.message}`, "导出失败"));
   $("refreshAnalysis").onclick = () => refreshRealAnalysis().catch(error => setStatus(`刷新真实分析失败：${error.message}`, "分析失败"));
   $("refreshHistory").onclick = () => refreshHistory().catch(showHistoryError);
+  $("academicHeatmapSelect").onchange = renderSelectedHeatmap;
   document.querySelectorAll(".figure-expand").forEach(button => {
     button.onclick = () => openFigureModal(button.dataset.figure, button.dataset.title);
   });
