@@ -2,7 +2,6 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
 from enum import Enum
 
-
 # 1. 元胞类型定义
 class CellType(Enum):
     FREE = "free"  # 可通行区域
@@ -12,9 +11,6 @@ class CellType(Enum):
     SMOKE_SOURCE = "smoke_source"  # 烟源位置
     SIGN = "sign"  # 指示牌
     GUIDE_ZONE = "guide_zone"  # 引导区域
-
-
-
 
 # 2. 建筑语义类型
 class SemanticType(Enum):
@@ -28,9 +24,6 @@ class SemanticType(Enum):
     LIBRARY = "library"  # 图书馆
     HOSPITAL = "hospital"  # 医院
 
-
-
-
 # 3. 信息状态
 class InfoState(Enum):
     UNKNOWN = "unknown"  # 未获取危险信息
@@ -38,9 +31,6 @@ class InfoState(Enum):
     CONFIRMED = "confirmed"  # 已确认危险
     MISINFORMED = "misinformed"  # 获取错误信息
     GUIDED = "guided"  # 接收到引导信息
-
-
-
 
 # 4. 社会关系类型
 class RelationType(Enum):
@@ -51,8 +41,6 @@ class RelationType(Enum):
     STRANGER = "stranger"
     STAFF_TO_CUSTOMER = "staff_to_customer"
     DOCTOR_PATIENT = "doctor_patient"
-
-
 
 # 5. Cell 元胞对象
 @dataclass
@@ -66,11 +54,7 @@ class Cell:
     risk: float = 0.0  # 风险值
     guidance: float = 0.0  # 引导信息
 
-
-
-
 # 6. Exit 出口对象
-
 @dataclass
 class Exit:
     id: str  # 出口编号
@@ -79,11 +63,7 @@ class Exit:
     width: float = 1.0  # 出口实际宽度(m)
     label: str = "EXIT"  # 出口名称
 
-
-
-
-
-# 7. Person 行人对象
+# 7. Person 行人对象【唯一改动：增加 is_dead: bool = False】
 @dataclass
 class Person:
     id: int  # 行人编号
@@ -99,9 +79,7 @@ class Person:
     target_exit_id: Optional[str] = None  # 当前选择的出口
     evacuated: bool = False  # 是否已经完成疏散
     dose: float = 0.0  # 烟雾暴露剂量， B模块计算
-
-
-
+    is_dead: bool = False  # ✅新增：烟雾致死标记，死亡后原地占用元胞，不移动
 
 # 8. Relation 社会关系对象
 @dataclass
@@ -114,9 +92,6 @@ class Relation:
     wait_probability: float = 0.3  # 等待概率
     follow_probability: float = 0.3  # 跟随概率
 
-
-
-
 # 9. Grid 网格对象
 @dataclass
 class Grid:
@@ -125,19 +100,12 @@ class Grid:
     cell_size: float = 0.5  # 单个元胞实际尺寸(m)
     cells: List[Cell] = field(default_factory=list)  # 所有元胞
 
-
-
-
 # 10. 烟源对象
 @dataclass
 class SmokeSource:
     x: int  # 烟源位置
     y: int
     intensity: float = 1.0  # 初始强度
-
-
-
-
 
 # 11. 实验场景配置
 @dataclass
@@ -162,6 +130,4 @@ class ScenarioConfig:
     smoke_sources: List[SmokeSource] = field(default_factory=list)
 
     # 其他实验参数
-
-
-parameters: Dict[str, Any] = field(default_factory=dict)
+    parameters: Dict[str, Any] = field(default_factory=list)

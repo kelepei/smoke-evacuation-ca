@@ -1,8 +1,4 @@
-"""
-CA 模型移动逻辑
-计算行人下一步位置
-"""
-
+""" CA 模型移动逻辑 计算行人下一步位置 """
 import random
 import math
 from core.schema import Grid, CellType
@@ -21,8 +17,13 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
     新增risk_dict：{person_id: 行人综合感知风险Risk_i(t)}
     新增exit_list入参，用于兜底计算出口距离
     新增B03出口选择、B09拥堵模型相关入参
+    ✅适配死亡逻辑：is_dead=True直接返回原地坐标，不执行移动决策
     """
     px, py = int(person.x), int(person.y)
+
+    # ========= 新增：死亡/已撤离行人直接原地不动 =========
+    if getattr(person, "is_dead", False) or getattr(person, "evacuated", False):
+        return px, py
 
     # ===================== B03 出口选择模块 =====================
     if exit_chooser is not None and single_behavior is not None:
