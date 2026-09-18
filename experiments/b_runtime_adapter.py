@@ -238,7 +238,30 @@ class EvacEngineRuntimeAdapter:
         maximum = self.max_smoke_concentration
         if maximum is None:
             return None
-        return maximum > B06_SMOKE_ALARM_THRESHOLD
+        return maximum >= B06_SMOKE_ALARM_THRESHOLD
+
+    @property
+    def alarm_source(self) -> str | None:
+        """Report one authoritative source for the exposed alarm value."""
+
+        if isinstance(getattr(self._engine, "alarm_triggered", None), bool):
+            return "b_native_runtime_field"
+        return (
+            "d_projection_from_b06_smoke"
+            if self.max_smoke_concentration is not None
+            else None
+        )
+
+    @property
+    def max_smoke_source(self) -> str | None:
+        raw_value = getattr(self._engine, "max_smoke_concentration", None)
+        if isinstance(raw_value, (int, float)) and not isinstance(raw_value, bool):
+            return "b_native_runtime_field"
+        return (
+            "b06_get_max_smoke"
+            if self.max_smoke_concentration is not None
+            else None
+        )
 
     @property
     def smoke_sources(self) -> Any:

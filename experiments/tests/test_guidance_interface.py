@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from core.schema import Cell, CellType, Grid, Person, SmokeSource
 from experiments.b_runtime_adapter import EvacEngineRuntimeAdapter
 from experiments.guidance_interface import generate_guidance, write_guidance_artifacts
+from experiments.run_artifacts import write_run_artifacts
 from simulation.smoke_model import SmokeDiffusionModel
 from visualization.ca_snapshot_adapter import CaSnapshotAdapter
 
@@ -89,8 +90,21 @@ class GuidanceInterfaceTests(unittest.TestCase):
 
     def test_false_alarm_is_inactive_and_manual_mode_is_explicit(self) -> None:
         snapshot = _snapshot(alarm=False)
-        self.assertEqual("inactive", generate_guidance(snapshot)["status"])
+        inactive = generate_guidance(snapshot)
+        self.assertEqual("inactive", inactive["status"])
+        self.assertEqual("guidance.v1", inactive["schema_version"])
+        self.assertEqual(8, inactive["generated_step"])
+        self.assertIsNone(inactive["unavailable_reason"])
         self.assertEqual("active", generate_guidance(snapshot, trigger_mode="manual")["status"])
+
+    def test_missing_runtime_input_is_unavailable_with_stable_schema(self) -> None:
+        snapshot = _snapshot()
+        del snapshot["fields"]["smoke_field"]
+        guidance = generate_guidance(snapshot)
+        self.assertEqual("unavailable", guidance["status"])
+        self.assertEqual("SMOKE_FIELD_UNAVAILABLE", guidance["reason_code"])
+        self.assertIn("smoke_field", guidance["unavailable_reason"])
+        self.assertEqual([], guidance["recommendations"])
 
     def test_true_alarm_generates_deterministic_recommendations_without_mutation(self) -> None:
         snapshot = _snapshot()
@@ -137,6 +151,18 @@ class GuidanceInterfaceTests(unittest.TestCase):
         projected = CaSnapshotAdapter(run_id="b06", time_step_s=0.5).capture(adapter)
         self.assertTrue(projected["fields"]["alarm_triggered"])
         self.assertGreater(projected["fields"]["max_smoke_concentration"], 0.45)
+        self.assertEqual("d_projection_from_b06_smoke", projected["fields"]["alarm_source"])
+        self.assertEqual("unavailable", projected["guidance"]["status"])
+
+    def test_artifact_persists_the_same_live_snapshot_guidance(self) -> None:
+        snapshot = _snapshot()
+        snapshot["guidance"] = generate_guidance(snapshot)
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            write_run_artifacts(snapshot, root, input_files={"map": "map.json"}, save_frame=False)
+            saved = (root / "guidance_recommendations.json").read_text(encoding="utf-8")
+            self.assertIn('"generated_step": 8', saved)
+            self.assertIn('"smoke_distance_baseline_v1"', saved)
 
 
 if __name__ == "__main__":

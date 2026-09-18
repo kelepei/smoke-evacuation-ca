@@ -39,6 +39,27 @@ class GuidanceError(ValueError):
     """Raised for an invalid D-normalized guidance input."""
 
 
+def unavailable_guidance(snapshot: Mapping[str, Any], reason: str) -> dict[str, Any]:
+    """Return the stable unavailable branch of the live guidance contract."""
+
+    fields = snapshot.get("fields")
+    fields = fields if isinstance(fields, Mapping) else {}
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "status": "unavailable",
+        "policy_id": POLICY_ID,
+        "trigger": {
+            "mode": "alarm",
+            "alarm_triggered": fields.get("alarm_triggered"),
+            "max_smoke_concentration": _finite_number(fields.get("max_smoke_concentration")),
+        },
+        "generated_step": snapshot.get("step"),
+        "generated_time_s": _finite_number(snapshot.get("time_s")),
+        "recommendations": [],
+        "unavailable_reason": reason,
+    }
+
+
 def _finite_number(value: Any) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
@@ -211,8 +232,11 @@ def generate_guidance(
     maximum = _finite_number(fields.get("max_smoke_concentration"))
     output: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
+        "status": "unavailable",
         "step": step,
         "time_s": time_s,
+        "generated_step": step,
+        "generated_time_s": time_s,
         "trigger": {"mode": trigger_mode, "alarm_triggered": alarm, "max_smoke_concentration": maximum},
         "policy_id": POLICY_ID,
         "policy": {
@@ -223,19 +247,26 @@ def generate_guidance(
             "academic_fields_used": False,
         },
         "recommendations": [],
+        "unavailable_reason": None,
     }
-    if trigger_mode == "alarm" and alarm is not True:
+    if trigger_mode == "alarm" and alarm is False:
         output.update({"status": "inactive", "reason_code": "ALARM_NOT_TRIGGERED"})
+        return output
+    if trigger_mode == "alarm" and alarm is not True:
+        output.update({"reason_code": "ALARM_STATE_UNAVAILABLE", "unavailable_reason": "alarm_triggered is unavailable in the normalized runtime snapshot"})
+        return output
+    if maximum is None:
+        output.update({"reason_code": "MAX_SMOKE_UNAVAILABLE", "unavailable_reason": "max_smoke_concentration is unavailable in the normalized runtime snapshot"})
         return output
 
     width, height, cell_types = _normalise_grid(snapshot)
     smoke_field = _normalise_field(fields.get("smoke_field"), width, height)
     if smoke_field is None:
-        output.update({"status": "unavailable", "reason_code": "SMOKE_FIELD_UNAVAILABLE"})
+        output.update({"reason_code": "SMOKE_FIELD_UNAVAILABLE", "unavailable_reason": "smoke_field is unavailable or does not match the normalized grid"})
         return output
     entities = _entities(snapshot.get("exit_entities"), width, height)
     if not entities:
-        output.update({"status": "unavailable", "reason_code": "EXIT_ENTITIES_UNAVAILABLE"})
+        output.update({"reason_code": "EXIT_ENTITIES_UNAVAILABLE", "unavailable_reason": "no usable entity exits are available in the normalized runtime snapshot"})
         return output
 
     output["status"] = "active"

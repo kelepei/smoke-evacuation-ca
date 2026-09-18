@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
-from experiments.guidance_interface import GuidanceError, generate_guidance, write_guidance_artifacts
+from experiments.guidance_interface import unavailable_guidance, write_guidance_artifacts
 from experiments.week6_analysis import analyze_run
 
 
@@ -132,21 +132,14 @@ def write_run_artifacts(
     metrics = snapshot_metrics(snapshot, destination)
     _write_json(destination / "metrics.json", metrics)
     _write_summary_csv(destination / "metrics_summary.csv", metrics)
-    # Guidance is a D-owned, recommendation-only artifact.  It runs against
-    # the same immutable final snapshot and never feeds back into B movement.
-    try:
-        write_guidance_artifacts(generate_guidance(snapshot), destination)
-    except GuidanceError as exc:
-        write_guidance_artifacts(
-            {
-                "schema_version": "guidance.v1",
-                "status": "unavailable",
-                "reason_code": "INVALID_NORMALIZED_SNAPSHOT",
-                "reason_text": str(exc),
-                "recommendations": [],
-            },
-            destination,
+    # Persist the exact live annotation returned through the Web API.  This
+    # must not calculate another recommendation from a later/alternate state.
+    guidance = snapshot.get("guidance")
+    if not isinstance(guidance, Mapping):
+        guidance = unavailable_guidance(
+            snapshot, "normalized runtime snapshot did not contain guidance"
         )
+    write_guidance_artifacts(guidance, destination)
     if save_frame:
         # Import lazily so non-rendering callers do not require Matplotlib.
         from visualization.integrated_runtime import save_snapshot_png

@@ -481,7 +481,7 @@ class CaSnapshotAdapter:
         if isinstance(extra_meta, Mapping):
             adapter_meta.update(dict(extra_meta))
 
-        return _json_compatible({
+        payload = _json_compatible({
             "schema_version": self.schema_version,
             "run_id": self.run_id,
             "scenario_id": scenario_id,
@@ -507,6 +507,8 @@ class CaSnapshotAdapter:
                     simulation, "max_smoke_concentration"
                 ),
                 "alarm_triggered": _optional_attr(simulation, "alarm_triggered"),
+                "alarm_source": _optional_attr(simulation, "alarm_source"),
+                "max_smoke_source": _optional_attr(simulation, "max_smoke_source"),
                 "risk_field": risk_field,
                 "congestion_field": congestion_field,
             },
@@ -515,3 +517,12 @@ class CaSnapshotAdapter:
             "strategy_state": {},
             "adapter_meta": adapter_meta,
         })
+        # Guidance is generated from this exact normalized snapshot.  It is a
+        # read-only D-side annotation, never an input to B's movement layer.
+        from experiments.guidance_interface import GuidanceError, generate_guidance, unavailable_guidance
+
+        try:
+            payload["guidance"] = generate_guidance(payload)
+        except GuidanceError as exc:
+            payload["guidance"] = unavailable_guidance(payload, str(exc))
+        return _json_compatible(payload)

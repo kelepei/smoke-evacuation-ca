@@ -81,6 +81,7 @@
   .real-note{color:var(--muted);font-size:11px;line-height:1.4;margin-top:5px}.real-note b{color:#334155}
   .info-tooltip{display:inline-grid;place-items:center;width:18px;height:18px;margin-left:auto;border:1px solid #94a3b8;border-radius:50%;background:#f8fafc;color:#475569;font-size:12px;font-weight:800;line-height:1;cursor:help}.info-tooltip-content{position:absolute;z-index:3;top:26px;right:0;width:min(340px,90vw);padding:9px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#475569;font-size:11px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.16);opacity:0;visibility:hidden;transform:translateY(-3px);transition:opacity .15s ease,transform .15s ease,visibility .15s}.info-tooltip:hover+.info-tooltip-content,.info-tooltip:focus+.info-tooltip-content{opacity:1;visibility:visible;transform:translateY(0)}
   .history-list{display:grid;gap:6px;margin-top:7px}.history-item{width:100%;height:auto;min-height:32px;padding:6px 7px;text-align:left;font-size:11px;font-weight:600}.history-item.active{border-color:#1769e0;background:#eff6ff}.history-detail{margin-top:7px;color:#475569;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+  .guidance-status{margin:2px 0 7px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:7px;background:#f8fafc;color:#475569;font-size:12px;font-weight:700}.guidance-status.active{border-color:#86efac;background:#f0fdf4;color:#166534}.guidance-status.inactive{border-color:#fde68a;background:#fffbeb;color:#92400e}.guidance-status.unavailable{border-color:#cbd5e1;background:#f8fafc;color:#64748b}.guidance-summary{display:grid;gap:4px;margin:7px 0;color:#475569;font-size:11px}.guidance-table-wrap{max-height:176px;overflow:auto;border:1px solid #dbe4ef;border-radius:7px}.guidance-table{width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap}.guidance-table th,.guidance-table td{padding:5px 6px;border-bottom:1px solid #e5edf5;text-align:left;vertical-align:top}.guidance-table th{position:sticky;top:0;background:#f8fafc;color:#475569;font-weight:800}.guidance-table tr:last-child td{border-bottom:0}.guidance-table button{height:auto;min-height:27px;padding:4px 6px;font-size:11px}.guidance-detail{margin-top:7px;padding:7px 8px;border-left:3px solid #60a5fa;background:#f8fbff;color:#475569;font-size:11px;line-height:1.5;overflow-wrap:anywhere}.guidance-detail b{color:#1e3a5f}
   .editor-modal{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(15,23,42,.55)}.editor-modal.open{display:flex}.editor-dialog{width:min(1440px,96vw);height:min(900px,92vh);display:flex;flex-direction:column;overflow:hidden;border-radius:10px;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.28)}.editor-dialog header{height:auto;min-height:50px;padding:8px 12px;background:#fff;color:var(--ink);box-shadow:none;border-bottom:1px solid var(--line)}.editor-dialog header strong{margin-right:auto}.editor-dialog iframe{width:100%;min-height:0;flex:1;border:0}.editor-actions{display:flex;justify-content:flex-end;gap:8px;padding:8px 12px;border-top:1px solid var(--line)}
   .choice-dialog{width:min(520px,92vw);overflow:hidden;border-radius:10px;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.28)}.choice-dialog header{height:auto;min-height:50px;padding:12px 16px;background:#fff;color:var(--ink);box-shadow:none;border-bottom:1px solid var(--line)}.choice-dialog-content{padding:16px;color:#475569;line-height:1.7}.choice-dialog-content strong{color:#1e3a5f}.choice-actions{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid var(--line)}.choice-actions button{height:auto;min-height:34px;padding:7px 12px}
   @media(max-width:1180px){body{overflow:auto}.top-nav{display:none}main{height:auto;min-height:calc(100vh - 56px);grid-template-columns:280px minmax(420px,1fr);grid-template-rows:minmax(560px,70vh) auto auto}.config-side{grid-column:1;grid-row:1}.canvas-wrap{grid-column:2;grid-row:1}.runtime-side{grid-column:1 / 3;grid-row:2}.insights{grid-column:1 / 3;grid-row:3;grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -202,6 +203,20 @@
       <button id="refreshAnalysis">刷新真实分析</button>
       <button id="clearLog">清空日志</button>
     </div>
+    <details class="diagnostics" id="guidancePanel" open>
+      <summary>疏散指导 / Evacuation Guidance <span class="pill" id="guidanceStatusPill">unavailable</span></summary>
+      <div id="guidanceStatus" class="guidance-status unavailable">unavailable：当前真实 Runtime snapshot 尚未发布 guidance recommendation。</div>
+      <div class="kv"><span>Alarm</span><b id="guidanceAlarm">NA</b></div>
+      <div class="kv"><span>Policy</span><b id="guidancePolicy">smoke_distance_baseline_v1</b></div>
+      <div id="guidanceSummary" class="guidance-summary">推荐人数：NA；实体出口汇总：NA。</div>
+      <div class="guidance-table-wrap">
+        <table class="guidance-table" aria-label="真实疏散指导建议">
+          <thead><tr><th>人员</th><th>当前位置</th><th>推荐实体出口</th><th>距离</th><th>烟雾</th><th>组合</th><th>原因</th><th>有效至</th></tr></thead>
+          <tbody id="guidanceRows"><tr><td colspan="8">暂无真实 recommendation artifact。</td></tr></tbody>
+        </table>
+      </div>
+      <div id="guidanceDetail" class="guidance-detail">建议仅用于展示和审计；不会改变实际 target_exit、actual_exit 或 B 的移动。</div>
+    </details>
     <details class="diagnostics">
       <summary>数据契约与参数效力</summary>
       <div class="kv"><span>生效参数</span><b id="effectiveParams">等待初始化</b></div>
@@ -306,6 +321,7 @@
   let autoDelayMs = 300;
   let lastOutputDir = "";
   let selectedTemplate = null;
+  let selectedGuidancePersonId = null;
   let personTransition = null;
   let personTransitionFrame = null;
   let logLayers = null;
@@ -534,6 +550,43 @@
     });
   }
 
+  function currentGuidance(){
+    if(!snapshot || typeof snapshot !== "object") return null;
+    const guidance = snapshot.guidance;
+    return guidance && typeof guidance === "object" && !Array.isArray(guidance) ? guidance : null;
+  }
+
+  function selectedGuidanceRecommendation(){
+    const guidance = currentGuidance();
+    if(!guidance || !Array.isArray(guidance.recommendations) || selectedGuidancePersonId === null) return null;
+    return guidance.recommendations.find(item => String(item && item.person_id) === String(selectedGuidancePersonId)) || null;
+  }
+
+  function drawGuidanceOverlay(grid, ox, oy, cell){
+    const recommendation = selectedGuidanceRecommendation();
+    if(!recommendation || !recommendation.recommended_exit_entity) return;
+    const person = (snapshot.people || []).find(item => String(item && item.person_id) === String(recommendation.person_id));
+    const entity = (snapshot.exit_entities || []).find(item => item && item.exit_entity_id === recommendation.recommended_exit_entity);
+    if(!person || !entity || !Array.isArray(entity.member_cells)) return;
+    const px = ox + (Number(person.x) + .5) * cell;
+    const py = oy + (Number(person.y) + .5) * cell;
+    if(Number.isFinite(px) && Number.isFinite(py)){
+      ctx.beginPath();
+      ctx.strokeStyle = "#f59e0b";
+      ctx.lineWidth = Math.max(2, Math.min(4, cell * .16));
+      ctx.arc(px, py, Math.max(6, cell * .42), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    entity.member_cells.forEach(member => {
+      if(!Array.isArray(member) || member.length !== 2) return;
+      const x = Number(member[0]), y = Number(member[1]);
+      if(!Number.isInteger(x) || !Number.isInteger(y)) return;
+      ctx.strokeStyle = "#f59e0b";
+      ctx.lineWidth = Math.max(2, Math.min(4, cell * .16));
+      ctx.strokeRect(ox + x * cell + 1, oy + y * cell + 1, Math.max(0, cell - 2), Math.max(0, cell - 2));
+    });
+  }
+
   function startPersonTransition(previous, next){
     if(personTransitionFrame) cancelAnimationFrame(personTransitionFrame);
     personTransitionFrame = null;
@@ -588,6 +641,7 @@
     }
     drawTrajectories(grid, ox, oy, cell);
     if(layerEnabled("layerPeople")) drawPeople(snapshot.people, grid, ox, oy, cell);
+    drawGuidanceOverlay(grid, ox, oy, cell);
     ctx.strokeStyle = "#0f172a";
     ctx.lineWidth = 2;
     ctx.strokeRect(ox, oy, grid.width * cell, grid.height * cell);
@@ -628,6 +682,145 @@
       overlapCells, smokeSourceCount:sourceCells.size, runtimeSmokeSourceCount:runtimeSources.length,
       exitCount
     };
+  }
+
+  function guidanceNumber(value){
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric.toFixed(3).replace(/\.?0+$/, "") : "NA";
+  }
+
+  function setGuidanceStatus(status, message){
+    const normalized = ["active", "inactive", "unavailable"].includes(status) ? status : "unavailable";
+    const statusBox = $("guidanceStatus");
+    statusBox.className = `guidance-status ${normalized}`;
+    statusBox.textContent = `${normalized}：${message}`;
+    $("guidanceStatusPill").textContent = normalized;
+  }
+
+  function guidanceComponents(recommendation){
+    const components = recommendation && recommendation.components;
+    return components && typeof components === "object" && !Array.isArray(components) ? components : {};
+  }
+
+  function renderGuidanceDetail(recommendation, guidance){
+    const detail = $("guidanceDetail");
+    if(!recommendation){
+      detail.textContent = "建议仅用于展示和审计；不会改变实际 target_exit、actual_exit 或 B 的移动。";
+      return;
+    }
+    const components = guidanceComponents(recommendation);
+    const policy = guidance && guidance.policy && typeof guidance.policy === "object" ? guidance.policy : {};
+    detail.replaceChildren();
+    const lead = document.createElement("b");
+    lead.textContent = `人员 ${recommendation.person_id} 的推荐依据`;
+    detail.append(lead, document.createElement("br"));
+    detail.append(`distance=${guidanceNumber(components.route_distance_cost)}；smoke=${guidanceNumber(components.route_smoke_cost)}；combined=${guidanceNumber(components.combined_cost)}。`, document.createElement("br"));
+    detail.append(`reason_code=${recommendation.reason_code || "NA"}；${recommendation.reason_text || "未提供原因文本"}`, document.createElement("br"));
+    detail.append(`weights：smoke=${guidanceNumber(policy.smoke_weight ?? .7)}，distance=${guidanceNumber(policy.distance_weight ?? .3)}。项目基线参数，受文献结论启发，并非论文标定参数。`, document.createElement("br"));
+    const person = (snapshot && Array.isArray(snapshot.people) ? snapshot.people : []).find(item => String(item && item.person_id) === String(recommendation.person_id)) || {};
+    const targetExit = recommendation.current_target_exit ?? person.target_exit ?? "NA";
+    const actualExit = person.actual_exit_entity ?? person.actual_exit_cell ?? person.actual_exit ?? "NA";
+    detail.append(`推荐出口=${recommendation.recommended_exit_entity ?? "NA"}；实际 target_exit=${targetExit}；实际 actual_exit=${actualExit}。展示层不会写回任何实际字段。`);
+  }
+
+  function renderGuidance(){
+    const guidance = currentGuidance();
+    const body = $("guidanceRows");
+    body.replaceChildren();
+    const fields = snapshot && snapshot.fields && typeof snapshot.fields === "object" ? snapshot.fields : {};
+    if(!guidance){
+      $("guidanceAlarm").textContent = `alarm=${fields.alarm_triggered ?? "NA"} · max=${guidanceNumber(fields.max_smoke_concentration)}`;
+      $("guidancePolicy").textContent = "smoke_distance_baseline_v1";
+      $("guidanceSummary").textContent = "推荐人数：NA；实体出口汇总：NA。";
+      if(fields.alarm_triggered === false){
+        setGuidanceStatus("inactive", "尚未触发疏散指导；页面未生成 recommendation。" );
+      }else{
+        setGuidanceStatus("unavailable", "当前真实 Runtime snapshot 未包含 guidance recommendation / artifact；页面不会生成假建议。");
+      }
+      const row = document.createElement("tr");
+      const cell = document.createElement("td");
+      cell.colSpan = 8;
+      cell.textContent = fields.alarm_triggered === false ? "尚未触发疏散指导。" : "暂无真实 recommendation artifact。";
+      row.appendChild(cell); body.appendChild(row);
+      selectedGuidancePersonId = null;
+      renderGuidanceDetail(null, null);
+      return;
+    }
+    const trigger = guidance.trigger && typeof guidance.trigger === "object" ? guidance.trigger : {};
+    const policy = guidance.policy && typeof guidance.policy === "object" ? guidance.policy : {};
+    const status = String(guidance.status || "unavailable").toLowerCase();
+    const alarm = trigger.alarm_triggered ?? fields.alarm_triggered;
+    const maxSmoke = trigger.max_smoke_concentration ?? fields.max_smoke_concentration;
+    $("guidanceAlarm").textContent = `alarm=${alarm ?? "NA"} · max=${guidanceNumber(maxSmoke)}`;
+    $("guidancePolicy").textContent = guidance.policy_id || policy.policy_id || "smoke_distance_baseline_v1";
+    const allRecommendations = Array.isArray(guidance.recommendations) ? guidance.recommendations : [];
+    const people = new Map((snapshot && Array.isArray(snapshot.people) ? snapshot.people : []).map(person => [String(person && person.person_id), person]));
+    const recommendations = allRecommendations.filter(item => {
+      const person = people.get(String(item && item.person_id));
+      return item && item.feasible !== false && person && person.evacuated !== true;
+    });
+    const entityCounts = {};
+    recommendations.forEach(item => {
+      const entity = item.recommended_exit_entity;
+      if(entity) entityCounts[entity] = (entityCounts[entity] || 0) + 1;
+    });
+    const entityText = Object.entries(entityCounts).map(([id, count]) => `${id}: ${count}`).join("；") || "NA";
+    $("guidanceSummary").textContent = `推荐人数：${recommendations.length}；实体出口汇总：${entityText}。`;
+    if(status === "inactive"){
+      setGuidanceStatus("inactive", guidance.reason_text || "尚未触发疏散指导。");
+    }else if(status === "active"){
+      setGuidanceStatus("active", "真实 guidance recommendation 已发布；仅展示，不执行。");
+    }else{
+      setGuidanceStatus("unavailable", guidance.unavailable_reason || guidance.reason_text || guidance.reason_code || "真实 guidance artifact 当前不可用。");
+    }
+    if(status !== "active" || !recommendations.length){
+      const row = document.createElement("tr");
+      const cell = document.createElement("td");
+      cell.colSpan = 8;
+      cell.textContent = status === "inactive" ? "尚未触发疏散指导。" : "没有可展示的真实 active recommendation。";
+      row.appendChild(cell); body.appendChild(row);
+      selectedGuidancePersonId = null;
+      renderGuidanceDetail(null, guidance);
+      return;
+    }
+    if(!recommendations.some(item => String(item.person_id) === String(selectedGuidancePersonId))){
+      selectedGuidancePersonId = recommendations[0].person_id;
+    }
+    recommendations.forEach(recommendation => {
+      const person = people.get(String(recommendation.person_id));
+      const components = guidanceComponents(recommendation);
+      const row = document.createElement("tr");
+      const values = [
+        recommendation.person_id,
+        `(${person.x}, ${person.y})`,
+        recommendation.recommended_exit_entity || "NA",
+        guidanceNumber(components.route_distance_cost),
+        guidanceNumber(components.route_smoke_cost),
+        guidanceNumber(components.combined_cost),
+        recommendation.reason_code || "NA",
+        recommendation.valid_until_step ?? "NA",
+      ];
+      values.forEach((value, index) => {
+        const cell = document.createElement("td");
+        if(index === 0){
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = String(value);
+          button.title = "选中人员并高亮推荐实体出口";
+          button.addEventListener("click", () => {
+            selectedGuidancePersonId = recommendation.person_id;
+            renderGuidanceDetail(recommendation, guidance);
+            draw();
+          });
+          cell.appendChild(button);
+        }else{
+          cell.textContent = String(value);
+        }
+        row.appendChild(cell);
+      });
+      body.appendChild(row);
+    });
+    renderGuidanceDetail(selectedGuidanceRecommendation(), guidance);
   }
 
   function refreshStats(extra = {}){
@@ -695,6 +888,7 @@
     snapshot = next;
     startPersonTransition(previousSnapshot, next);
     const observed = refreshStats(extra);
+    renderGuidance();
     draw();
     drawInsights(observed);
     return observed;
