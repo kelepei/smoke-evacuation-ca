@@ -474,7 +474,7 @@ class CaSnapshotAdapter:
             ),
             "missing_fields_are_null": True,
             "missing_values_are_not_inferred": True,
-            "smoke_value_domain": "B raw dimensionless concentration in [0, 10]; smoke_matrix[y][x]",
+            "smoke_value_domain": "B06 raw dimensionless concentration in [0, 1]; smoke_matrix[y][x]",
             "smoke_source_input": "B runtime smoke_sources; coordinates use (x, y)",
         }
         extra_meta = getattr(simulation, "d_adapter_meta", None)
@@ -501,6 +501,12 @@ class CaSnapshotAdapter:
             "fields": {
                 "smoke_field": smoke_field,
                 "smoke_sources": smoke_sources,
+                # B06 does not yet publish these fields on EvacEngine.  The
+                # D adapter transparently projects B06's real smoke output.
+                "max_smoke_concentration": _optional_attr(
+                    simulation, "max_smoke_concentration"
+                ),
+                "alarm_triggered": _optional_attr(simulation, "alarm_triggered"),
                 "risk_field": risk_field,
                 "congestion_field": congestion_field,
             },

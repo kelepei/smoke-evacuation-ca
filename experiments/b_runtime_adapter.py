@@ -8,6 +8,7 @@ for snapshots and CSV logging. This adapter never changes B source or rules.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+import math
 from typing import Any
 
 
@@ -16,6 +17,12 @@ class BRuntimeAdapterError(ValueError):
 
 
 BehaviorProvider = Callable[[Any], Mapping[int, Mapping[str, Any]]]
+
+
+# B06 reports this global threshold, but the current B ``EvacEngine`` does not
+# expose it as a runtime field.  D uses it only to project B06's real smoke
+# matrix into a documented alert context for recommendation-only consumers.
+B06_SMOKE_ALARM_THRESHOLD = 0.45
 
 
 def _prepare_b_exit_tuples(engine: Any) -> bool:
@@ -176,6 +183,12 @@ class EvacEngineRuntimeAdapter:
                 "entity_count": len(self._exit_entities),
                 "cell_to_entity": dict(self._exit_entity_by_cell_id),
             },
+            "smoke_alarm_projection": {
+                "threshold": B06_SMOKE_ALARM_THRESHOLD,
+                "threshold_source": "B06 reported contract; not configurable in current B EvacEngine",
+                "max_source": "B smoke_engine.get_max_smoke() when available",
+                "alarm_source": "B field when published; otherwise D projection from B06 max smoke",
+            },
         }
         if adapter_meta:
             self.d_adapter_meta.update(dict(adapter_meta))
@@ -195,6 +208,37 @@ class EvacEngineRuntimeAdapter:
     @property
     def smoke_matrix(self) -> Any:
         return self._engine.smoke_matrix
+
+    @property
+    def max_smoke_concentration(self) -> float | None:
+        """Read B06's global smoke maximum without changing B state."""
+
+        raw_value = getattr(self._engine, "max_smoke_concentration", None)
+        if isinstance(raw_value, (int, float)) and not isinstance(raw_value, bool):
+            value = float(raw_value)
+            return value if math.isfinite(value) else None
+        smoke_engine = getattr(self._engine, "smoke_engine", None)
+        getter = getattr(smoke_engine, "get_max_smoke", None)
+        if callable(getter):
+            value = float(getter())
+            return value if math.isfinite(value) else None
+        return None
+
+    @property
+    def alarm_triggered(self) -> bool | None:
+        """Expose B's alert when available, otherwise project B06's field.
+
+        The fallback is explicitly D-derived from B06 raw smoke; it must not
+        be presented as a B-published state field.
+        """
+
+        raw_value = getattr(self._engine, "alarm_triggered", None)
+        if isinstance(raw_value, bool):
+            return raw_value
+        maximum = self.max_smoke_concentration
+        if maximum is None:
+            return None
+        return maximum > B06_SMOKE_ALARM_THRESHOLD
 
     @property
     def smoke_sources(self) -> Any:
