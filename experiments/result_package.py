@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
-from experiments.crowd_metrics import KINEMATICS_FIELDS, trajectory_kinematics
+from experiments.crowd_metrics import DEFAULT_SAMPLING_WINDOW_S, KINEMATICS_FIELDS, VELOCITY_FIELD_FIELDS, trajectory_kinematics, velocity_vector_field
 from experiments.metrics_registry import metric_rows
 from experiments.week6_analysis import analysis_summary_csv, analyze_run
 
@@ -83,6 +83,14 @@ def _csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
 def _trajectory_csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
     stream = io.StringIO(newline="")
     writer = csv.DictWriter(stream, fieldnames=KINEMATICS_FIELDS)
+    writer.writeheader()
+    writer.writerows(rows)
+    return stream.getvalue()
+
+
+def _velocity_field_csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
+    stream = io.StringIO(newline="")
+    writer = csv.DictWriter(stream, fieldnames=VELOCITY_FIELD_FIELDS)
     writer.writeheader()
     writer.writerows(rows)
     return stream.getvalue()
@@ -312,6 +320,12 @@ def build_result_package(
         physical_scale=analysis_contract.get("physical_scale"),
         grid=snapshot_grid if isinstance(snapshot_grid, Mapping) else None,
     )
+    sampling = analysis_contract.get("sampling_window_s")
+    velocity_field = velocity_vector_field(
+        kinematics,
+        sampling_window_s=sampling.get("value") if isinstance(sampling, Mapping) else DEFAULT_SAMPLING_WINDOW_S,
+        physical_scale=analysis_contract.get("physical_scale"),
+    )
 
     metadata = {
         "run_id": run_id,
@@ -352,6 +366,8 @@ def build_result_package(
         bundle.writestr(prefix + "week6_metrics.json", json.dumps(analysis["week6_metrics"], ensure_ascii=False, indent=2))
         bundle.writestr(prefix + "week6_metrics_summary.csv", analysis_summary_csv(analysis["week6_metrics"]))
         bundle.writestr(prefix + "trajectory_kinematics.csv", _trajectory_csv_text(kinematics))
+        bundle.writestr(prefix + "velocity_vector_field.json", json.dumps(velocity_field, ensure_ascii=False, indent=2))
+        bundle.writestr(prefix + "velocity_vector_field.csv", _velocity_field_csv_text(velocity_field["records"]))
         bundle.write(people_path, prefix + "people_log.csv")
         bundle.write(event_path, prefix + "event_log.csv")
         for key, source in input_files.items():
