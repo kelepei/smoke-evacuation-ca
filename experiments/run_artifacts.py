@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
+from experiments.congestion_level import write_congestion_level_field
 from experiments.crowd_metrics import resolve_analysis_contract, write_trajectory_kinematics, write_velocity_vector_field
 from experiments.guidance_interface import unavailable_guidance, write_guidance_artifacts
 from experiments.week6_analysis import analyze_run
@@ -147,11 +148,18 @@ def write_run_artifacts(
             csv_output_path=destination / "velocity_vector_field.csv",
             analysis_contract=analysis_contract,
         )
+        congestion_level = write_congestion_level_field(
+            kinematics_path=destination / "trajectory_kinematics.csv",
+            grid=grid if isinstance(grid, Mapping) else {}, analysis_contract=analysis_contract,
+            json_path=destination / "congestion_level_field.json", csv_path=destination / "congestion_level_field.csv",
+        )
     else:
         kinematics = {"path": "trajectory_kinematics.csv", "status": "unavailable", "reason": "people_log.csv is not present"}
         velocity_field = {"json_path": "velocity_vector_field.json", "csv_path": "velocity_vector_field.csv", "status": "unavailable", "reason": "trajectory_kinematics.csv is unavailable"}
+        congestion_level = {"json_path": "congestion_level_field.json", "csv_path": "congestion_level_field.csv", "status": "unavailable", "reason": "trajectory_kinematics.csv is unavailable"}
     config_used["trajectory_kinematics"] = kinematics
     config_used["velocity_vector_field"] = velocity_field
+    config_used["congestion_level"] = congestion_level
     _write_json(destination / "config_used.json", config_used)
     metrics = snapshot_metrics(snapshot, destination)
     _write_json(destination / "metrics.json", metrics)

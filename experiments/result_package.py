@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from experiments.congestion_level import CONGESTION_LEVEL_FIELDS, congestion_level_field
 from experiments.crowd_metrics import DEFAULT_SAMPLING_WINDOW_S, KINEMATICS_FIELDS, VELOCITY_FIELD_FIELDS, trajectory_kinematics, velocity_vector_field
 from experiments.metrics_registry import metric_rows
 from experiments.week6_analysis import analysis_summary_csv, analyze_run
@@ -93,6 +94,13 @@ def _velocity_field_csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
     writer = csv.DictWriter(stream, fieldnames=VELOCITY_FIELD_FIELDS)
     writer.writeheader()
     writer.writerows(rows)
+    return stream.getvalue()
+
+
+def _congestion_level_csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
+    stream = io.StringIO(newline="")
+    writer = csv.DictWriter(stream, fieldnames=CONGESTION_LEVEL_FIELDS)
+    writer.writeheader(); writer.writerows(rows)
     return stream.getvalue()
 
 
@@ -326,6 +334,7 @@ def build_result_package(
         sampling_window_s=sampling.get("value") if isinstance(sampling, Mapping) else DEFAULT_SAMPLING_WINDOW_S,
         physical_scale=analysis_contract.get("physical_scale"),
     )
+    congestion_level = congestion_level_field(kinematics, grid=snapshot_grid if isinstance(snapshot_grid, Mapping) else {}, analysis_contract=analysis_contract)
 
     metadata = {
         "run_id": run_id,
@@ -368,6 +377,8 @@ def build_result_package(
         bundle.writestr(prefix + "trajectory_kinematics.csv", _trajectory_csv_text(kinematics))
         bundle.writestr(prefix + "velocity_vector_field.json", json.dumps(velocity_field, ensure_ascii=False, indent=2))
         bundle.writestr(prefix + "velocity_vector_field.csv", _velocity_field_csv_text(velocity_field["records"]))
+        bundle.writestr(prefix + "congestion_level_field.json", json.dumps(congestion_level, ensure_ascii=False, indent=2))
+        bundle.writestr(prefix + "congestion_level_field.csv", _congestion_level_csv_text(congestion_level["records"]))
         bundle.write(people_path, prefix + "people_log.csv")
         bundle.write(event_path, prefix + "event_log.csv")
         for key, source in input_files.items():

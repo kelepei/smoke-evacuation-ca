@@ -56,6 +56,7 @@ class ResultPackageTests(unittest.TestCase):
                         "run_01/week6_metrics.json", "run_01/week6_metrics_summary.csv",
                         "run_01/trajectory_kinematics.csv",
                         "run_01/velocity_vector_field.json", "run_01/velocity_vector_field.csv",
+                        "run_01/congestion_level_field.json", "run_01/congestion_level_field.csv",
                         "run_01/metadata.json", "run_01/config.json", "run_01/inputs/map.json",
                         "run_01/inputs/population.json",
                     },
