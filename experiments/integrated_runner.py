@@ -25,7 +25,7 @@ from typing import Any, Callable, Mapping
 
 import numpy as np
 
-from core.schema import CellType, Exit, Person, Relation, ScenarioConfig, SmokeSource
+from core.schema import AlarmPoint, CellType, Exit, Person, Relation, ScenarioConfig, SmokeSource
 from experiments.b_runtime_adapter import EvacEngineRuntimeAdapter
 from experiments.congestion_level import resolve_congestion_level_contract
 from experiments.crowd_metrics import resolve_analysis_contract
@@ -229,6 +229,11 @@ def build_integrated_scenario(
         for cell in grid.cells
         if _cell_type_value(cell) == CellType.SMOKE_SOURCE.value
     ]
+    alarm_points = [
+        AlarmPoint(x=int(marker["x"]), y=int(marker["y"]))
+        for marker in getattr(grid, "d_alarm_cells", [])
+        if isinstance(marker, Mapping) and "x" in marker and "y" in marker
+    ]
     if not exits:
         raise IntegratedRuntimeError("map must contain at least one cell with type=exit")
 
@@ -242,6 +247,7 @@ def build_integrated_scenario(
         persons=persons,
         relations=relations,
         smoke_sources=smoke_sources,
+        alarm_points=alarm_points,
     )
     try:
         analysis_contract = resolve_analysis_contract(

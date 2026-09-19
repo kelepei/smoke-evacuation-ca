@@ -382,10 +382,10 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 "profile_counts": generated["profile_counts"],
                 "canonical_config": canonical,
             }
-           if self.server.session is not None:
-               self.server.session.input_files["scene_config"] = config_path
+            if self.server.session is not None:
+                self.server.session.input_files["scene_config"] = config_path
                 self._write_run_metadata(self.server.session.runner, self.server.session.runner.current_snapshot, self.server.session.input_files, save_frame=True)
-           return result
+            return result
         except SceneConfigPipelineError as exc:
             temporary_directory.cleanup()
             raise WebRuntimeError(str(exc)) from exc
