@@ -259,6 +259,10 @@ def build_runtime_analysis(
 
     base = Path(output_dir)
     people_rows = _read_csv(base / "people_log.csv")
+    analysis_contract = final_snapshot.get("analysis_contract", {}) if isinstance(final_snapshot, Mapping) else {}
+    snapshot_grid = final_snapshot.get("grid", {}) if isinstance(final_snapshot, Mapping) else {}
+    if not isinstance(analysis_contract, Mapping): analysis_contract = {}
+    if not isinstance(snapshot_grid, Mapping): snapshot_grid = {}
     width, height = _snapshot_grid_dimensions(final_snapshot)
     visual = _log_visual_data(
         people_rows,
@@ -284,6 +288,7 @@ def build_runtime_analysis(
         "metrics": metric_rows(week6_metrics),
         "summary": summary,
         "week6_metrics": week6_metrics,
+        "academic_crowd_fields": academic_crowd_fields(people_rows, grid=snapshot_grid, analysis_contract=analysis_contract),
     }
     if include_figures:
         result["evacuation_curve_svg"] = _curve_svg(
