@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from experiments.academic_crowd import ACADEMIC_CROWD_FIELDS, academic_crowd_fields
 from experiments.congestion_level import CONGESTION_LEVEL_FIELDS, congestion_level_field
 from experiments.crowd_metrics import DEFAULT_SAMPLING_WINDOW_S, KINEMATICS_FIELDS, VELOCITY_FIELD_FIELDS, trajectory_kinematics, velocity_vector_field
 from experiments.metrics_registry import metric_rows
@@ -102,6 +103,9 @@ def _congestion_level_csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
     writer = csv.DictWriter(stream, fieldnames=CONGESTION_LEVEL_FIELDS)
     writer.writeheader(); writer.writerows(rows)
     return stream.getvalue()
+
+def _academic_crowd_csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
+    stream=io.StringIO(newline=""); writer=csv.DictWriter(stream, fieldnames=ACADEMIC_CROWD_FIELDS); writer.writeheader(); writer.writerows(rows); return stream.getvalue()
 
 
 def _svg_escape(value: Any) -> str:
@@ -335,6 +339,7 @@ def build_result_package(
         physical_scale=analysis_contract.get("physical_scale"),
     )
     congestion_level = congestion_level_field(kinematics, grid=snapshot_grid if isinstance(snapshot_grid, Mapping) else {}, analysis_contract=analysis_contract)
+    academic_crowd = academic_crowd_fields(people_rows, grid=snapshot_grid if isinstance(snapshot_grid, Mapping) else {}, analysis_contract=analysis_contract, kinematic_rows=kinematics)
 
     metadata = {
         "run_id": run_id,
@@ -379,6 +384,8 @@ def build_result_package(
         bundle.writestr(prefix + "velocity_vector_field.csv", _velocity_field_csv_text(velocity_field["records"]))
         bundle.writestr(prefix + "congestion_level_field.json", json.dumps(congestion_level, ensure_ascii=False, indent=2))
         bundle.writestr(prefix + "congestion_level_field.csv", _congestion_level_csv_text(congestion_level["records"]))
+        bundle.writestr(prefix + "academic_crowd_fields.json", json.dumps(academic_crowd, ensure_ascii=False, indent=2))
+        bundle.writestr(prefix + "academic_crowd_fields.csv", _academic_crowd_csv_text(academic_crowd["records"]))
         bundle.write(people_path, prefix + "people_log.csv")
         bundle.write(event_path, prefix + "event_log.csv")
         for key, source in input_files.items():

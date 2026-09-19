@@ -148,7 +148,8 @@
   </aside>
 
   <section class="panel canvas-wrap" id="runtime">
-    <div class="toolbar">
+  <div class="toolbar">
+    <label class="academic-selector">Academic heatmap <select id="academicHeatmapSelect"><option value="occupancy">累计占用</option><option value="density">Density</option><option value="cl">CL</option><option value="cn">CN</option><option value="crowd_danger">Crowd Danger</option></select></label><span id="academicHeatmapNotice" class="hint">unavailable_physical_scale：未标定物理尺度时不会生成伪热图</span>
       <button id="initBtn" class="good init-control">初始化仿真</button>
       <select id="speedSelect" aria-label="播放速度" style="width:78px;height:34px;padding:4px 5px">
         <option value="150">快速</option>
