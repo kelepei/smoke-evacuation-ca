@@ -270,6 +270,8 @@ def build_runtime_analysis(
         height=height,
     )
     week6_metrics = analyze_run(base)
+    exit_entities = final_snapshot.get("exit_entities", []) if isinstance(final_snapshot, Mapping) else []
+    entity_level = isinstance(exit_entities, list) and len(exit_entities) > 0
     summary = {
         "initial_population": week6_metrics["total_persons"],
         "evacuated_count": week6_metrics["evacuated_count"],
@@ -289,6 +291,12 @@ def build_runtime_analysis(
         "summary": summary,
         "week6_metrics": week6_metrics,
         "academic_crowd_fields": academic_crowd_fields(people_rows, grid=snapshot_grid, analysis_contract=analysis_contract),
+        # A live run decides this once from its normalized topology, rather
+        # than switching display representation as partial snapshots arrive.
+        "exit_utilization_contract": {
+            "representation": "entity" if entity_level else "legacy_cell",
+            "source": "actual_exit_entity" if entity_level else "actual_exit",
+        },
     }
     if include_figures:
         result["evacuation_curve_svg"] = _curve_svg(

@@ -329,6 +329,9 @@
   let personTransitionFrame = null;
   let logLayers = null;
   let latestAnalysis = null;
+  // Chosen once when a live run is initialized.  Never infer a different
+  // representation from a partial intermediate snapshot.
+  let liveExitUtilizationRepresentation = null;
   let sessionFinished = false;
   let lastAnalysisStep = -1;
   let pauseRequested = false;
@@ -894,7 +897,11 @@
 
   function applySnapshot(next, extra = {}){
     const previousSnapshot = snapshot;
-    if(extra.resetHistory) logLayers = null;
+    if(extra.resetHistory){
+      logLayers = null;
+      liveExitUtilizationRepresentation = Array.isArray(next && next.exit_entities) && next.exit_entities.length > 0
+        ? "entity" : "legacy_cell";
+    }
     snapshot = next;
     startPersonTransition(previousSnapshot, next);
     const observed = refreshStats(extra);
@@ -932,14 +939,18 @@
     $("insightOverlap").textContent = String(observed.overlapCells);
     $("insightSmoke").textContent = textValue(observed.maxSmoke);
 
+    const representation = liveExitUtilizationRepresentation || "legacy_cell";
     const actualExits = {};
     people.forEach(person => {
-      if(person && person.evacuated && person.actual_exit){
-        const exitId = String(person.actual_exit);
+      const exitValue = representation === "entity"
+        ? person && person.actual_exit_entity
+        : person && (person.actual_exit_cell ?? person.actual_exit);
+      if(person && person.evacuated && exitValue){
+        const exitId = String(exitValue);
         actualExits[exitId] = (actualExits[exitId] || 0) + 1;
       }
     });
-    renderActualExitDistribution(actualExits);
+    renderActualExitDistribution(actualExits, representation);
     const riskNote = riskMean === null ? "B 当前未公开个人风险结果，平均风险显示 NA。" : "";
     $("dataProvenance").innerHTML = `<b>数据来源：</b>本次运行日志和仿真快照。风险、剂量、实际出口只在上游实际返回时展示；缺失字段为 NA。${riskNote}`;
   }
@@ -990,14 +1001,16 @@
     $("curveNote").textContent = "本次运行尚无分析数据。";
   }
 
-  function renderActualExitDistribution(distribution){
+  function renderActualExitDistribution(distribution, representation = "legacy_cell"){
     const values = distribution && typeof distribution === "object" && !Array.isArray(distribution)
       ? Object.entries(distribution) : [];
     const total = values.reduce((sum, [, count]) => sum + Number(count || 0), 0);
     const container = $("exitBars");
     container.replaceChildren();
     if(total <= 0){
-      container.textContent = "NA：仅统计 B 返回的 actual_exit；当前运行未提供该字段。";
+      container.textContent = representation === "entity"
+        ? "NA：本次运行采用实体出口统计；尚无 actual_exit_entity。"
+        : "NA：旧日志未提供实体出口，按 actual_exit 统计。";
       $("actualExitStatus").textContent = "NA · 上游未提供";
       return;
     }
@@ -1038,7 +1051,10 @@
     $("totalEvacTime").textContent = metricText(metrics, "total_evacuation_time_s", " s");
     $("meanEvacTime").textContent = metricText(metrics, "mean_evacuation_time_s", " s");
     $("t90Time").textContent = metricText(metrics, "t90_time_s", " s");
-    renderActualExitDistribution(data.week6_metrics && data.week6_metrics.exit_distribution);
+    const representation = (data.exit_utilization_contract && data.exit_utilization_contract.representation)
+      || liveExitUtilizationRepresentation
+      || "legacy_cell";
+    renderActualExitDistribution(data.week6_metrics && data.week6_metrics.exit_distribution, representation);
   }
 
   async function refreshCoreMetrics(){

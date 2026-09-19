@@ -8,10 +8,34 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from experiments.result_package import build_result_package
+from experiments.result_package import build_result_package, build_runtime_analysis
 
 
 class ResultPackageTests(unittest.TestCase):
+    def test_live_entity_topology_never_falls_back_to_cell_utilization(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with (root / "people_log.csv").open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=[
+                    "step", "time_s", "person_id", "x", "y", "evacuated",
+                    "actual_exit", "actual_exit_cell", "actual_exit_entity",
+                ])
+                writer.writeheader()
+                writer.writerows([
+                    {"step": 1, "time_s": 0.5, "person_id": 1, "x": 2, "y": 1, "evacuated": True, "actual_exit": "exit_01", "actual_exit_cell": "exit_01", "actual_exit_entity": "exit_entity_01"},
+                    {"step": 2, "time_s": 1.0, "person_id": 2, "x": 3, "y": 1, "evacuated": True, "actual_exit": "exit_02", "actual_exit_cell": "exit_02", "actual_exit_entity": "exit_entity_01"},
+                    {"step": 3, "time_s": 1.5, "person_id": 3, "x": 4, "y": 1, "evacuated": True, "actual_exit": "exit_03", "actual_exit_cell": "exit_03", "actual_exit_entity": "exit_entity_01"},
+                ])
+            analysis = build_runtime_analysis(
+                output_dir=root,
+                final_snapshot={
+                    "grid": {"width": 6, "height": 3},
+                    "exit_entities": [{"exit_entity_id": "exit_entity_01", "member_cells": [[5, 0], [5, 1], [5, 2]]}],
+                },
+            )
+            self.assertEqual("entity", analysis["exit_utilization_contract"]["representation"])
+            self.assertEqual({"exit_entity_01": 3}, analysis["week6_metrics"]["exit_distribution"])
+
     def test_packages_actual_logs_metrics_and_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
