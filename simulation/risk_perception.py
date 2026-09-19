@@ -95,8 +95,6 @@ class SmokeRiskPerception:
         # 论文标准风险公式
         total_risk = self.a * s_now + self.b * delta_s + self.c * vis_loss
 
-        # 更新缓存上一帧烟雾场，供下一帧计算ΔS
-        self.last_smoke_matrix = smoke_matrix.copy()
         return round(total_risk, 4)
 
     def batch_calc_all_risk(self, person_list: list[Person], smoke_matrix: np.ndarray, time_step_s: float) -> dict[int, float]:
@@ -113,4 +111,7 @@ class SmokeRiskPerception:
             self._update_dose_and_death(p, smoke_matrix, time_step_s)
             # 再计算风险
             risk_map[p.id] = self.get_person_risk(p, smoke_matrix)
+
+        # ✅【修复】整帧所有人全部计算完成后，才更新上一帧烟雾缓存
+        self.last_smoke_matrix = smoke_matrix.copy()
         return risk_map
