@@ -119,8 +119,11 @@
     <hr>
     <div class="section-kicker">RUNTIME PARAMETERS</div>
     <div class="title">本次运行参数 <span class="pill">直传 runtime</span></div>
-    <label>人数（由人员文件决定） <input id="totalPersons" value="等待初始化" disabled></label>
-    <label>random_seed（留空时读取 YAML）<input id="randomSeed" type="number" value="42"></label>
+    <label>总人数 <input id="totalPersons" type="number" min="1" step="1" value="40"></label>
+    <label>random_seed（留空为随机）<input id="randomSeed" type="number" value="42"></label>
+    <label>relation_intensity <input id="relationIntensity" type="number" min="0" max="1" step="0.01" value="0.6"></label>
+    <div class="row"><label>student <input id="ratioStudent" type="number" min="0" step="0.01" value="0.8"></label><label>teacher <input id="ratioTeacher" type="number" min="0" step="0.01" value="0.1"></label><label>staff <input id="ratioStaff" type="number" min="0" step="0.01" value="0.1"></label></div>
+    <button id="generatePeopleBtn" class="primary" disabled>生成 / 初始化人员</button>
     <div class="row"><label>time_step / s<input id="timeStep" type="number" min="0.01" max="60" step="0.01" value="0.5"></label><label>最大步数<input id="maxSteps" type="number" min="1" max="5000" value="500"></label></div>
     <div class="hint">time_step 真实决定模拟时间与日志时间轴；最大步数真实决定 runtime 停止上限。</div>
     <div class="title" style="margin-top:12px">C 配置文件 <span class="pill">部分字段生效</span></div>
@@ -130,13 +133,12 @@
     </div>
     <input id="yamlFile" type="file" accept=".yaml,.yml,text/yaml,application/x-yaml" hidden>
     <div class="hint" id="configHint">未选择 YAML；仓库样例固定读取正式 config_template.yaml。</div>
-    <div class="hint">当前真实作用：校验 total_persons、提供 scene_name，并在 random_seed 留空时提供 seed。relation_intensity / profile / group_config 不会重新生成人员，也不改变 B 每步移动。</div>
+    <div class="hint" id="peopleInitHint">默认直接设置参数；YAML 为可选高级导入，二者进入同一 C 生成与 A 自动定位链路。</div>
 
     <details class="diagnostics">
       <summary>待接入参数与 C 静态字段</summary>
       <div class="hint">scene、profile、relation_intensity 与 group_config 由 YAML/人员文件记录。当前人员已预生成，C 每步行为尚未进入 B 移动决策，因此此处不提供会造成误解的滑块。</div>
-      <label>relation_intensity <input value="由 YAML 记录；当前不改变 B 移动" disabled></label>
-      <label>profile_ratios / group_config<input value="只用于上游生成人员；本页不重新生成" disabled></label>
+      <label>profile_ratios / group_config <input value="使用 C 正式生成器；高级群体参数可由 YAML 提供" disabled></label>
       <label>C 每步策略 <input value="待 C→B person_id 契约接入" disabled></label>
     </details>
 
@@ -149,7 +151,6 @@
 
   <section class="panel canvas-wrap" id="runtime">
   <div class="toolbar">
-    <label class="academic-selector">Academic heatmap <select id="academicHeatmapSelect"><option value="occupancy">累计占用</option><option value="density">Density</option><option value="cl">CL</option><option value="cn">CN</option><option value="crowd_danger">Crowd Danger</option></select></label><span id="academicHeatmapNotice" class="hint">unavailable_physical_scale：未标定物理尺度时不会生成伪热图</span>
       <button id="initBtn" class="good init-control">初始化仿真</button>
       <select id="speedSelect" aria-label="播放速度" style="width:78px;height:34px;padding:4px 5px">
         <option value="150">快速</option>
@@ -838,7 +839,7 @@
     $("gridSize").textContent = grid ? `${grid.width} x ${grid.height}` : "NA";
     const hasPeople = activeSession && observed.people.length > 0;
     $("peopleCount").textContent = hasPeople ? observed.people.length : "NA";
-    $("totalPersons").value = hasPeople ? String(observed.people.length) : "由人员文件决定";
+    if(hasPeople) $("totalPersons").value = String(observed.people.length);
     $("evacCount").textContent = observed.evacuated;
     $("evacRate").textContent = hasPeople ? `${(observed.evacuated / observed.people.length * 100).toFixed(1)}%` : "NA";
     $("remainingCount").textContent = hasPeople ? String(observed.people.length - observed.evacuated) : "NA";
@@ -1215,6 +1216,7 @@
     $("mapEditorHint").textContent = `当前 JSON 地图：${currentMapName}；已编辑内容将直接用于自动分配与 runtime。烟源 ${smokeSources} 个。`;
     $("editMapBtn").disabled = false;
     $("autoPositionBtn").disabled = false;
+    $("generatePeopleBtn").disabled = false;
     setStatus(`地图已显示：${currentMapName}\n当前状态：内存 JSON${smokeSources ? `；烟源 ${smokeSources} 个` : "；无烟源"}`, "地图预览");
     return result;
   }
@@ -1335,6 +1337,39 @@
     if(!Number.isFinite(timeStep) || timeStep <= 0 || timeStep > 60) throw new Error("time_step 必须在 0 到 60 秒之间");
     if(!Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 5000) throw new Error("最大步数必须是 1 到 5000 的整数");
     return {random_seed:randomSeed, time_step_s:timeStep, max_steps:maxSteps};
+  }
+
+  function sceneConfigPayload(){
+    const total = Number($("totalPersons").value);
+    const seedRaw = $("randomSeed").value.trim();
+    const seed = seedRaw === "" ? null : Number(seedRaw);
+    const intensity = Number($("relationIntensity").value);
+    const ratios = {student:Number($("ratioStudent").value), teacher:Number($("ratioTeacher").value), staff:Number($("ratioStaff").value)};
+    if(!Number.isInteger(total) || total <= 0) throw new Error("总人数必须是大于 0 的整数");
+    if(seed !== null && !Number.isInteger(seed)) throw new Error("random_seed 必须是整数或留空");
+    if(!Number.isFinite(intensity) || intensity < 0 || intensity > 1) throw new Error("relation_intensity 必须在 0 到 1 之间");
+    if(Object.values(ratios).some(v => !Number.isFinite(v) || v < 0)) throw new Error("角色比例必须为非负数字");
+    const ratioSum = Object.values(ratios).reduce((a,b)=>a+b,0);
+    if(Math.abs(ratioSum - 1) > 0.01) throw new Error("角色比例之和必须约等于 1");
+    return {total_persons:total, random_seed:seed, relation_intensity:intensity, profile_ratios:ratios};
+  }
+
+  async function generatePeopleSession(){
+    if(pending){ log("当前运行正在计算，请稍候。"); return; }
+    if(!currentMapData){ setStatus("请先导入并确认 JSON 地图，再生成人员。", "缺少地图"); return; }
+    try{
+      const sceneConfig = sceneConfigPayload();
+      const uploadedYaml = await readFilePayload($("yamlFile"));
+      const result = await api("/api/session/generate-people", {map_data:currentMapData, scene_config:sceneConfig, yaml_file:uploadedYaml, ...runtimeParameterPayload()});
+      activeSession = true; sessionFinished = false; pauseRequested = false; lastAnalysisStep = -1;
+      stopTimer(); resetDerivedAnalysis("正在读取新生成人员的初始化日志。");
+      applySnapshot(result.snapshot, {output_dir:result.output_dir, resetHistory:true});
+      showEffectiveRuntime(result, result.initialization?.config_source === "yaml" ? "YAML → canonical config" : "UI → canonical config");
+      const init = result.initialization || {};
+      $("mapEditorHint").textContent = "已生成并定位 " + (init.person_count ?? "NA") + " 人；profile 分布：" + JSON.stringify(init.profile_counts || {});
+      setStatus("人员已由 C 正式生成器创建，并由 A 自动分配初始位置\n实际人数：" + (init.person_count ?? "NA") + "\n配置来源：" + (init.config_source || "NA") + "\n同一 canonical config 可复现", "初始化成功");
+      log("UI canonical config → C profile/social → A position allocator → B runtime");
+    }catch(error){ setStatus(error.message || String(error), "初始化失败"); log("人员初始化失败：" + (error.message || error)); }
   }
 
   async function initSession(){
@@ -1583,6 +1618,7 @@
     button.onclick = () => previewTemplate(button.dataset.template).catch(error => setStatus(`模板导入失败：${error.message}`, "导入失败"));
   });
   $("yamlBtn").onclick = () => $("yamlFile").click();
+  $("generatePeopleBtn").onclick = generatePeopleSession;
   $("yamlFile").onchange = () => {
     setConfigState(
       $("yamlFile").files[0] ? `已选择外部 YAML：${$("yamlFile").files[0].name}` : "未选择 YAML",

@@ -26,35 +26,11 @@ B06_SMOKE_ALARM_THRESHOLD = 0.45
 
 
 def _prepare_b_exit_tuples(engine: Any) -> bool:
-    """Adapt shared-schema exits to B's current runtime-only tuple contract."""
+    """Keep shared-schema exits object-shaped for current B runtime."""
 
-    raw_exits = getattr(engine, "exits", None)
-    if not isinstance(raw_exits, list) or not raw_exits:
-        return False
-    if all(isinstance(item, tuple) and len(item) == 3 for item in raw_exits):
-        return False
-
-    grid = getattr(engine, "grid", None)
-    cells = getattr(grid, "cells", [])
-    exit_cells = [
-        (int(cell.x), int(cell.y))
-        for cell in cells
-        if getattr(getattr(cell, "cell_type", None), "value", getattr(cell, "cell_type", None))
-        == "exit"
-    ]
-    if len(exit_cells) != len(raw_exits):
-        return False
-
-    tuples: list[tuple[int, int, str]] = []
-    for index, exit_obj in enumerate(raw_exits):
-        exit_id = getattr(exit_obj, "id", getattr(exit_obj, "exit_id", None))
-        if exit_id in (None, ""):
-            return False
-        x = getattr(exit_obj, "x", exit_cells[index][0])
-        y = getattr(exit_obj, "y", exit_cells[index][1])
-        tuples.append((int(x), int(y), str(exit_id)))
-    engine.exits = tuples
-    return True
+    # B builds the cell tuples passed to calc_next_position itself; it still
+    # reads engine.exits object attributes for logging and actual_exit.
+    return False
 
 
 def _install_indexed_grid_lookup(grid: Any) -> bool:
@@ -232,7 +208,7 @@ class EvacEngineRuntimeAdapter:
         be presented as a B-published state field.
         """
 
-        raw_value = getattr(self._engine, "alarm_triggered", None)
+        raw_value = getattr(self._engine, "alarm_triggered", getattr(self._engine, "is_alarm_triggered", None))
         if isinstance(raw_value, bool):
             return raw_value
         maximum = self.max_smoke_concentration
@@ -244,7 +220,7 @@ class EvacEngineRuntimeAdapter:
     def alarm_source(self) -> str | None:
         """Report one authoritative source for the exposed alarm value."""
 
-        if isinstance(getattr(self._engine, "alarm_triggered", None), bool):
+        if isinstance(getattr(self._engine, "alarm_triggered", getattr(self._engine, "is_alarm_triggered", None)), bool):
             return "b_native_runtime_field"
         return (
             "d_projection_from_b06_smoke"

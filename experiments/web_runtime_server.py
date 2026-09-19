@@ -30,6 +30,12 @@ from typing import Any, Mapping
 from urllib.parse import unquote, urlparse
 
 from experiments.auto_positioning import AutoPositioningError, allocate_map_data_positions
+from experiments.scene_config_pipeline import (
+    SceneConfigPipelineError,
+    canonical_from_c_scene_config,
+    generate_positioned_population,
+    validate_canonical_scene_config,
+)
 from experiments.experiment_history import ExperimentHistoryError, discover_experiments, load_experiment_detail
 from experiments.integrated_runner import create_integrated_runner
 from experiments.result_package import ResultPackageError, build_result_package, build_runtime_analysis
@@ -270,6 +276,8 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 with self.server.session_lock:
                     if path == "/api/session":
                         response = self._create_session(payload)
+                    elif path == "/api/session/generate-people":
+                        response = self._create_generated_session(payload)
                     elif path == "/api/session/auto-position":
                         response = self._create_auto_position_session(payload)
                     elif path == "/api/session/template":
@@ -329,6 +337,58 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 random_seed=_optional_seed(payload.get("random_seed")),
                 time_step_s=_positive_time_step(payload.get("time_step_s")),
             )
+        except Exception:
+            temporary_directory.cleanup()
+            raise
+
+    def _create_generated_session(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        """Generate C people/relations and A positions from one canonical UI config."""
+        self.server.close_session()
+        temporary_directory = _runtime_temp_directory(self.server.root, "d_web_generated_")
+        root = Path(temporary_directory.name)
+        try:
+            map_path = _map_input_file(payload, root)
+            if map_path is None or map_path.suffix.lower() != ".json":
+                raise WebRuntimeError("直接生成人员需要当前 JSON 地图")
+            yaml_path = _uploaded_file(payload, "yaml_file", ALLOWED_YAML_SUFFIXES, root)
+            if yaml_path is not None:
+                from control.scene_config import SceneConfigGenerator
+                canonical = canonical_from_c_scene_config(SceneConfigGenerator.load_config_from_yaml(str(yaml_path)))
+                config_source = "yaml"
+            else:
+                raw_config = payload.get("scene_config")
+                try:
+                    canonical = validate_canonical_scene_config(raw_config if isinstance(raw_config, Mapping) else {})
+                except SceneConfigPipelineError as exc:
+                    raise WebRuntimeError(str(exc)) from exc
+                config_source = "ui"
+            generated = generate_positioned_population(
+                scene_config=canonical, map_path=map_path, destination=root / "generated"
+            )
+            config_path = root / "scene_config.json"
+            config_path.write_text(json.dumps({"config_source": config_source, **canonical}, ensure_ascii=False, indent=2), encoding="utf-8")
+            result = self._start_runner(
+                temporary_directory,
+                map_path=map_path,
+                people_path=generated["population_path"],
+                yaml_path=None,
+                max_steps=_positive_steps(payload.get("max_steps")),
+                random_seed=canonical["random_seed"],
+                time_step_s=_positive_time_step(payload.get("time_step_s")),
+            )
+            result["initialization"] = {
+                "config_source": config_source,
+                "person_count": generated["person_count"],
+                "profile_counts": generated["profile_counts"],
+                "canonical_config": canonical,
+            }
+           if self.server.session is not None:
+               self.server.session.input_files["scene_config"] = config_path
+                self._write_run_metadata(self.server.session.runner, self.server.session.runner.current_snapshot, self.server.session.input_files, save_frame=True)
+           return result
+        except SceneConfigPipelineError as exc:
+            temporary_directory.cleanup()
+            raise WebRuntimeError(str(exc)) from exc
         except Exception:
             temporary_directory.cleanup()
             raise

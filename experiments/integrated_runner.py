@@ -347,6 +347,9 @@ def create_integrated_runner(
         sampling_window_s=sampling_window_s,
         analysis_mesh_size_m=analysis_mesh_size_m, roi_radius_m=roi_radius_m,
     )
+    # D passes the runner's authoritative clock into B's public ScenarioConfig
+    # without changing B's engine implementation.
+    scenario.config.parameters["time_step_s"] = float(time_step_s)  # type: ignore[attr-defined]
     return SimulationRunner(
         integrated_simulation_factory(scenario),
         output_root=output_root,

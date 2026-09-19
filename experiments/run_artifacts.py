@@ -132,6 +132,15 @@ def write_run_artifacts(
         "runtime_contract": "A Grid + C population/config + B EvacEngine through D adapters",
         "missing_upstream_fields": "CSV logger leaves unprovided upstream fields empty; D does not fabricate values.",
     }
+    scene_config_path = input_files.get("scene_config")
+    if scene_config_path is not None and Path(scene_config_path).is_file():
+        try:
+            scene_config = json.loads(Path(scene_config_path).read_text(encoding="utf-8"))
+            if isinstance(scene_config, Mapping):
+                config_used["config_source"] = scene_config.get("config_source", "ui")
+                config_used["scene_config"] = dict(scene_config)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            config_used["config_source"] = "unavailable"
     people_log_path = destination / "people_log.csv"
     if people_log_path.is_file():
         grid = snapshot.get("grid")
