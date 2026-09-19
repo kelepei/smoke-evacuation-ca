@@ -1,8 +1,4 @@
-"""
-疏散仿真引擎
-管理行人状态、烟雾更新、移动计算
-"""
-
+""" 疏散仿真引擎 管理行人状态、烟雾更新、移动计算 """
 import sys
 from pathlib import Path
 BASE_PATH = Path(__file__).parent.parent
@@ -26,6 +22,8 @@ class EvacEngine:
     疏散仿真引擎
     适配A模块输出人员坐标
     改动：接入外部conflict_solver冲突消解、增加actual_exit出口记录；新增B03出口选择、B09拥堵模型
+    新增：支持人员烟雾中毒死亡，死亡人员原地占用元胞，不参与移动
+    新增B08：烟雾警报功能，烟源浓度达到阈值触发全局警报，快照输出警报状态
     """
     MAX_SIM_STEP = 2000  # 最大仿真步数，防止死循环
 
@@ -40,6 +38,13 @@ class EvacEngine:
         self.width = self.grid.width
         self.height = self.grid.height
         self.current_step = 0
+
+        # ===== 新增：读取仿真单步时间 =====
+        self.time_step_s = scene.parameters.get("time_step_s", 1.0)
+
+        # ===== 新增B08烟雾警报配置 =====
+        self.alarm_threshold = 0.45  # 烟源位置烟雾浓度触发阈值
+        self.is_alarm_triggered = False  # 警报状态，一旦触发永久保持开启
 
         # 绑定场景seed，给外部冲突消解、出口选择、拥堵模型使用，保证仿真可复现
         self.random = random.Random(getattr(scene, "parameters", {}).get("random_seed"))
@@ -70,8 +75,9 @@ class EvacEngine:
         # 风险感知模型
         self.risk_engine = SmokeRiskPerception(
             weight_conc=1.0,
-            weight_delta=0.5,
-            weight_vis=1.2
+            weight_delta=0.6,
+            weight_vis=1.2,
+            death_dose_threshold=12.0
         )
 
         # 烟雾剂量记录
@@ -94,10 +100,14 @@ class EvacEngine:
             self.person_map[person.id] = person
 
     def is_all_evacuated(self) -> bool:
-        return all(p.evacuated for p in self.person_map.values())
+        # 全部撤离 OR 全部死亡，仿真结束
+        return all(p.evacuated or p.is_dead for p in self.person_map.values())
 
     def get_evacuated_count(self) -> int:
         return sum(1 for p in self.person_map.values() if p.evacuated)
+
+    def get_dead_count(self) -> int:
+        return sum(1 for p in self.person_map.values() if p.is_dead)
 
     def run_one_step(self, c_step_data: dict = None, signage_model=None):
         if c_step_data is None:
@@ -121,23 +131,40 @@ class EvacEngine:
             if 0 <= y < self.height and 0 <= x < self.width:
                 cell.smoke = smoke_mat[y][x]
 
-        # 2. 批量计算行人风险
-        risk_dict = self.risk_engine.batch_calc_all_risk(list(self.person_map.values()), smoke_mat)
+        # ====================== B08 烟雾警报判断 ======================
+        if not self.is_alarm_triggered:
+            # 遍历所有烟源点位，检测浓度
+            for src in self.scene.smoke_sources:
+                sx, sy = int(src.x), int(src.y)
+                if 0 <= sx < self.width and 0 <= sy < self.height:
+                    conc_at_source = smoke_mat[sy, sx]
+                    if conc_at_source >= self.alarm_threshold:
+                        self.is_alarm_triggered = True
+                        print(f"[ALARM] 烟雾警报触发！Step:{self.current_step}, 烟源浓度:{conc_at_source:.3f}")
+                        break
+        # =============================================================
+
+        # 2. 批量计算行人风险 ✅ 新增 time_step_s 参数
+        risk_dict = self.risk_engine.batch_calc_all_risk(
+            list(self.person_map.values()),
+            smoke_mat,
+            time_step_s=self.time_step_s
+        )
 
         # 3. 更新烟雾累积剂量
         self.dose_recorder.update_all_dose(list(self.person_map.values()), smoke_mat)
 
-        # 4. 标记占用坐标，避免行人重叠
+        # 4. 标记占用坐标，避免行人重叠 ✅ 死亡人员保留占用元胞
         occupied_positions = set()
         for pid, person in self.person_map.items():
-            if not person.evacuated:
+            if not person.evacuated and not person.is_dead:
                 occupied_positions.add((int(person.x), int(person.y)))
         alive_person_pos = occupied_positions
 
-        # 5. 预计算下一时刻位置
+        # 5. 预计算下一时刻位置 ✅ 死亡人员跳过移动计算
         next_positions = {}
         for pid, person in self.person_map.items():
-            if person.evacuated:
+            if person.evacuated or person.is_dead:
                 continue
             single_behavior = c_step_data.get(pid, {})
             if "target_exit" in single_behavior:
@@ -152,21 +179,22 @@ class EvacEngine:
                 floor_field=self.floor_field,
                 signage_model=signage_model,
                 occupied_positions=occupied_positions,
-                exit_list=[(eid, ex, ey) for ex, ey, eid in self.exits],
+                exit_list=[(e.id, e.x, e.y) for e in self.exits],
                 exit_chooser=self.exit_chooser,
                 congestion_model=self.congestion_model,
                 alive_person_pos=alive_person_pos,
                 rng=self.random
+                # 如果后续C模块需要，在这里增加 alarm=self.is_alarm_triggered
             )
             next_positions[pid] = (nx, ny)
 
         # -------- 调用外部conflict_solver做冲突消解 --------
         fixed_next_pos = resolve_conflict(next_positions, self.person_map, self.random)
 
-        # 6. 更新坐标 & 判断是否撤离，记录 actual_exit
+        # 6. 更新坐标 & 判断是否撤离，记录 actual_exit ✅ 死亡人员不更新坐标
         for pid, (nx, ny) in fixed_next_pos.items():
             person = self.person_map[pid]
-            if person.evacuated:
+            if person.evacuated or person.is_dead:
                 continue
             person.prev_x = person.x
             person.prev_y = person.y
@@ -180,13 +208,14 @@ class EvacEngine:
                 px = int(nx)
                 py = int(ny)
                 for e in self.exits:
-                    ex, ey, eid = e
+                    ex, ey, eid = e.x, e.y, e.id
                     if ex == px and ey == py:
                         person.actual_exit = eid
                         break
 
         # 7. 更新统计
         self.evacuated_count = self.get_evacuated_count()
+        dead_count = self.get_dead_count()
         self.current_step += 1
 
         # 内存日志（仅内部查看）
@@ -195,14 +224,18 @@ class EvacEngine:
                 "step": self.current_step,
                 "evacuated": self.evacuated_count,
                 "total": self.total_persons,
-                "remaining": self.total_persons - self.evacuated_count
+                "remaining": self.total_persons - self.evacuated_count - dead_count,
+                "dead": dead_count,
+                "alarm": self.is_alarm_triggered
             })
 
         return {
             "step": self.current_step,
             "evacuated": self.evacuated_count,
             "total": self.total_persons,
-            "remaining": self.total_persons - self.evacuated_count,
+            "remaining": self.total_persons - self.evacuated_count - dead_count,
+            "dead": dead_count,
+            "alarm": self.is_alarm_triggered # 输出警报状态给D可视化
         }
 
     def get_person_positions(self) -> dict:
@@ -216,7 +249,7 @@ class EvacEngine:
         if person_id is None:
             evac_steps = [p.evac_step for p in self.person_map.values() if p.evac_step >= 0]
             if len(evac_steps) == self.total_persons:
-                 return max(evac_steps)
+                return max(evac_steps)
             return -1
         else:
             p = self.person_map.get(person_id)

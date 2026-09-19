@@ -112,22 +112,16 @@ class SmokeSource:
 class ScenarioConfig:
     # 实验编号
     scenario_id: str
-
     # 地图信息
     grid: Grid
-
     # 出口列表
     exits: List[Exit] = field(default_factory=list)
-
     # 初始人员
     persons: List[Person] = field(default_factory=list)
-
     # 社会关系
     # C模块提供
     relations: List[Relation] = field(default_factory=list)
-
     # 烟源
     smoke_sources: List[SmokeSource] = field(default_factory=list)
-
     # 其他实验参数
-    parameters: Dict[str, Any] = field(default_factory=list)
+    parameters: Dict[str, Any] = field(default_factory=dict)
