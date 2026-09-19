@@ -464,6 +464,15 @@ class CaSnapshotAdapter:
         raw_cell_size = _optional_attr(grid, "cell_size")
         if raw_cell_size is None or float(raw_cell_size) <= 0:
             raise SnapshotAdapterError("grid.cell_size must be greater than zero")
+        raw_alarm_cells = _optional_attr(grid, "d_alarm_cells") or []
+        if not isinstance(raw_alarm_cells, list):
+            raise SnapshotAdapterError("D map alarm markers must be a list")
+        alarm_cells: list[dict[str, int]] = []
+        for marker in raw_alarm_cells:
+            x, y = _optional_attr(marker, "x"), _optional_attr(marker, "y")
+            if not isinstance(x, Integral) or not isinstance(y, Integral) or not (0 <= x < width and 0 <= y < height):
+                raise SnapshotAdapterError("D map alarm marker is outside the grid")
+            alarm_cells.append({"x": int(x), "y": int(y)})
 
         adapter_meta = {
             "simulation_module": simulation.__class__.__module__,
@@ -508,7 +517,9 @@ class CaSnapshotAdapter:
                 "height": height,
                 "cell_size": float(raw_cell_size),
                 "cell_type": cell_type,
+                "alarm_cells": alarm_cells,
             },
+            "alarm_cells": alarm_cells,
             "people": people,
             "exits": exits,
             "exit_entities": list(_optional_attr(simulation, "exit_entities") or []),

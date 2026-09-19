@@ -101,6 +101,26 @@ def _map_analysis_metadata(map_path: Path) -> dict[str, Any]:
     return dict(analysis)
 
 
+def _map_alarm_cells(map_path: Path) -> list[dict[str, int]]:
+    """Read A's map-device markers; they are distinct from runtime alarm state."""
+    if map_path.suffix.lower() != ".json":
+        return []
+    try:
+        payload = json.loads(map_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SceneInputError("JSON map cannot be read for alarm metadata") from exc
+    markers: list[dict[str, int]] = []
+    for index, cell in enumerate(payload.get("cells", [])):
+        if not isinstance(cell, Mapping) or cell.get("alarm") is not True:
+            continue
+        if str(cell.get("type", "free")).lower() != "free":
+            raise SceneInputError(f"map.cells[{index}].alarm requires type=free")
+        if not isinstance(cell.get("x"), int) or not isinstance(cell.get("y"), int):
+            raise SceneInputError(f"map.cells[{index}] alarm coordinates must be integers")
+        markers.append({"x": cell["x"], "y": cell["y"]})
+    return markers
+
+
 def load_map_grid(path: str | Path) -> Any:
     """Load and validate a JSON, CSV, or PNG map through A's public loader."""
 
@@ -135,6 +155,7 @@ def load_map_grid(path: str | Path) -> Any:
     # Never reinterpret legacy grid.cell_size as metres.  This D-only
     # attribute leaves A/B's shared Grid representation untouched.
     setattr(grid, "d_map_analysis", _map_analysis_metadata(map_path))
+    setattr(grid, "d_alarm_cells", _map_alarm_cells(map_path))
     return grid
 
 
@@ -156,6 +177,7 @@ def grid_to_snapshot_grid(grid: Any) -> dict[str, Any]:
         "height": height,
         "cell_size": float(grid.cell_size),
         "cell_type": cell_type,
+        "alarm_cells": list(getattr(grid, "d_alarm_cells", [])),
     }
 
 

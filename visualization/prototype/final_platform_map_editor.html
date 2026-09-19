@@ -445,6 +445,12 @@
           ctx.textBaseline = "middle";
           ctx.fillText("EXIT", ox + (x + .5) * cell, oy + (y + .5) * cell);
         }
+        const alarms = Array.isArray(grid.alarm_cells) ? grid.alarm_cells : (Array.isArray(snapshot.alarm_cells) ? snapshot.alarm_cells : []);
+        if(alarms.some(marker => Number(marker && marker.x) === x && Number(marker && marker.y) === y)){
+          ctx.strokeStyle = "#dc2626";
+          ctx.lineWidth = Math.max(2, cell * .14);
+          ctx.strokeRect(ox + x * cell + 1, oy + y * cell + 1, Math.max(0, cell - 2), Math.max(0, cell - 2));
+        }
       }
     }
   }

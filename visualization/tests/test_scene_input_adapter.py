@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import tempfile
 import textwrap
 import unittest
@@ -52,6 +53,24 @@ class SceneInputAdapterTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(SceneInputError, r"6.*5"):
                 load_map_grid(sparse)
+
+    def test_alarm_markers_are_preserved_but_non_free_alarm_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            path = root / "alarm_map.json"
+            cells = [
+                {"x": 0, "y": 0, "type": "free", "alarm": True},
+                {"x": 1, "y": 0, "type": "exit", "alarm": False},
+            ]
+            path.write_text(json.dumps({"name": "alarm_map", "width": 2, "height": 1, "cell_size": 10, "cells": cells}), encoding="utf-8")
+            grid = load_map_grid(path)
+            self.assertEqual([{"x": 0, "y": 0}], grid.d_alarm_cells)
+            snapshot = grid_to_static_snapshot(grid)
+            self.assertEqual([{"x": 0, "y": 0}], snapshot["grid"]["alarm_cells"])
+            cells[1]["alarm"] = True
+            path.write_text(json.dumps({"name": "alarm_map", "width": 2, "height": 1, "cell_size": 10, "cells": cells}), encoding="utf-8")
+            with self.assertRaisesRegex(SceneInputError, "requires type=free"):
+                load_map_grid(path)
 
     def test_c_yaml_loader_is_called_without_fabricating_people(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
