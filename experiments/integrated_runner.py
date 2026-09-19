@@ -27,6 +27,7 @@ import numpy as np
 
 from core.schema import CellType, Exit, Person, Relation, ScenarioConfig, SmokeSource
 from experiments.b_runtime_adapter import EvacEngineRuntimeAdapter
+from experiments.crowd_metrics import resolve_analysis_contract
 from experiments.exit_topology import ExitEntity, entity_id_by_cell, extract_exit_entities
 from experiments.run_artifacts import write_run_artifacts
 from experiments.runner import SimulationRunner
@@ -141,6 +142,8 @@ def build_integrated_scenario(
     scenario_id: str | None = None,
     random_seed: int | None = None,
     source_id_base: int = 0,
+    physical_cell_size_m: float | None = None,
+    sampling_window_s: float | None = None,
 ) -> IntegratedScenario:
     """Read A/C files and assemble B's existing ``ScenarioConfig`` input.
 
@@ -237,6 +240,14 @@ def build_integrated_scenario(
         relations=relations,
         smoke_sources=smoke_sources,
     )
+    try:
+        analysis_contract = resolve_analysis_contract(
+            map_analysis=getattr(grid, "d_map_analysis", {}),
+            runtime_physical_cell_size_m=physical_cell_size_m,
+            runtime_sampling_window_s=sampling_window_s,
+        )
+    except ValueError as exc:
+        raise IntegratedRuntimeError(str(exc)) from exc
     # ``parameters`` is not yet a constructor field in the shared schema.
     # Adding an instance attribute here preserves A/B/C code unchanged.
     runtime_config.parameters = {  # type: ignore[attr-defined]
@@ -247,6 +258,7 @@ def build_integrated_scenario(
             "yaml": None if yaml_path is None else str(Path(yaml_path)),
         },
         "d_placement_mode": placement_mode,
+        "d_analysis_contract": analysis_contract,
     }
 
     return IntegratedScenario(
@@ -313,6 +325,8 @@ def create_integrated_runner(
     random_seed: int | None = None,
     time_step_s: float = 0.5,
     max_steps: int = 500,
+    physical_cell_size_m: float | None = None,
+    sampling_window_s: float | None = None,
 ) -> SimulationRunner:
     scenario = build_integrated_scenario(
         map_path=map_path,
@@ -320,6 +334,8 @@ def create_integrated_runner(
         yaml_path=yaml_path,
         c_module_path=c_module_path,
         random_seed=random_seed,
+        physical_cell_size_m=physical_cell_size_m,
+        sampling_window_s=sampling_window_s,
     )
     return SimulationRunner(
         integrated_simulation_factory(scenario),
@@ -343,6 +359,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--run-id", default="d_integrated_run")
     parser.add_argument("--random-seed", type=int)
     parser.add_argument("--time-step", type=float, default=0.5)
+    parser.add_argument("--physical-cell-size-m", type=float)
+    parser.add_argument("--sampling-window-s", type=float)
     parser.add_argument("--max-steps", type=int, default=500)
     parser.add_argument("--headless", action="store_true")
     return parser.parse_args()
@@ -359,6 +377,8 @@ def main() -> None:
         run_id=args.run_id,
         random_seed=args.random_seed,
         time_step_s=args.time_step,
+        physical_cell_size_m=args.physical_cell_size_m,
+        sampling_window_s=args.sampling_window_s,
         max_steps=args.max_steps,
     )
     try:

@@ -40,6 +40,9 @@ class ResultPackageTests(unittest.TestCase):
                     "time_step": 0.5,
                     "step": 1,
                     "grid": {"width": 4, "height": 3},
+                    "analysis_contract": {
+                        "physical_scale": {"source": "unavailable", "value": None, "unit": "m"}
+                    },
                 },
                 input_files={"map": map_path, "population": population_path},
                 max_steps=10,
@@ -51,6 +54,7 @@ class ResultPackageTests(unittest.TestCase):
                         "run_01/people_log.csv", "run_01/event_log.csv", "run_01/metrics.csv",
                         "run_01/evacuation_curve.svg", "run_01/occupancy_heatmap.svg",
                         "run_01/week6_metrics.json", "run_01/week6_metrics_summary.csv",
+                        "run_01/trajectory_kinematics.csv",
                         "run_01/metadata.json", "run_01/config.json", "run_01/inputs/map.json",
                         "run_01/inputs/population.json",
                     },
@@ -61,6 +65,8 @@ class ResultPackageTests(unittest.TestCase):
                 self.assertIn("累计占用热力图", archive.read("run_01/occupancy_heatmap.svg").decode("utf-8"))
                 self.assertIn("actual_exit_entity", people_log)
                 self.assertIn("exit_entity_01", people_log)
+                self.assertEqual("unavailable", metadata["analysis_contract"]["physical_scale"]["source"])
+                self.assertIn("speed_m_s", archive.read("run_01/trajectory_kinematics.csv").decode("utf-8"))
         self.assertEqual(metadata["summary"]["evacuated_count"], 1)
         self.assertEqual(metadata["summary"]["last_successful_exit_time"], 0.5)
         self.assertEqual(metadata["random_seed"], 17)

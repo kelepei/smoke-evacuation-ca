@@ -85,6 +85,22 @@ def validate_grid(grid: Any) -> Any:
     return grid
 
 
+def _map_analysis_metadata(map_path: Path) -> dict[str, Any]:
+    """Load optional D-only analysis metadata without changing A's Grid schema."""
+    if map_path.suffix.lower() != ".json":
+        return {}
+    try:
+        payload = json.loads(map_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SceneInputError("JSON map cannot be read for analysis metadata") from exc
+    analysis = payload.get("analysis", {})
+    if analysis is None:
+        return {}
+    if not isinstance(analysis, Mapping):
+        raise SceneInputError("map.analysis must be an object when present")
+    return dict(analysis)
+
+
 def load_map_grid(path: str | Path) -> Any:
     """Load and validate a JSON, CSV, or PNG map through A's public loader."""
 
@@ -115,7 +131,11 @@ def load_map_grid(path: str | Path) -> Any:
         raise SceneInputError(str(exc)) from exc
     except (OSError, KeyError, TypeError) as exc:
         raise SceneInputError(f"A map loader failed for {map_path}") from exc
-    return validate_grid(grid)
+    grid = validate_grid(grid)
+    # Never reinterpret legacy grid.cell_size as metres.  This D-only
+    # attribute leaves A/B's shared Grid representation untouched.
+    setattr(grid, "d_map_analysis", _map_analysis_metadata(map_path))
+    return grid
 
 
 def grid_to_snapshot_grid(grid: Any) -> dict[str, Any]:
