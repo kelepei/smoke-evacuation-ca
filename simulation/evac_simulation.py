@@ -16,14 +16,13 @@ from .conflict_solver import resolve_conflict
 from .exit_choice import ExitChooser
 from .congestion import CongestionModel
 
-
 class EvacEngine:
     """
     疏散仿真引擎
     适配A模块输出人员坐标
     改动：接入外部conflict_solver冲突消解、增加actual_exit出口记录；新增B03出口选择、B09拥堵模型
     新增：支持人员烟雾中毒死亡，死亡人员原地占用元胞，不参与移动
-    新增B08：烟雾警报功能，烟源浓度达到阈值触发全局警报，快照输出警报状态
+    新增B08：烟雾警报功能。场景存在alarm点位时检测报警器；无alarm点位自动回退检测烟源，快照输出警报状态
     """
     MAX_SIM_STEP = 2000  # 最大仿真步数，防止死循环
 
@@ -43,7 +42,7 @@ class EvacEngine:
         self.time_step_s = scene.parameters.get("time_step_s", 1.0)
 
         # ===== 新增B08烟雾警报配置 =====
-        self.alarm_threshold = 0.45  # 烟源位置烟雾浓度触发阈值
+        self.alarm_threshold = 0.45  # 烟雾浓度触发阈值
         self.is_alarm_triggered = False  # 警报状态，一旦触发永久保持开启
 
         # 绑定场景seed，给外部冲突消解、出口选择、拥堵模型使用，保证仿真可复现
@@ -93,6 +92,7 @@ class EvacEngine:
         self.smoke_matrix = self.smoke_engine.smoke_matrix
         self.smoke_sources = scene.smoke_sources
         self.exits = scene.exits
+        self.alarm_points = getattr(scene, "alarm_points", []) # 新增：读取场景报警器点位
 
     def load_external_persons(self, persons):
         self.person_map.clear()
@@ -131,18 +131,30 @@ class EvacEngine:
             if 0 <= y < self.height and 0 <= x < self.width:
                 cell.smoke = smoke_mat[y][x]
 
-        # ====================== B08 烟雾警报判断 ======================
+        # ====================== B08 烟雾警报判断【兼容新旧地图】 ======================
         if not self.is_alarm_triggered:
-            # 遍历所有烟源点位，检测浓度
-            for src in self.scene.smoke_sources:
-                sx, sy = int(src.x), int(src.y)
-                if 0 <= sx < self.width and 0 <= sy < self.height:
-                    conc_at_source = smoke_mat[sy, sx]
-                    if conc_at_source >= self.alarm_threshold:
-                        self.is_alarm_triggered = True
-                        print(f"[ALARM] 烟雾警报触发！Step:{self.current_step}, 烟源浓度:{conc_at_source:.3f}")
-                        break
-        # =============================================================
+            alarm_points = getattr(self.scene, "alarm_points", [])
+            if alarm_points and len(alarm_points) > 0:
+                # 场景有报警器点位：检测alarm点
+                for alarm in alarm_points:
+                    ax, ay = int(alarm.x), int(alarm.y)
+                    if 0 <= ax < self.width and 0 <= ay < self.height:
+                        conc = smoke_mat[ay, ax]
+                        if conc >= self.alarm_threshold:
+                            self.is_alarm_triggered = True
+                            print(f"[ALARM] 报警器触发！Step:{self.current_step}, 报警器坐标({ax},{ay}),浓度:{conc:.3f}")
+                            break
+            else:
+                # 场景无alarm点位，回退旧逻辑，检测烟源
+                for src in self.scene.smoke_sources:
+                    sx, sy = int(src.x), int(src.y)
+                    if 0 <= sx < self.width and 0 <= sy < self.height:
+                        conc_at_source = smoke_mat[sy, sx]
+                        if conc_at_source >= self.alarm_threshold:
+                            self.is_alarm_triggered = True
+                            print(f"[ALARM] 烟源触发警报！Step:{self.current_step},烟源浓度:{conc_at_source:.3f}")
+                            break
+        # ============================================================================
 
         # 2. 批量计算行人风险 ✅ 新增 time_step_s 参数
         risk_dict = self.risk_engine.batch_calc_all_risk(
