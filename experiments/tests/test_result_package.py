@@ -14,20 +14,22 @@ from experiments.result_package import _heatmap_svg, _occupancy_display_color, b
 
 class ResultPackageTests(unittest.TestCase):
     def test_occupancy_heatmap_uses_fixed_absolute_scale_without_changing_raw_counts(self) -> None:
-        run_a = [0, 10, 25, 50, 62]
-        run_b = [0, 10, 25, 50, 100, 137]
+        run_a = [0, 1, 5, 10, 25, 50, 100]
+        run_b = [0, 1, 5, 10, 25, 50, 100, 137]
 
         occupancy_a, occupancy_b = [run_a.copy()], [run_b.copy()]
         svg_a, svg_b = _heatmap_svg(occupancy_a), _heatmap_svg(occupancy_b)
         colors_a = dict(zip(run_a, re.findall(r'<rect[^>]+fill="([^"]+)" stroke="#e5e7eb"', svg_a)))
         colors_b = dict(zip(run_b, re.findall(r'<rect[^>]+fill="([^"]+)" stroke="#e5e7eb"', svg_b)))
-        for value in (10, 25, 50):
+        for value in (1, 5, 10, 25, 50, 100):
             self.assertEqual(colors_a[value], colors_b[value])
             self.assertEqual(colors_a[value], _occupancy_display_color(value))
         self.assertEqual(colors_b[100], colors_b[137])
+        self.assertEqual("rgb(254,202,202)", colors_a[1])
+        self.assertNotEqual(colors_a[0], colors_a[1])
         self.assertEqual([run_a], occupancy_a)
         self.assertEqual([run_b], occupancy_b)
-        self.assertIn("最大值 62", svg_a)
+        self.assertIn("最大值 100", svg_a)
         self.assertIn("最大值 137", svg_b)
         self.assertIn("100+", svg_a)
         self.assertIn("颜色采用固定累计次数色标，便于不同实验直接比较；原始累计次数不变", svg_b)

@@ -143,12 +143,15 @@ def _curve_svg(points: list[tuple[float, int]], population: int) -> str:
 </svg>'''
 
 
-_OCCUPANCY_COLOR_STOPS: tuple[tuple[float, tuple[int, int, int]], ...] = (
+_OCCUPANCY_COLOR_BANDS: tuple[tuple[float, tuple[int, int, int]], ...] = (
     (0.0, (255, 255, 255)),
-    (10.0, (254, 226, 226)),
-    (25.0, (252, 165, 165)),
-    (50.0, (248, 113, 113)),
-    (100.0, (153, 27, 27)),
+    (2.0, (254, 202, 202)),
+    (5.0, (252, 165, 165)),
+    (10.0, (239, 68, 68)),
+    (25.0, (220, 38, 38)),
+    (50.0, (185, 28, 28)),
+    (99.999999, (127, 29, 29)),
+    (float("inf"), (69, 10, 10)),
 )
 
 
@@ -159,16 +162,10 @@ def _occupancy_display_color(value: int | float) -> str:
     the same count has the same visual meaning across result packages.
     """
     count = max(0.0, float(value))
-    for index, (upper_value, upper_color) in enumerate(_OCCUPANCY_COLOR_STOPS):
+    for upper_value, color in _OCCUPANCY_COLOR_BANDS:
         if count <= upper_value:
-            if index == 0:
-                return f"rgb({upper_color[0]},{upper_color[1]},{upper_color[2]})"
-            lower_value, lower_color = _OCCUPANCY_COLOR_STOPS[index - 1]
-            fraction = (count - lower_value) / (upper_value - lower_value)
-            channels = tuple(round(lower + (upper - lower) * fraction) for lower, upper in zip(lower_color, upper_color))
-            return f"rgb({channels[0]},{channels[1]},{channels[2]})"
-    saturated = _OCCUPANCY_COLOR_STOPS[-1][1]
-    return f"rgb({saturated[0]},{saturated[1]},{saturated[2]})"
+            return f"rgb({color[0]},{color[1]},{color[2]})"
+    raise AssertionError("fixed occupancy colour scale must cover every count")
 
 
 def _heatmap_svg(occupancy: list[list[int]]) -> str:
@@ -187,10 +184,10 @@ def _heatmap_svg(occupancy: list[list[int]]) -> str:
             cells.append(
                 f'<rect x="{margin + x * cell}" y="{title_h + y * cell}" width="{cell}" height="{cell}" fill="{_occupancy_display_color(value)}" stroke="#e5e7eb" stroke-width="0.4"/>'
             )
-    legend_values = (0, 10, 25, 50, 100)
+    legend_values = (0, 1, 5, 10, 25, 50, 100)
     legend = "".join(
-        f'<rect x="{margin + index * 64}" y="50" width="13" height="10" fill="{_occupancy_display_color(value)}" stroke="#cbd5e1" stroke-width="0.4"/>'
-        f'<text x="{margin + index * 64 + 17}" y="59" font-family="Arial" font-size="10" fill="#556070">{"100+" if value == 100 else value}</text>'
+        f'<rect x="{margin + index * 52}" y="50" width="13" height="10" fill="{_occupancy_display_color(value)}" stroke="#cbd5e1" stroke-width="0.4"/>'
+        f'<text x="{margin + index * 52 + 17}" y="59" font-family="Arial" font-size="10" fill="#556070">{"100+" if value == 100 else value}</text>'
         for index, value in enumerate(legend_values)
     )
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{svg_w}" height="{svg_h}" viewBox="0 0 {svg_w} {svg_h}">
