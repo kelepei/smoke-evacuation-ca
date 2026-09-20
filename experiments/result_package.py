@@ -82,6 +82,96 @@ def _csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
     return stream.getvalue()
 
 
+_PERSON_ID_MAPPING_FIELDS = ("source_person_id", "runtime_person_id")
+
+
+def _person_id_mapping_csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
+    stream = io.StringIO(newline="")
+    writer = csv.DictWriter(stream, fieldnames=_PERSON_ID_MAPPING_FIELDS)
+    writer.writeheader()
+    writer.writerows(rows)
+    return stream.getvalue()
+
+
+def _person_id_mapping(
+    people_rows: Iterable[Mapping[str, Any]], input_files: Mapping[str, Path]
+) -> tuple[list[dict[str, int]], dict[str, Any]]:
+    """Join source and runtime IDs using their real initial positions.
+
+    D does not infer an offset. A mapping is emitted only when the positioned
+    population and the initial runtime frame form an exact, one-to-one join.
+    """
+    artifact = "person_id_mapping.csv"
+    base_metadata: dict[str, Any] = {
+        "artifact": artifact,
+        "source_id_convention": "unavailable",
+        "runtime_id_convention": "people_log.csv person_id",
+        "derivation": "unique initial x/y position join; no numeric ID offset is inferred",
+    }
+    population_path = input_files.get("population")
+    if population_path is None or not population_path.is_file():
+        return [], {**base_metadata, "status": "unavailable", "reason": "positioned population input is unavailable"}
+    try:
+        payload = json.loads(population_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return [], {**base_metadata, "status": "unavailable", "reason": "positioned population input is not valid JSON"}
+    raw_people = payload.get("persons") if isinstance(payload, Mapping) else None
+    if not isinstance(raw_people, list) or not raw_people:
+        return [], {**base_metadata, "status": "unavailable", "reason": "positioned population input has no persons[]"}
+
+    source_by_position: dict[tuple[int, int], int] = {}
+    source_ids: list[int] = []
+    source_field: str | None = None
+    for raw in raw_people:
+        if not isinstance(raw, Mapping):
+            return [], {**base_metadata, "status": "unavailable", "reason": "source population contains a non-object person"}
+        field = next((name for name in ("source_person_id", "person_id", "id") if name in raw), None)
+        source_id = _parse_int(raw.get(field)) if field else None
+        x, y = _parse_int(raw.get("x")), _parse_int(raw.get("y"))
+        if source_id is None or x is None or y is None:
+            return [], {**base_metadata, "status": "unavailable", "reason": "source population needs integer ID and x/y"}
+        if source_field is None:
+            source_field = field
+        elif source_field != field:
+            return [], {**base_metadata, "status": "unavailable", "reason": "source population uses inconsistent ID fields"}
+        if (x, y) in source_by_position or source_id in source_ids:
+            return [], {**base_metadata, "status": "unavailable", "reason": "source population IDs or initial positions are not unique"}
+        source_by_position[(x, y)] = source_id
+        source_ids.append(source_id)
+
+    parsed_runtime = [
+        (_parse_int(row.get("step")), _parse_int(row.get("person_id")), _parse_int(row.get("x")), _parse_int(row.get("y")))
+        for row in people_rows
+    ]
+    steps = [step for step, person_id, x, y in parsed_runtime if step is not None and person_id is not None and x is not None and y is not None]
+    if not steps:
+        return [], {**base_metadata, "status": "unavailable", "reason": "people_log.csv has no valid runtime frame"}
+    initial_step = min(steps)
+    runtime_by_position: dict[tuple[int, int], int] = {}
+    for step, person_id, x, y in parsed_runtime:
+        if step != initial_step or person_id is None or x is None or y is None:
+            continue
+        if (x, y) in runtime_by_position or person_id in runtime_by_position.values():
+            return [], {**base_metadata, "status": "unavailable", "reason": "runtime initial IDs or positions are not unique"}
+        runtime_by_position[(x, y)] = person_id
+    if set(source_by_position) != set(runtime_by_position):
+        return [], {**base_metadata, "status": "unavailable", "reason": "source and runtime initial positions do not form an exact join"}
+
+    rows = [
+        {"source_person_id": source_id, "runtime_person_id": runtime_by_position[position]}
+        for position, source_id in sorted(source_by_position.items(), key=lambda item: item[1])
+    ]
+    source_convention = "zero_based" if min(source_ids) == 0 else "one_based" if min(source_ids) == 1 else "explicit_source_ids"
+    return rows, {
+        **base_metadata,
+        "status": "verified",
+        "source_id_convention": f"{source_convention} {source_field}",
+        "runtime_id_convention": "people_log.csv person_id at initial runtime step",
+        "initial_runtime_step": initial_step,
+        "mapped_person_count": len(rows),
+    }
+
+
 def _trajectory_csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
     stream = io.StringIO(newline="")
     writer = csv.DictWriter(stream, fieldnames=KINEMATICS_FIELDS)
@@ -352,6 +442,7 @@ def build_result_package(
     event_path = base / "event_log.csv"
     _read_csv(event_path)
     people_rows = _read_csv(people_path)
+    person_id_mapping, person_id_mapping_metadata = _person_id_mapping(people_rows, input_files)
     analysis = build_runtime_analysis(
         output_dir=base,
         final_snapshot=final_snapshot,
@@ -388,6 +479,7 @@ def build_result_package(
         "max_steps": max_steps,
         "exported_at_utc": datetime.now(timezone.utc).isoformat(),
         "data_source": "A map + C population + B CA via D integration boundary",
+        "person_id_mapping": person_id_mapping_metadata,
         "limitations": {
             "missing_upstream_fields_remain_empty": ["heading", "risk", "dose", "conflict", "exit_switch"],
             "exit_utilization": "calculated only when B logs actual_exit",
@@ -422,6 +514,7 @@ def build_result_package(
         bundle.writestr(prefix + "congestion_level_field.csv", _congestion_level_csv_text(congestion_level["records"]))
         bundle.writestr(prefix + "academic_crowd_fields.json", json.dumps(academic_crowd, ensure_ascii=False, indent=2))
         bundle.writestr(prefix + "academic_crowd_fields.csv", _academic_crowd_csv_text(academic_crowd["records"]))
+        bundle.writestr(prefix + "person_id_mapping.csv", _person_id_mapping_csv_text(person_id_mapping))
         bundle.write(people_path, prefix + "people_log.csv")
         bundle.write(event_path, prefix + "event_log.csv")
         for key, source in input_files.items():

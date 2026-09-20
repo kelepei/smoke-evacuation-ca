@@ -104,6 +104,7 @@ class ResultPackageTests(unittest.TestCase):
                         "run_01/velocity_vector_field.json", "run_01/velocity_vector_field.csv",
                         "run_01/congestion_level_field.json", "run_01/congestion_level_field.csv",
                         "run_01/academic_crowd_fields.json", "run_01/academic_crowd_fields.csv",
+                        "run_01/person_id_mapping.csv",
                         "run_01/metadata.json", "run_01/config.json", "run_01/inputs/map.json",
                         "run_01/inputs/population.json",
                     },
@@ -111,12 +112,48 @@ class ResultPackageTests(unittest.TestCase):
                 metadata = json.loads(archive.read("run_01/metadata.json"))
                 configuration = json.loads(archive.read("run_01/config.json"))
                 people_log = archive.read("run_01/people_log.csv").decode("utf-8")
-                self.assertIn("累计占用热力图", archive.read("run_01/occupancy_heatmap.svg").decode("utf-8"))
+                heatmap_svg = archive.read("run_01/occupancy_heatmap.svg").decode("utf-8")
+                self.assertIn("累计占用热力图", heatmap_svg)
+                self.assertIn("颜色采用固定累计次数色标，便于不同实验直接比较；原始累计次数不变", heatmap_svg)
+                self.assertIn("100+", heatmap_svg)
+                self.assertIn(_occupancy_display_color(1), heatmap_svg)
                 self.assertIn("actual_exit_entity", people_log)
                 self.assertIn("exit_entity_01", people_log)
                 self.assertEqual("unavailable", metadata["analysis_contract"]["physical_scale"]["source"])
+                self.assertEqual("unavailable", metadata["person_id_mapping"]["status"])
                 self.assertIn("speed_m_s", archive.read("run_01/trajectory_kinematics.csv").decode("utf-8"))
         self.assertEqual(metadata["summary"]["evacuated_count"], 1)
         self.assertEqual(metadata["summary"]["last_successful_exit_time"], 0.5)
         self.assertEqual(metadata["random_seed"], 17)
         self.assertEqual(configuration["random_seed"], 17)
+
+    def test_package_writes_verified_source_to_runtime_person_id_mapping(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_people = [{"person_id": source_id, "x": source_id + 1, "y": 3} for source_id in range(40)]
+            runtime_rows = "".join(
+                f"0,0,{source_id + 1},{source_id + 1},3,false\n" for source_id in range(40)
+            )
+            (root / "people_log.csv").write_text(
+                "step,time_s,person_id,x,y,evacuated\n" + runtime_rows,
+                encoding="utf-8",
+            )
+            (root / "event_log.csv").write_text("event_type\n", encoding="utf-8")
+            population_path = root / "generated_population_positioned.json"
+            population_path.write_text(json.dumps({"persons": source_people}), encoding="utf-8")
+            package = build_result_package(
+                output_dir=root,
+                final_snapshot={"run_id": "mapping_run", "grid": {"width": 42, "height": 5}},
+                input_files={"population": population_path}, max_steps=10,
+            )
+            with zipfile.ZipFile(io.BytesIO(package.content)) as archive:
+                metadata = json.loads(archive.read("mapping_run/metadata.json"))
+                mapping = list(csv.DictReader(io.StringIO(archive.read("mapping_run/person_id_mapping.csv").decode("utf-8"))))
+            self.assertEqual("verified", metadata["person_id_mapping"]["status"])
+            self.assertEqual("zero_based person_id", metadata["person_id_mapping"]["source_id_convention"])
+            self.assertEqual(40, metadata["person_id_mapping"]["mapped_person_count"])
+            self.assertEqual(40, len(mapping))
+            self.assertEqual({"source_person_id": "0", "runtime_person_id": "1"}, mapping[0])
+            self.assertEqual({"source_person_id": "39", "runtime_person_id": "40"}, mapping[-1])
+            self.assertEqual(40, len({row["source_person_id"] for row in mapping}))
+            self.assertEqual(40, len({row["runtime_person_id"] for row in mapping}))
