@@ -477,8 +477,8 @@ class CaSnapshotAdapter:
         adapter_meta = {
             "simulation_module": simulation.__class__.__module__,
             "grid_layout_assumption": (
-                "temporary B mock: cells[y * width + x], fields[y][x], "
-                "display origin upper; shared A/B/D rule is not frozen"
+                "integrated B runtime: cells[y * width + x], fields[y][x], "
+                "display origin upper; shared A/B/D row-major grid contract"
             ),
             "derived_fields": (
                 ["people.status"] if any(
