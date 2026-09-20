@@ -8,10 +8,24 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from experiments.result_package import build_result_package, build_runtime_analysis
+from experiments.result_package import _heatmap_svg, _occupancy_display_ratio, build_result_package, build_runtime_analysis
 
 
 class ResultPackageTests(unittest.TestCase):
+    def test_occupancy_heatmap_uses_logarithmic_display_without_changing_raw_counts(self) -> None:
+        values = [0, 1, 2, 5, 10, 137]
+        ratios = [_occupancy_display_ratio(value, 137) for value in values]
+        self.assertEqual(0.0, ratios[0])
+        self.assertEqual(1.0, ratios[-1])
+        self.assertEqual(ratios, sorted(ratios))
+        self.assertGreater(ratios[1], 0.1)  # visibly stronger than linear 1 / 137
+
+        occupancy = [values.copy()]
+        svg = _heatmap_svg(occupancy)
+        self.assertEqual([[0, 1, 2, 5, 10, 137]], occupancy)
+        self.assertIn("最大值 137", svg)
+        self.assertIn("颜色采用对数拉伸以增强低占用区域可见性，原始累计次数不变", svg)
+
     def test_live_entity_topology_never_falls_back_to_cell_utilization(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -152,6 +152,13 @@ def _heat_color(value: float) -> str:
     return f"rgb({red},{green},{blue})"
 
 
+def _occupancy_display_ratio(value: int | float, maximum: int | float) -> float:
+    """Map a raw occupancy count to a display-only logarithmic intensity."""
+    if maximum <= 0 or value <= 0:
+        return 0.0
+    return max(0.0, min(1.0, math.log1p(float(value)) / math.log1p(float(maximum))))
+
+
 def _heatmap_svg(occupancy: list[list[int]]) -> str:
     height = len(occupancy)
     width = len(occupancy[0]) if occupancy else 0
@@ -164,14 +171,15 @@ def _heatmap_svg(occupancy: list[list[int]]) -> str:
     cells: list[str] = []
     for y, row in enumerate(occupancy):
         for x, value in enumerate(row):
-            ratio = 0.0 if maximum == 0 else value / maximum
+            # This affects only SVG colour contrast; ``occupancy`` remains raw counts.
+            ratio = _occupancy_display_ratio(value, maximum)
             cells.append(
                 f'<rect x="{margin + x * cell}" y="{title_h + y * cell}" width="{cell}" height="{cell}" fill="{_heat_color(ratio)}" stroke="#e5e7eb" stroke-width="0.4"/>'
             )
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{svg_w}" height="{svg_h}" viewBox="0 0 {svg_w} {svg_h}">
   <rect width="100%" height="100%" fill="#ffffff"/>
   <text x="{margin}" y="24" font-family="Arial, Microsoft YaHei" font-size="17" fill="#18243a">累计占用热力图（真实日志）</text>
-  <text x="{margin}" y="40" font-family="Arial, Microsoft YaHei" font-size="11" fill="#556070">颜色越深表示未撤离人员在该元胞累计出现次数越多；最大值 {maximum}</text>
+  <text x="{margin}" y="40" font-family="Arial, Microsoft YaHei" font-size="11" fill="#556070">颜色采用对数拉伸以增强低占用区域可见性，原始累计次数不变；最大值 {maximum}</text>
   {''.join(cells)}
 </svg>'''
 

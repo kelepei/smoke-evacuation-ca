@@ -277,7 +277,7 @@
         <span class="info-tooltip" tabindex="0" aria-label="查看数据来源">!</span>
         <div class="info-tooltip-content" id="dataProvenance"><b>数据来源：</b>本次运行日志和仿真快照。风险、剂量、实际出口只在上游实际返回时展示；缺失字段为 NA。B 当前未公开个人风险结果，平均风险显示 NA。</div>
       </div>
-      <div class="academic-note" id="academicHeatmapNote">累计占用：实验过程中人员停留频度，不是 academic metric。</div><div class="figure-wrap" id="heatmapFigure"><div class="figure-placeholder">运行后点击“刷新真实分析”。</div></div>
+      <div class="academic-note" id="academicHeatmapNote">累计占用：实验过程中人员停留频度；颜色采用对数拉伸以增强低占用区域可见性，原始累计次数不变。</div><div class="figure-wrap" id="heatmapFigure"><div class="figure-placeholder">运行后点击“刷新真实分析”。</div></div>
     </section>
   </section>
 </main>
@@ -1147,7 +1147,7 @@
 
   function renderSelectedHeatmap(){
     const kind=$("academicHeatmapSelect").value;
-    const labels={occupancy:["累计占用热力图","累计占用：人员停留频度。"],density:["Density 热力图","Density：真实 academic artifact。"],cl:["CL 热力图","CL：真实 academic artifact。"],cn:["CN 热力图","CN：真实 academic artifact。"],crowd_danger:["Crowd Danger 热力图","Crowd Danger：真实 academic artifact。"]};
+    const labels={occupancy:["累计占用热力图","累计占用：人员停留频度；颜色采用对数拉伸以增强低占用区域可见性，原始累计次数不变。"],density:["Density 热力图","Density：真实 academic artifact。"],cl:["CL 热力图","CL：真实 academic artifact。"],cn:["CN 热力图","CN：真实 academic artifact。"],crowd_danger:["Crowd Danger 热力图","Crowd Danger：真实 academic artifact。"]};
     $("heatmapTitle").textContent=labels[kind][0]; $("academicHeatmapNote").textContent=labels[kind][1];
     if(kind==="occupancy"){setAnalysisFigure("heatmapFigure",latestAnalysis&&latestAnalysis.occupancy_heatmap_svg,"暂无可用于绘图的真实日志。");return;}
     const academic=latestAnalysis&&latestAnalysis.academic_crowd_fields;
