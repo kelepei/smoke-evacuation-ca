@@ -16,6 +16,7 @@ from .conflict_solver import resolve_conflict
 from .exit_choice import ExitChooser
 from .congestion import CongestionModel
 
+
 class EvacEngine:
     """
     疏散仿真引擎
@@ -101,13 +102,13 @@ class EvacEngine:
 
     def is_all_evacuated(self) -> bool:
         # 全部撤离 OR 全部死亡，仿真结束
-        return all(p.evacuated or p.is_dead for p in self.person_map.values())
+        return all(getattr(p, "evacuated", False) or getattr(p, "is_dead", False) for p in self.person_map.values())
 
     def get_evacuated_count(self) -> int:
-        return sum(1 for p in self.person_map.values() if p.evacuated)
+        return sum(1 for p in self.person_map.values() if getattr(p, "evacuated", False))
 
     def get_dead_count(self) -> int:
-        return sum(1 for p in self.person_map.values() if p.is_dead)
+        return sum(1 for p in self.person_map.values() if getattr(p, "is_dead", False))
 
     def run_one_step(self, c_step_data: dict = None, signage_model=None):
         if c_step_data is None:
@@ -169,14 +170,22 @@ class EvacEngine:
         # 4. 标记占用坐标，避免行人重叠 ✅ 死亡人员保留占用元胞
         occupied_positions = set()
         for pid, person in self.person_map.items():
-            if not person.evacuated and not person.is_dead:
+            if not getattr(person, "evacuated", False) and not getattr(person, "is_dead", False):
                 occupied_positions.add((int(person.x), int(person.y)))
         alive_person_pos = occupied_positions
+
+        # =========【修复】循环外提前构造出口列表，兼容Exit对象 / tuple元组 =========
+        exit_list = []
+        for e in self.exits:
+            if isinstance(e, tuple):
+                exit_list.append(e)
+            else:
+                exit_list.append((e.id, e.x, e.y))
 
         # 5. 预计算下一时刻位置 ✅ 死亡人员跳过移动计算
         next_positions = {}
         for pid, person in self.person_map.items():
-            if person.evacuated or person.is_dead:
+            if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
                 continue
             single_behavior = c_step_data.get(pid, {})
             if "target_exit" in single_behavior:
@@ -191,22 +200,22 @@ class EvacEngine:
                 floor_field=self.floor_field,
                 signage_model=signage_model,
                 occupied_positions=occupied_positions,
-                exit_list=[(e.id, e.x, e.y) for e in self.exits],
+                exit_list=exit_list,
                 exit_chooser=self.exit_chooser,
                 congestion_model=self.congestion_model,
                 alive_person_pos=alive_person_pos,
-                rng=self.random
-                # 如果后续C模块需要，在这里增加 alarm=self.is_alarm_triggered
+                rng=self.random,
+                person_map=self.person_map  # ✅迭代1：传入person_map给ca_model，为跟随预留
             )
             next_positions[pid] = (nx, ny)
 
         # -------- 调用外部conflict_solver做冲突消解 --------
         fixed_next_pos = resolve_conflict(next_positions, self.person_map, self.random)
 
-        # 6. 更新坐标 & 判断是否撤离，记录 actual_exit ✅ 死亡人员不更新坐标
+        # 6. 更新坐标 & 判断是否撤离，记录 actual_exit ✅【修复这里！兼容tuple/对象】
         for pid, (nx, ny) in fixed_next_pos.items():
             person = self.person_map[pid]
-            if person.evacuated or person.is_dead:
+            if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
                 continue
             person.prev_x = person.x
             person.prev_y = person.y
@@ -220,7 +229,11 @@ class EvacEngine:
                 px = int(nx)
                 py = int(ny)
                 for e in self.exits:
-                    ex, ey, eid = e.x, e.y, e.id
+                    # 兼容两种格式：Exit对象 或者 (id, x, y)元组
+                    if isinstance(e, tuple):
+                        eid, ex, ey = e
+                    else:
+                        ex, ey, eid = e.x, e.y, e.id
                     if ex == px and ey == py:
                         person.actual_exit = eid
                         break
@@ -254,15 +267,15 @@ class EvacEngine:
         return {
             pid: (int(p.x), int(p.y))
             for pid, p in self.person_map.items()
-            if not p.evacuated
+            if not getattr(p, "evacuated", False)
         }
 
     def get_evacuation_time(self, person_id: int = None) -> int:
         if person_id is None:
-            evac_steps = [p.evac_step for p in self.person_map.values() if p.evac_step >= 0]
+            evac_steps = [p.evac_step for p in self.person_map.values() if getattr(p, "evac_step", -1) >= 0]
             if len(evac_steps) == self.total_persons:
                 return max(evac_steps)
             return -1
         else:
             p = self.person_map.get(person_id)
-            return p.evac_step if p else -1
+            return p.evac_step if (p and hasattr(p, "evac_step")) else -1

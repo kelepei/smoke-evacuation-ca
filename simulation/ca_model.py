@@ -11,19 +11,26 @@ DIRS = [(-1, -1), (-1, 0), (-1, 1),
 
 def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behavior=None,
                        floor_field=None, signage_model=None, occupied_positions=None, exit_list=None,
-                       exit_chooser=None, congestion_model=None, alive_person_pos=None, rng=None):
+                       exit_chooser=None, congestion_model=None, alive_person_pos=None, rng=None,
+                       person_map: dict = None):   # ✅迭代1新增入参 person_map
     """
     计算行人的下一个位置
     新增risk_dict：{person_id: 行人综合感知风险Risk_i(t)}
     新增exit_list入参，用于兜底计算出口距离
     新增B03出口选择、B09拥堵模型相关入参
     ✅适配死亡逻辑：is_dead=True直接返回原地坐标，不执行移动决策
+    ✅迭代1：支持C传入is_waiting原地等待；person_map预留用于后续跟随行为
     """
     px, py = int(person.x), int(person.y)
 
     # ========= 新增：死亡/已撤离行人直接原地不动 =========
     if getattr(person, "is_dead", False) or getattr(person, "evacuated", False):
         return px, py
+
+    # ===================== 迭代1新增：C模块is_waiting原地等待 =====================
+    if single_behavior is not None and single_behavior.get("is_waiting", False):
+        return px, py
+    # =========================================================================
 
     # ===================== B03 出口选择模块 =====================
     if exit_chooser is not None and single_behavior is not None:
