@@ -43,7 +43,9 @@ from experiments.run_artifacts import write_run_artifacts
 from visualization.scene_input_adapter import grid_to_static_snapshot, load_map_grid
 
 
-MAX_REQUEST_BYTES = 24 * 1024 * 1024
+# A maps are sent through the local browser bridge as JSON. Keep a bounded
+# limit while accepting the supplied 25.7 MB large-map JSON.
+MAX_REQUEST_BYTES = 64 * 1024 * 1024
 ALLOWED_MAP_SUFFIXES = {".json", ".csv", ".png"}
 ALLOWED_YAML_SUFFIXES = {".yaml", ".yml"}
 STANDARD_TEMPLATE_IDS = ("classroom", "mall", "canteen", "dormitory")

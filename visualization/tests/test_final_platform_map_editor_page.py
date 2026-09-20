@@ -43,6 +43,7 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
         self.assertIn('grid-template-columns:320px minmax(560px,1fr) 368px', self.page)
         self.assertIn('.init-control{flex:0 0 88px;min-width:88px;white-space:nowrap}', self.page)
         self.assertIn('.toolbar .spacer{flex:1 1 auto;min-width:0}', self.page)
+        self.assertIn('@media(max-width:1640px){.layer-controls{display:none}}', self.page)
         self.assertIn('.run-control{flex:0 0 56px;min-width:56px;white-space:nowrap}', self.page)
         self.assertIn('#timeText{flex:0 0 86px;width:86px', self.page)
         self.assertIn('flex-wrap:nowrap;white-space:nowrap', self.page)
