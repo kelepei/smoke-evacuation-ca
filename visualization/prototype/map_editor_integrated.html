@@ -40,6 +40,7 @@ kbd{display:inline-block;padding:2px 6px;border:1px solid #bbb;border-radius:4px
     <button data-type="obstacle">3 障碍</button>
     <button data-type="exit">4 出口</button>
     <button data-type="smoke_source">5 烟源</button>
+    <button data-mode="alarm">6 警报</button>
   </div>
 
   <div class="toolbar-group">
@@ -56,7 +57,7 @@ kbd{display:inline-block;padding:2px 6px;border:1px solid #bbb;border-radius:4px
 
   <div class="toolbar-group">
     <button id="saveBtn">保存 JSON</button>
-    <button id="clearSemanticBtn">清除语义</button>
+    <button id="clearSemanticBtn">清除语义</button><button id="clearAlarmBtn">清除警报</button>
   </div>
 
   <div class="status" id="status">等待导入地图</div>
@@ -74,6 +75,7 @@ kbd{display:inline-block;padding:2px 6px;border:1px solid #bbb;border-radius:4px
     <div class="shortcut"><kbd>3</kbd><span>障碍 OBSTACLE</span></div>
     <div class="shortcut"><kbd>4</kbd><span>出口 EXIT</span></div>
     <div class="shortcut"><kbd>5</kbd><span>烟源 SMOKE_SOURCE</span></div>
+    <div class="shortcut"><kbd>6</kbd><span>警报设备 ALARM（仅 FREE）</span></div>
 
     <div class="panel-title" style="margin-top:16px">语义类型</div>
     <div class="shortcut"><kbd>W</kbd><span>教室</span></div>
@@ -99,7 +101,8 @@ kbd{display:inline-block;padding:2px 6px;border:1px solid #bbb;border-radius:4px
     <div class="info-row">名称：<span id="mapName">-</span></div>
     <div class="info-row">宽度：<span id="mapWidth">-</span></div>
     <div class="info-row">高度：<span id="mapHeight">-</span></div>
-    <div class="info-row">Cell Size：<span id="cellSize">-</span> m</div>
+    <div class="info-row">Legacy Cell Size：<span id="cellSize">-</span></div>
+    <div class="info-row">Physical Cell Size：<span id="physicalCellSize">未标定</span></div>
 
     <hr>
     <div class="panel-title">图例</div>
@@ -109,6 +112,7 @@ kbd{display:inline-block;padding:2px 6px;border:1px solid #bbb;border-radius:4px
       <div class="legend-color" style="background:#999"></div><span>障碍 OBSTACLE</span>
       <div class="legend-color" style="background:#35a853"></div><span>出口 EXIT</span>
       <div class="legend-color" style="background:#f97316"></div><span>烟源 SMOKE_SOURCE</span>
+      <div class="legend-color" style="background:#fff;border:3px solid #dc2626"></div><span>警报设备 ALARM（仍为 FREE）</span>
     </div>
 
     <hr>
@@ -170,6 +174,8 @@ function normalizeMapData(data){
     if(!("smoke" in cell)) cell.smoke=0;
     if(!("risk" in cell)) cell.risk=0;
     if(!("guidance" in cell)) cell.guidance=0;
+    if(!("alarm" in cell)) cell.alarm=false;
+    if(cell.alarm===true && cell.type!=="free") cell.alarm=false;
   });
 
   return data;
@@ -228,6 +234,7 @@ function drawCell(cell){
 
   ctx.fillStyle=info.color;
   ctx.fillRect(x,y,cellPixelSize,cellPixelSize);
+  if(cell.alarm===true){ctx.strokeStyle="#dc2626";ctx.lineWidth=Math.max(2,cellPixelSize*.13);ctx.strokeRect(x+1,y+1,cellPixelSize-2,cellPixelSize-2);}
 
   if(cell.semantic&&SEMANTIC_LABEL[cell.semantic]&&cellPixelSize>=12){
     ctx.fillStyle=cell.type==="wall"?"#fff":"#333";
@@ -274,17 +281,21 @@ function drawSelection(){
 }
 
 function applyTypeToRegion(xmin,ymin,xmax,ymax){
-  let changed=0;
+  let changed=0,alarmsCleared=0;
   for(let y=ymin;y<=ymax;y++){
     for(let x=xmin;x<=xmax;x++){
       const cell=getCell(x,y);
       if(!cell) continue;
       cell.type=currentType;
+      if(currentType!=="free"&&cell.alarm===true){cell.alarm=false;alarmsCleared++;}
       changed++;
     }
   }
-  setStatus(`批量修改元胞类型：${currentType}，共 ${changed} 个`);
+  setStatus(`批量修改元胞类型：${currentType}，共 ${changed} 个${alarmsCleared?`；已清除 ${alarmsCleared} 个非 FREE 警报标记`:""}`);
 }
+
+function applyAlarmToRegion(xmin,ymin,xmax,ymax){let changed=0,skipped=0;for(let y=ymin;y<=ymax;y++)for(let x=xmin;x<=xmax;x++){const cell=getCell(x,y);if(!cell)continue;if(cell.type==="free"){cell.alarm=true;changed++;}else skipped++;}setStatus(`已设置 ${changed} 个警报设备${skipped?`；跳过 ${skipped} 个非 FREE 元胞`:""}`);}
+function clearAlarmRegion(xmin,ymin,xmax,ymax){let changed=0;for(let y=ymin;y<=ymax;y++)for(let x=xmin;x<=xmax;x++){const cell=getCell(x,y);if(cell&&cell.alarm===true){cell.alarm=false;changed++;}}setStatus(`已清除 ${changed} 个警报设备标记`);}
 
 function applySemanticToRegion(xmin,ymin,xmax,ymax){
   if(!currentSemantic) return;
@@ -372,6 +383,8 @@ canvas.addEventListener("mouseup",event=>{
 
   if(editMode==="type") applyTypeToRegion(xmin,ymin,xmax,ymax);
   else if(editMode==="semantic") applySemanticToRegion(xmin,ymin,xmax,ymax);
+  else if(editMode==="alarm") applyAlarmToRegion(xmin,ymin,xmax,ymax);
+  else if(editMode==="clear-alarm") clearAlarmRegion(xmin,ymin,xmax,ymax);
 
   dragStart=null;
   dragEnd=null;
@@ -393,6 +406,7 @@ document.addEventListener("keydown",event=>{
   };
 
   if(typeMap[key]) setTypeMode(typeMap[key]);
+  else if(key==="6") setAlarmMode();
   else if(semanticMap[key]) setSemanticMode(semanticMap[key]);
   else if(key==="escape"){
     dragStart=null;dragEnd=null;isDragging=false;
@@ -416,6 +430,8 @@ function setSemanticMode(semantic){
   updateModeUI();
   draw();
 }
+function setAlarmMode(){editMode="alarm";currentSemantic=null;updateModeUI();draw();}
+function setClearAlarmMode(){editMode="clear-alarm";currentSemantic=null;updateModeUI();draw();}
 
 document.querySelectorAll("[data-type]").forEach(btn=>{
   btn.addEventListener("click",()=>setTypeMode(btn.dataset.type));
@@ -424,6 +440,7 @@ document.querySelectorAll("[data-type]").forEach(btn=>{
 document.querySelectorAll("[data-semantic]").forEach(btn=>{
   btn.addEventListener("click",()=>setSemanticMode(btn.dataset.semantic));
 });
+document.querySelector('[data-mode="alarm"]').addEventListener("click",setAlarmMode);
 
 document.getElementById("clearSemanticBtn").addEventListener("click",()=>{
   if(!gridData){setStatus("当前没有地图");return}
@@ -441,6 +458,7 @@ document.getElementById("clearSemanticBtn").addEventListener("click",()=>{
   clearSemanticRegion(xmin,ymin,xmax,ymax);
   draw();
 });
+document.getElementById("clearAlarmBtn").addEventListener("click",setClearAlarmMode);
 
 document.getElementById("saveBtn").addEventListener("click",()=>{
   if(!gridData){alert("当前没有地图");return}
@@ -469,6 +487,8 @@ function updateMapInfo(){
   document.getElementById("mapWidth").textContent=gridData.width;
   document.getElementById("mapHeight").textContent=gridData.height;
   document.getElementById("cellSize").textContent=gridData.cell_size;
+  const physical=gridData.analysis&&gridData.analysis.physical_cell_size_m;
+  document.getElementById("physicalCellSize").textContent=Number.isFinite(Number(physical))&&Number(physical)>0?`${physical} m`:"未标定";
 }
 
 function updateModeUI(){
@@ -476,15 +496,19 @@ function updateModeUI(){
 
   if(editMode==="type"){
     mode.textContent=`当前模式：类型 → ${TYPE_INFO[currentType].label} (${currentType})`;
-  }else{
+  }else if(editMode==="semantic"){
     mode.textContent=`当前模式：语义 → ${SEMANTIC_LABEL[currentSemantic]||currentSemantic}`;
+  }else if(editMode==="alarm"){
+    mode.textContent="当前模式：警报设备 → 仅标记 FREE 元胞，不触发 runtime alarm";
+  }else{
+    mode.textContent="当前模式：清除警报设备标记";
   }
 
-  document.querySelectorAll("[data-type],[data-semantic]").forEach(b=>b.classList.remove("active"));
+  document.querySelectorAll("[data-type],[data-semantic],[data-mode]").forEach(b=>b.classList.remove("active"));
 
   const selector=editMode==="type"
     ? `[data-type="${currentType}"]`
-    : `[data-semantic="${currentSemantic}"]`;
+    : editMode==="semantic" ? `[data-semantic="${currentSemantic}"]` : `[data-mode="alarm"]`;
 
   const button=document.querySelector(selector);
   if(button) button.classList.add("active");

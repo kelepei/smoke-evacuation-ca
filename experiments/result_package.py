@@ -19,6 +19,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from experiments.academic_crowd import ACADEMIC_CROWD_FIELDS, academic_crowd_fields
+from experiments.congestion_level import CONGESTION_LEVEL_FIELDS, congestion_level_field
+from experiments.crowd_metrics import DEFAULT_SAMPLING_WINDOW_S, KINEMATICS_FIELDS, VELOCITY_FIELD_FIELDS, trajectory_kinematics, velocity_vector_field
 from experiments.metrics_registry import metric_rows
 from experiments.week6_analysis import analysis_summary_csv, analyze_run
 
@@ -79,6 +82,122 @@ def _csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
     return stream.getvalue()
 
 
+_PERSON_ID_MAPPING_FIELDS = ("source_person_id", "runtime_person_id")
+
+
+def _person_id_mapping_csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
+    stream = io.StringIO(newline="")
+    writer = csv.DictWriter(stream, fieldnames=_PERSON_ID_MAPPING_FIELDS)
+    writer.writeheader()
+    writer.writerows(rows)
+    return stream.getvalue()
+
+
+def _person_id_mapping(
+    people_rows: Iterable[Mapping[str, Any]], input_files: Mapping[str, Path]
+) -> tuple[list[dict[str, int]], dict[str, Any]]:
+    """Join source and runtime IDs using their real initial positions.
+
+    D does not infer an offset. A mapping is emitted only when the positioned
+    population and the initial runtime frame form an exact, one-to-one join.
+    """
+    artifact = "person_id_mapping.csv"
+    base_metadata: dict[str, Any] = {
+        "artifact": artifact,
+        "source_id_convention": "unavailable",
+        "runtime_id_convention": "people_log.csv person_id",
+        "derivation": "unique initial x/y position join; no numeric ID offset is inferred",
+    }
+    population_path = input_files.get("population")
+    if population_path is None or not population_path.is_file():
+        return [], {**base_metadata, "status": "unavailable", "reason": "positioned population input is unavailable"}
+    try:
+        payload = json.loads(population_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return [], {**base_metadata, "status": "unavailable", "reason": "positioned population input is not valid JSON"}
+    raw_people = payload.get("persons") if isinstance(payload, Mapping) else None
+    if not isinstance(raw_people, list) or not raw_people:
+        return [], {**base_metadata, "status": "unavailable", "reason": "positioned population input has no persons[]"}
+
+    source_by_position: dict[tuple[int, int], int] = {}
+    source_ids: list[int] = []
+    source_field: str | None = None
+    for raw in raw_people:
+        if not isinstance(raw, Mapping):
+            return [], {**base_metadata, "status": "unavailable", "reason": "source population contains a non-object person"}
+        field = next((name for name in ("source_person_id", "person_id", "id") if name in raw), None)
+        source_id = _parse_int(raw.get(field)) if field else None
+        x, y = _parse_int(raw.get("x")), _parse_int(raw.get("y"))
+        if source_id is None or x is None or y is None:
+            return [], {**base_metadata, "status": "unavailable", "reason": "source population needs integer ID and x/y"}
+        if source_field is None:
+            source_field = field
+        elif source_field != field:
+            return [], {**base_metadata, "status": "unavailable", "reason": "source population uses inconsistent ID fields"}
+        if (x, y) in source_by_position or source_id in source_ids:
+            return [], {**base_metadata, "status": "unavailable", "reason": "source population IDs or initial positions are not unique"}
+        source_by_position[(x, y)] = source_id
+        source_ids.append(source_id)
+
+    parsed_runtime = [
+        (_parse_int(row.get("step")), _parse_int(row.get("person_id")), _parse_int(row.get("x")), _parse_int(row.get("y")))
+        for row in people_rows
+    ]
+    steps = [step for step, person_id, x, y in parsed_runtime if step is not None and person_id is not None and x is not None and y is not None]
+    if not steps:
+        return [], {**base_metadata, "status": "unavailable", "reason": "people_log.csv has no valid runtime frame"}
+    initial_step = min(steps)
+    runtime_by_position: dict[tuple[int, int], int] = {}
+    for step, person_id, x, y in parsed_runtime:
+        if step != initial_step or person_id is None or x is None or y is None:
+            continue
+        if (x, y) in runtime_by_position or person_id in runtime_by_position.values():
+            return [], {**base_metadata, "status": "unavailable", "reason": "runtime initial IDs or positions are not unique"}
+        runtime_by_position[(x, y)] = person_id
+    if set(source_by_position) != set(runtime_by_position):
+        return [], {**base_metadata, "status": "unavailable", "reason": "source and runtime initial positions do not form an exact join"}
+
+    rows = [
+        {"source_person_id": source_id, "runtime_person_id": runtime_by_position[position]}
+        for position, source_id in sorted(source_by_position.items(), key=lambda item: item[1])
+    ]
+    source_convention = "zero_based" if min(source_ids) == 0 else "one_based" if min(source_ids) == 1 else "explicit_source_ids"
+    return rows, {
+        **base_metadata,
+        "status": "verified",
+        "source_id_convention": f"{source_convention} {source_field}",
+        "runtime_id_convention": "people_log.csv person_id at initial runtime step",
+        "initial_runtime_step": initial_step,
+        "mapped_person_count": len(rows),
+    }
+
+
+def _trajectory_csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
+    stream = io.StringIO(newline="")
+    writer = csv.DictWriter(stream, fieldnames=KINEMATICS_FIELDS)
+    writer.writeheader()
+    writer.writerows(rows)
+    return stream.getvalue()
+
+
+def _velocity_field_csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
+    stream = io.StringIO(newline="")
+    writer = csv.DictWriter(stream, fieldnames=VELOCITY_FIELD_FIELDS)
+    writer.writeheader()
+    writer.writerows(rows)
+    return stream.getvalue()
+
+
+def _congestion_level_csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
+    stream = io.StringIO(newline="")
+    writer = csv.DictWriter(stream, fieldnames=CONGESTION_LEVEL_FIELDS)
+    writer.writeheader(); writer.writerows(rows)
+    return stream.getvalue()
+
+def _academic_crowd_csv_text(rows: Iterable[Mapping[str, Any]]) -> str:
+    stream=io.StringIO(newline=""); writer=csv.DictWriter(stream, fieldnames=ACADEMIC_CROWD_FIELDS); writer.writeheader(); writer.writerows(rows); return stream.getvalue()
+
+
 def _svg_escape(value: Any) -> str:
     return str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -114,13 +233,29 @@ def _curve_svg(points: list[tuple[float, int]], population: int) -> str:
 </svg>'''
 
 
-def _heat_color(value: float) -> str:
-    # White → orange → dark red, based solely on observed occupancy counts.
-    t = max(0.0, min(1.0, value))
-    red = int(255)
-    green = int(248 - 175 * t)
-    blue = int(242 - 210 * t)
-    return f"rgb({red},{green},{blue})"
+_OCCUPANCY_COLOR_BANDS: tuple[tuple[float, tuple[int, int, int]], ...] = (
+    (0.0, (255, 255, 255)),
+    (2.0, (254, 202, 202)),
+    (5.0, (252, 165, 165)),
+    (10.0, (239, 68, 68)),
+    (25.0, (220, 38, 38)),
+    (50.0, (185, 28, 28)),
+    (99.999999, (127, 29, 29)),
+    (float("inf"), (69, 10, 10)),
+)
+
+
+def _occupancy_display_color(value: int | float) -> str:
+    """Return the fixed, display-only colour for a raw occupancy count.
+
+    The scale is deliberately independent of a run's observed maximum so that
+    the same count has the same visual meaning across result packages.
+    """
+    count = max(0.0, float(value))
+    for upper_value, color in _OCCUPANCY_COLOR_BANDS:
+        if count <= upper_value:
+            return f"rgb({color[0]},{color[1]},{color[2]})"
+    raise AssertionError("fixed occupancy colour scale must cover every count")
 
 
 def _heatmap_svg(occupancy: list[list[int]]) -> str:
@@ -129,20 +264,27 @@ def _heatmap_svg(occupancy: list[list[int]]) -> str:
     if width <= 0 or height <= 0:
         return "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"320\" height=\"120\"><text x=\"12\" y=\"30\">无可绘制网格数据</text></svg>"
     cell = max(5, min(24, int(620 / max(width, height))))
-    margin, title_h = 44, 48
+    margin, title_h = 44, 76
     svg_w, svg_h = margin * 2 + width * cell, title_h + margin + height * cell
     maximum = max((value for row in occupancy for value in row), default=0)
     cells: list[str] = []
     for y, row in enumerate(occupancy):
         for x, value in enumerate(row):
-            ratio = 0.0 if maximum == 0 else value / maximum
+            # This affects only SVG colour; ``occupancy`` remains raw counts.
             cells.append(
-                f'<rect x="{margin + x * cell}" y="{title_h + y * cell}" width="{cell}" height="{cell}" fill="{_heat_color(ratio)}" stroke="#e5e7eb" stroke-width="0.4"/>'
+                f'<rect x="{margin + x * cell}" y="{title_h + y * cell}" width="{cell}" height="{cell}" fill="{_occupancy_display_color(value)}" stroke="#e5e7eb" stroke-width="0.4"/>'
             )
+    legend_values = (0, 1, 5, 10, 25, 50, 100)
+    legend = "".join(
+        f'<rect x="{margin + index * 52}" y="50" width="13" height="10" fill="{_occupancy_display_color(value)}" stroke="#cbd5e1" stroke-width="0.4"/>'
+        f'<text x="{margin + index * 52 + 17}" y="59" font-family="Arial" font-size="10" fill="#556070">{"100+" if value == 100 else value}</text>'
+        for index, value in enumerate(legend_values)
+    )
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{svg_w}" height="{svg_h}" viewBox="0 0 {svg_w} {svg_h}">
   <rect width="100%" height="100%" fill="#ffffff"/>
   <text x="{margin}" y="24" font-family="Arial, Microsoft YaHei" font-size="17" fill="#18243a">累计占用热力图（真实日志）</text>
-  <text x="{margin}" y="40" font-family="Arial, Microsoft YaHei" font-size="11" fill="#556070">颜色越深表示未撤离人员在该元胞累计出现次数越多；最大值 {maximum}</text>
+  <text x="{margin}" y="40" font-family="Arial, Microsoft YaHei" font-size="11" fill="#556070">颜色采用固定累计次数色标，便于不同实验直接比较；原始累计次数不变；最大值 {maximum}</text>
+  {legend}
   {''.join(cells)}
 </svg>'''
 
@@ -230,6 +372,10 @@ def build_runtime_analysis(
 
     base = Path(output_dir)
     people_rows = _read_csv(base / "people_log.csv")
+    analysis_contract = final_snapshot.get("analysis_contract", {}) if isinstance(final_snapshot, Mapping) else {}
+    snapshot_grid = final_snapshot.get("grid", {}) if isinstance(final_snapshot, Mapping) else {}
+    if not isinstance(analysis_contract, Mapping): analysis_contract = {}
+    if not isinstance(snapshot_grid, Mapping): snapshot_grid = {}
     width, height = _snapshot_grid_dimensions(final_snapshot)
     visual = _log_visual_data(
         people_rows,
@@ -237,6 +383,8 @@ def build_runtime_analysis(
         height=height,
     )
     week6_metrics = analyze_run(base)
+    exit_entities = final_snapshot.get("exit_entities", []) if isinstance(final_snapshot, Mapping) else []
+    entity_level = isinstance(exit_entities, list) and len(exit_entities) > 0
     summary = {
         "initial_population": week6_metrics["total_persons"],
         "evacuated_count": week6_metrics["evacuated_count"],
@@ -255,6 +403,13 @@ def build_runtime_analysis(
         "metrics": metric_rows(week6_metrics),
         "summary": summary,
         "week6_metrics": week6_metrics,
+        "academic_crowd_fields": academic_crowd_fields(people_rows, grid=snapshot_grid, analysis_contract=analysis_contract),
+        # A live run decides this once from its normalized topology, rather
+        # than switching display representation as partial snapshots arrive.
+        "exit_utilization_contract": {
+            "representation": "entity" if entity_level else "legacy_cell",
+            "source": "actual_exit_entity" if entity_level else "actual_exit",
+        },
     }
     if include_figures:
         result["evacuation_curve_svg"] = _curve_svg(
@@ -286,6 +441,8 @@ def build_result_package(
     people_path = base / "people_log.csv"
     event_path = base / "event_log.csv"
     _read_csv(event_path)
+    people_rows = _read_csv(people_path)
+    person_id_mapping, person_id_mapping_metadata = _person_id_mapping(people_rows, input_files)
     analysis = build_runtime_analysis(
         output_dir=base,
         final_snapshot=final_snapshot,
@@ -293,6 +450,23 @@ def build_result_package(
     )
     metrics = analysis["metrics"]
     summary = analysis["summary"]
+    analysis_contract = final_snapshot.get("analysis_contract")
+    if not isinstance(analysis_contract, Mapping):
+        analysis_contract = {}
+    snapshot_grid = final_snapshot.get("grid")
+    kinematics = trajectory_kinematics(
+        people_rows,
+        physical_scale=analysis_contract.get("physical_scale"),
+        grid=snapshot_grid if isinstance(snapshot_grid, Mapping) else None,
+    )
+    sampling = analysis_contract.get("sampling_window_s")
+    velocity_field = velocity_vector_field(
+        kinematics,
+        sampling_window_s=sampling.get("value") if isinstance(sampling, Mapping) else DEFAULT_SAMPLING_WINDOW_S,
+        physical_scale=analysis_contract.get("physical_scale"),
+    )
+    congestion_level = congestion_level_field(kinematics, grid=snapshot_grid if isinstance(snapshot_grid, Mapping) else {}, analysis_contract=analysis_contract)
+    academic_crowd = academic_crowd_fields(people_rows, grid=snapshot_grid if isinstance(snapshot_grid, Mapping) else {}, analysis_contract=analysis_contract, kinematic_rows=kinematics)
 
     metadata = {
         "run_id": run_id,
@@ -300,10 +474,12 @@ def build_result_package(
         "schema_version": final_snapshot.get("schema_version"),
         "random_seed": final_snapshot.get("random_seed"),
         "time_step_s": final_snapshot.get("time_step"),
+        "analysis_contract": analysis_contract,
         "last_step": final_snapshot.get("step"),
         "max_steps": max_steps,
         "exported_at_utc": datetime.now(timezone.utc).isoformat(),
         "data_source": "A map + C population + B CA via D integration boundary",
+        "person_id_mapping": person_id_mapping_metadata,
         "limitations": {
             "missing_upstream_fields_remain_empty": ["heading", "risk", "dose", "conflict", "exit_switch"],
             "exit_utilization": "calculated only when B logs actual_exit",
@@ -316,6 +492,7 @@ def build_result_package(
         "scenario_id": scenario_id,
         "random_seed": final_snapshot.get("random_seed"),
         "time_step_s": final_snapshot.get("time_step"),
+        "analysis_contract": analysis_contract,
         "max_steps": max_steps,
         "input_files": {key: path.name for key, path in input_files.items() if path.is_file()},
     }
@@ -330,6 +507,14 @@ def build_result_package(
         bundle.writestr(prefix + "occupancy_heatmap.svg", analysis["occupancy_heatmap_svg"])
         bundle.writestr(prefix + "week6_metrics.json", json.dumps(analysis["week6_metrics"], ensure_ascii=False, indent=2))
         bundle.writestr(prefix + "week6_metrics_summary.csv", analysis_summary_csv(analysis["week6_metrics"]))
+        bundle.writestr(prefix + "trajectory_kinematics.csv", _trajectory_csv_text(kinematics))
+        bundle.writestr(prefix + "velocity_vector_field.json", json.dumps(velocity_field, ensure_ascii=False, indent=2))
+        bundle.writestr(prefix + "velocity_vector_field.csv", _velocity_field_csv_text(velocity_field["records"]))
+        bundle.writestr(prefix + "congestion_level_field.json", json.dumps(congestion_level, ensure_ascii=False, indent=2))
+        bundle.writestr(prefix + "congestion_level_field.csv", _congestion_level_csv_text(congestion_level["records"]))
+        bundle.writestr(prefix + "academic_crowd_fields.json", json.dumps(academic_crowd, ensure_ascii=False, indent=2))
+        bundle.writestr(prefix + "academic_crowd_fields.csv", _academic_crowd_csv_text(academic_crowd["records"]))
+        bundle.writestr(prefix + "person_id_mapping.csv", _person_id_mapping_csv_text(person_id_mapping))
         bundle.write(people_path, prefix + "people_log.csv")
         bundle.write(event_path, prefix + "event_log.csv")
         for key, source in input_files.items():

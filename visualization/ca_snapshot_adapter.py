@@ -13,6 +13,8 @@ import math
 from numbers import Integral, Real
 from typing import Any, Iterable, Mapping
 
+from experiments.crowd_metrics import with_runtime_dt
+
 
 SCHEMA_VERSION = "0.1-draft"
 
@@ -276,6 +278,16 @@ class CaSnapshotAdapter:
         parameters = getattr(config, "parameters", None)
         if random_seed is None and isinstance(parameters, Mapping):
             random_seed = parameters.get("random_seed")
+        raw_analysis_contract = (
+            parameters.get("d_analysis_contract") if isinstance(parameters, Mapping) else None
+        )
+        try:
+            analysis_contract = with_runtime_dt(
+                raw_analysis_contract if isinstance(raw_analysis_contract, Mapping) else None,
+                dt_s=self.time_step_s,
+            )
+        except ValueError as exc:
+            raise SnapshotAdapterError("invalid D analysis contract") from exc
 
         smoke_sim = getattr(simulation, "smoke_sim", None)
         public_smoke_matrix = _optional_attr(simulation, "smoke_matrix")
@@ -373,6 +385,10 @@ class CaSnapshotAdapter:
                 normalized_info_history = list(info_history)
             else:
                 normalized_info_history = [info_history]
+            actual_exit = _optional_attr(person, "actual_exit")
+            actual_exit_cell = _optional_attr(person, "actual_exit_cell")
+            if actual_exit_cell is None:
+                actual_exit_cell = actual_exit
             people.append(
                 {
                     "person_id": person_id,
@@ -381,7 +397,11 @@ class CaSnapshotAdapter:
                     "heading": _heading_value(_optional_attr(person, "heading")),
                     "status": _enum_value(status),
                     "target_exit": target_exit,
-                    "actual_exit": _optional_attr(person, "actual_exit"),
+                    # ``actual_exit`` is the untouched B cell-level value.
+                    # Entity aliases are D-side metadata for aggregation only.
+                    "actual_exit": actual_exit,
+                    "actual_exit_cell": actual_exit_cell,
+                    "actual_exit_entity": _optional_attr(person, "actual_exit_entity"),
                     "evacuated": evacuated,
                     "smoke": smoke_concentration,
                     "smoke_concentration": smoke_concentration,
@@ -444,12 +464,21 @@ class CaSnapshotAdapter:
         raw_cell_size = _optional_attr(grid, "cell_size")
         if raw_cell_size is None or float(raw_cell_size) <= 0:
             raise SnapshotAdapterError("grid.cell_size must be greater than zero")
+        raw_alarm_cells = _optional_attr(grid, "d_alarm_cells") or []
+        if not isinstance(raw_alarm_cells, list):
+            raise SnapshotAdapterError("D map alarm markers must be a list")
+        alarm_cells: list[dict[str, int]] = []
+        for marker in raw_alarm_cells:
+            x, y = _optional_attr(marker, "x"), _optional_attr(marker, "y")
+            if not isinstance(x, Integral) or not isinstance(y, Integral) or not (0 <= x < width and 0 <= y < height):
+                raise SnapshotAdapterError("D map alarm marker is outside the grid")
+            alarm_cells.append({"x": int(x), "y": int(y)})
 
         adapter_meta = {
             "simulation_module": simulation.__class__.__module__,
             "grid_layout_assumption": (
-                "temporary B mock: cells[y * width + x], fields[y][x], "
-                "display origin upper; shared A/B/D rule is not frozen"
+                "integrated B runtime: cells[y * width + x], fields[y][x], "
+                "display origin upper; shared A/B/D row-major grid contract"
             ),
             "derived_fields": (
                 ["people.status"] if any(
@@ -466,14 +495,15 @@ class CaSnapshotAdapter:
             ),
             "missing_fields_are_null": True,
             "missing_values_are_not_inferred": True,
-            "smoke_value_domain": "B raw dimensionless concentration in [0, 10]; smoke_matrix[y][x]",
+            "smoke_value_domain": "B06 raw dimensionless concentration in [0, 1]; smoke_matrix[y][x]",
             "smoke_source_input": "B runtime smoke_sources; coordinates use (x, y)",
+            "physical_scale_warning": analysis_contract["physical_scale"].get("warning"),
         }
         extra_meta = getattr(simulation, "d_adapter_meta", None)
         if isinstance(extra_meta, Mapping):
             adapter_meta.update(dict(extra_meta))
 
-        return _json_compatible({
+        payload = _json_compatible({
             "schema_version": self.schema_version,
             "run_id": self.run_id,
             "scenario_id": scenario_id,
@@ -481,17 +511,29 @@ class CaSnapshotAdapter:
             "step": step,
             "time_step": self.time_step_s,
             "time_s": step * self.time_step_s,
+            "analysis_contract": analysis_contract,
             "grid": {
                 "width": width,
                 "height": height,
                 "cell_size": float(raw_cell_size),
                 "cell_type": cell_type,
+                "alarm_cells": alarm_cells,
             },
+            "alarm_cells": alarm_cells,
             "people": people,
             "exits": exits,
+            "exit_entities": list(_optional_attr(simulation, "exit_entities") or []),
             "fields": {
                 "smoke_field": smoke_field,
                 "smoke_sources": smoke_sources,
+                # B06 does not yet publish these fields on EvacEngine.  The
+                # D adapter transparently projects B06's real smoke output.
+                "max_smoke_concentration": _optional_attr(
+                    simulation, "max_smoke_concentration"
+                ),
+                "alarm_triggered": _optional_attr(simulation, "alarm_triggered"),
+                "alarm_source": _optional_attr(simulation, "alarm_source"),
+                "max_smoke_source": _optional_attr(simulation, "max_smoke_source"),
                 "risk_field": risk_field,
                 "congestion_field": congestion_field,
             },
@@ -500,3 +542,12 @@ class CaSnapshotAdapter:
             "strategy_state": {},
             "adapter_meta": adapter_meta,
         })
+        # Guidance is generated from this exact normalized snapshot.  It is a
+        # read-only D-side annotation, never an input to B's movement layer.
+        from experiments.guidance_interface import GuidanceError, generate_guidance, unavailable_guidance
+
+        try:
+            payload["guidance"] = generate_guidance(payload)
+        except GuidanceError as exc:
+            payload["guidance"] = unavailable_guidance(payload, str(exc))
+        return _json_compatible(payload)

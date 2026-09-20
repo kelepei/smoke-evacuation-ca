@@ -8,6 +8,7 @@ for snapshots and CSV logging. This adapter never changes B source or rules.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+import math
 from typing import Any
 
 
@@ -18,36 +19,18 @@ class BRuntimeAdapterError(ValueError):
 BehaviorProvider = Callable[[Any], Mapping[int, Mapping[str, Any]]]
 
 
+# B06 reports this global threshold, but the current B ``EvacEngine`` does not
+# expose it as a runtime field.  D uses it only to project B06's real smoke
+# matrix into a documented alert context for recommendation-only consumers.
+B06_SMOKE_ALARM_THRESHOLD = 0.45
+
+
 def _prepare_b_exit_tuples(engine: Any) -> bool:
-    """Adapt shared-schema exits to B's current runtime-only tuple contract."""
+    """Keep shared-schema exits object-shaped for current B runtime."""
 
-    raw_exits = getattr(engine, "exits", None)
-    if not isinstance(raw_exits, list) or not raw_exits:
-        return False
-    if all(isinstance(item, tuple) and len(item) == 3 for item in raw_exits):
-        return False
-
-    grid = getattr(engine, "grid", None)
-    cells = getattr(grid, "cells", [])
-    exit_cells = [
-        (int(cell.x), int(cell.y))
-        for cell in cells
-        if getattr(getattr(cell, "cell_type", None), "value", getattr(cell, "cell_type", None))
-        == "exit"
-    ]
-    if len(exit_cells) != len(raw_exits):
-        return False
-
-    tuples: list[tuple[int, int, str]] = []
-    for index, exit_obj in enumerate(raw_exits):
-        exit_id = getattr(exit_obj, "id", getattr(exit_obj, "exit_id", None))
-        if exit_id in (None, ""):
-            return False
-        x = getattr(exit_obj, "x", exit_cells[index][0])
-        y = getattr(exit_obj, "y", exit_cells[index][1])
-        tuples.append((int(x), int(y), str(exit_id)))
-    engine.exits = tuples
-    return True
+    # B builds the cell tuples passed to calc_next_position itself; it still
+    # reads engine.exits object attributes for logging and actual_exit.
+    return False
 
 
 def _install_indexed_grid_lookup(grid: Any) -> bool:
@@ -96,6 +79,8 @@ class EvacEngineRuntimeAdapter:
         behavior_provider: BehaviorProvider | None = None,
         render_upstream_animation: bool = False,
         adapter_meta: Mapping[str, Any] | None = None,
+        exit_entities: Any = None,
+        exit_entity_by_cell_id: Mapping[str, str] | None = None,
     ) -> None:
         for name in ("scene", "grid", "person_map", "smoke_matrix"):
             if not hasattr(engine, name):
@@ -112,6 +97,12 @@ class EvacEngineRuntimeAdapter:
             )
         self._engine = engine
         self._behavior_provider = behavior_provider
+        self._exit_entities = self._normalize_exit_entities(exit_entities)
+        self._exit_entity_by_cell_id = {
+            str(cell_id): str(entity_id)
+            for cell_id, entity_id in (exit_entity_by_cell_id or {}).items()
+            if cell_id not in (None, "") and entity_id not in (None, "")
+        }
         if not isinstance(render_upstream_animation, bool):
             raise TypeError("render_upstream_animation must be boolean")
         self._render_upstream_animation = render_upstream_animation
@@ -164,6 +155,16 @@ class EvacEngineRuntimeAdapter:
             ),
             "runtime_instance_defaults": sorted(set(initialized_fields)),
             "missing_fields_are_null": True,
+            "exit_topology": {
+                "entity_count": len(self._exit_entities),
+                "cell_to_entity": dict(self._exit_entity_by_cell_id),
+            },
+            "smoke_alarm_projection": {
+                "threshold": B06_SMOKE_ALARM_THRESHOLD,
+                "threshold_source": "B06 reported contract; not configurable in current B EvacEngine",
+                "max_source": "B smoke_engine.get_max_smoke() when available",
+                "alarm_source": "B field when published; otherwise D projection from B06 max smoke",
+            },
         }
         if adapter_meta:
             self.d_adapter_meta.update(dict(adapter_meta))
@@ -183,6 +184,60 @@ class EvacEngineRuntimeAdapter:
     @property
     def smoke_matrix(self) -> Any:
         return self._engine.smoke_matrix
+
+    @property
+    def max_smoke_concentration(self) -> float | None:
+        """Read B06's global smoke maximum without changing B state."""
+
+        raw_value = getattr(self._engine, "max_smoke_concentration", None)
+        if isinstance(raw_value, (int, float)) and not isinstance(raw_value, bool):
+            value = float(raw_value)
+            return value if math.isfinite(value) else None
+        smoke_engine = getattr(self._engine, "smoke_engine", None)
+        getter = getattr(smoke_engine, "get_max_smoke", None)
+        if callable(getter):
+            value = float(getter())
+            return value if math.isfinite(value) else None
+        return None
+
+    @property
+    def alarm_triggered(self) -> bool | None:
+        """Expose B's alert when available, otherwise project B06's field.
+
+        The fallback is explicitly D-derived from B06 raw smoke; it must not
+        be presented as a B-published state field.
+        """
+
+        raw_value = getattr(self._engine, "alarm_triggered", getattr(self._engine, "is_alarm_triggered", None))
+        if isinstance(raw_value, bool):
+            return raw_value
+        maximum = self.max_smoke_concentration
+        if maximum is None:
+            return None
+        return maximum >= B06_SMOKE_ALARM_THRESHOLD
+
+    @property
+    def alarm_source(self) -> str | None:
+        """Report one authoritative source for the exposed alarm value."""
+
+        if isinstance(getattr(self._engine, "alarm_triggered", getattr(self._engine, "is_alarm_triggered", None)), bool):
+            return "b_native_runtime_field"
+        return (
+            "d_projection_from_b06_smoke"
+            if self.max_smoke_concentration is not None
+            else None
+        )
+
+    @property
+    def max_smoke_source(self) -> str | None:
+        raw_value = getattr(self._engine, "max_smoke_concentration", None)
+        if isinstance(raw_value, (int, float)) and not isinstance(raw_value, bool):
+            return "b_native_runtime_field"
+        return (
+            "b06_get_max_smoke"
+            if self.max_smoke_concentration is not None
+            else None
+        )
 
     @property
     def smoke_sources(self) -> Any:
@@ -206,6 +261,29 @@ class EvacEngineRuntimeAdapter:
     def current_step(self) -> int:
         return int(self._engine.current_step)
 
+    @property
+    def exit_entities(self) -> list[dict[str, Any]]:
+        """D-only physical-exit metadata; B still uses individual exit cells."""
+
+        return [dict(entity) for entity in self._exit_entities]
+
+    @staticmethod
+    def _normalize_exit_entities(raw_entities: Any) -> list[dict[str, Any]]:
+        if raw_entities is None:
+            return []
+        result: list[dict[str, Any]] = []
+        for entity in raw_entities:
+            if hasattr(entity, "as_dict") and callable(entity.as_dict):
+                entity = entity.as_dict()
+            if not isinstance(entity, Mapping):
+                raise TypeError("exit_entities entries must be mappings or expose as_dict()")
+            entity_id = entity.get("exit_entity_id")
+            member_cells = entity.get("member_cells")
+            if entity_id in (None, "") or not isinstance(member_cells, (list, tuple)):
+                raise ValueError("exit entity requires exit_entity_id and member_cells")
+            result.append(dict(entity))
+        return result
+
     def init_simulation(self) -> None:
         """B initializes state in ``EvacEngine.__init__``."""
 
@@ -227,6 +305,22 @@ class EvacEngineRuntimeAdapter:
             self._run_one_step(dict(behavior))
         else:
             self._engine.step()
+        self._record_exit_entity_ids()
+
+    def _record_exit_entity_ids(self) -> None:
+        """Attach D aliases after B has recorded its original cell-level ID."""
+
+        if not self._exit_entity_by_cell_id:
+            return
+        for person in self._engine.person_map.values():
+            actual_exit = getattr(person, "actual_exit", None)
+            if actual_exit in (None, ""):
+                continue
+            actual_exit_cell = str(actual_exit)
+            setattr(person, "actual_exit_cell", actual_exit_cell)
+            entity_id = self._exit_entity_by_cell_id.get(actual_exit_cell)
+            if entity_id is not None:
+                setattr(person, "actual_exit_entity", entity_id)
 
     def _run_one_step(self, behavior: dict[int, Mapping[str, Any]]) -> None:
         """Call B once while avoiding its duplicate Matplotlib renderer."""

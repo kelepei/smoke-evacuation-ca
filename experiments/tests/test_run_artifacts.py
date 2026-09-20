@@ -53,6 +53,26 @@ class RunArtifactTests(unittest.TestCase):
                 "artifact-test",
             )
 
+    def test_guidance_and_kinematics_artifacts_coexist_when_scale_is_unavailable(self) -> None:
+        snapshot = {
+            "run_id": "combined", "scenario_id": "test", "time_step": 0.5,
+            "grid": {"width": 3, "height": 1, "cell_type": [["free", "free", "exit"]]},
+            "analysis_contract": {"physical_scale": {"source": "unavailable", "value": None, "unit": "m"}},
+            "guidance": {"status": "inactive", "policy": "smoke_distance_baseline_v1", "recommendations": []},
+            "people": [], "fields": {"smoke_field": []},
+            "exit_entities": [{"exit_entity_id": "exit_entity_01", "member_cells": [[2, 0]]}],
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            output_dir = Path(temporary)
+            (output_dir / "event_log.csv").write_text("event_type,time_s\n", encoding="utf-8")
+            (output_dir / "people_log.csv").write_text("person_id,step,time_s,x,y,evacuated\n1,0,0,0,0,False\n1,1,0.5,1,0,False\n", encoding="utf-8")
+            write_run_artifacts(snapshot, output_dir, input_files={}, save_frame=False)
+            self.assertTrue((output_dir / "guidance_recommendations.json").is_file())
+            self.assertTrue((output_dir / "guidance_events.csv").is_file())
+            self.assertIn("NA", (output_dir / "trajectory_kinematics.csv").read_text(encoding="utf-8"))
+            config = json.loads((output_dir / "config_used.json").read_text(encoding="utf-8"))
+            self.assertEqual("unavailable", config["analysis_contract"]["physical_scale"]["source"])
+
 
 if __name__ == "__main__":
     unittest.main()

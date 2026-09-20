@@ -25,8 +25,11 @@ from typing import Any, Callable, Mapping
 
 import numpy as np
 
-from core.schema import CellType, Exit, Person, Relation, ScenarioConfig, SmokeSource
+from core.schema import AlarmPoint, CellType, Exit, Person, Relation, ScenarioConfig, SmokeSource
 from experiments.b_runtime_adapter import EvacEngineRuntimeAdapter
+from experiments.congestion_level import resolve_congestion_level_contract
+from experiments.crowd_metrics import resolve_analysis_contract
+from experiments.exit_topology import ExitEntity, entity_id_by_cell, extract_exit_entities
 from experiments.run_artifacts import write_run_artifacts
 from experiments.runner import SimulationRunner
 from visualization.scene_input_adapter import (
@@ -127,6 +130,8 @@ class IntegratedScenario:
     person_count: int
     relation_count: int
     smoke_source_count: int
+    exit_entities: tuple[ExitEntity, ...]
+    exit_entity_by_cell_id: dict[str, str]
 
 
 def build_integrated_scenario(
@@ -138,6 +143,10 @@ def build_integrated_scenario(
     scenario_id: str | None = None,
     random_seed: int | None = None,
     source_id_base: int = 0,
+    physical_cell_size_m: float | None = None,
+    sampling_window_s: float | None = None,
+    analysis_mesh_size_m: float | None = None,
+    roi_radius_m: float | None = None,
 ) -> IntegratedScenario:
     """Read A/C files and assemble B's existing ``ScenarioConfig`` input.
 
@@ -201,15 +210,29 @@ def build_integrated_scenario(
         relation.source_person_b_id = source["source_person_b_id"]
         relations.append(relation)
 
+    # B keeps one Exit object per traversable exit cell.  D additionally keeps
+    # a 4-connected entity topology for records and analysis; the topology
+    # must not change B's cell-level movement or exit IDs.
+    exit_entities = extract_exit_entities(grid)
+    entity_by_coordinate = entity_id_by_cell(exit_entities)
     exits = [
         Exit(id=f"exit_{index + 1}", x=int(cell.x), y=int(cell.y))
         for index, cell in enumerate(grid.cells)
         if _cell_type_value(cell) == CellType.EXIT.value
     ]
+    exit_entity_by_cell_id = {
+        str(exit_obj.id): entity_by_coordinate[(int(exit_obj.x), int(exit_obj.y))]
+        for exit_obj in exits
+    }
     smoke_sources = [
         SmokeSource(x=int(cell.x), y=int(cell.y), intensity=1.0)
         for cell in grid.cells
         if _cell_type_value(cell) == CellType.SMOKE_SOURCE.value
+    ]
+    alarm_points = [
+        AlarmPoint(x=int(marker["x"]), y=int(marker["y"]))
+        for marker in getattr(grid, "d_alarm_cells", [])
+        if isinstance(marker, Mapping) and "x" in marker and "y" in marker
     ]
     if not exits:
         raise IntegratedRuntimeError("map must contain at least one cell with type=exit")
@@ -224,6 +247,19 @@ def build_integrated_scenario(
         persons=persons,
         relations=relations,
         smoke_sources=smoke_sources,
+        alarm_points=alarm_points,
+    )
+    try:
+        analysis_contract = resolve_analysis_contract(
+            map_analysis=getattr(grid, "d_map_analysis", {}),
+            runtime_physical_cell_size_m=physical_cell_size_m,
+            runtime_sampling_window_s=sampling_window_s,
+        )
+    except ValueError as exc:
+        raise IntegratedRuntimeError(str(exc)) from exc
+    analysis_contract["congestion_level"] = resolve_congestion_level_contract(
+        physical_scale=analysis_contract["physical_scale"], map_analysis=getattr(grid, "d_map_analysis", {}),
+        runtime_analysis_mesh_size_m=analysis_mesh_size_m, runtime_roi_radius_m=roi_radius_m,
     )
     # ``parameters`` is not yet a constructor field in the shared schema.
     # Adding an instance attribute here preserves A/B/C code unchanged.
@@ -235,6 +271,7 @@ def build_integrated_scenario(
             "yaml": None if yaml_path is None else str(Path(yaml_path)),
         },
         "d_placement_mode": placement_mode,
+        "d_analysis_contract": analysis_contract,
     }
 
     return IntegratedScenario(
@@ -247,6 +284,8 @@ def build_integrated_scenario(
         person_count=len(persons),
         relation_count=len(relations),
         smoke_source_count=len(smoke_sources),
+        exit_entities=exit_entities,
+        exit_entity_by_cell_id=exit_entity_by_cell_id,
     )
 
 
@@ -264,6 +303,8 @@ def integrated_simulation_factory(
             np.random.seed(seed)
         wrapped = EvacEngineRuntimeAdapter(
             EvacEngine(scenario.config),
+            exit_entities=scenario.exit_entities,
+            exit_entity_by_cell_id=scenario.exit_entity_by_cell_id,
             adapter_meta={
                 "map_path": str(scenario.map_path),
                 "population_path": str(scenario.population_path),
@@ -297,6 +338,10 @@ def create_integrated_runner(
     random_seed: int | None = None,
     time_step_s: float = 0.5,
     max_steps: int = 500,
+    physical_cell_size_m: float | None = None,
+    sampling_window_s: float | None = None,
+    analysis_mesh_size_m: float | None = None,
+    roi_radius_m: float | None = None,
 ) -> SimulationRunner:
     scenario = build_integrated_scenario(
         map_path=map_path,
@@ -304,7 +349,13 @@ def create_integrated_runner(
         yaml_path=yaml_path,
         c_module_path=c_module_path,
         random_seed=random_seed,
+        physical_cell_size_m=physical_cell_size_m,
+        sampling_window_s=sampling_window_s,
+        analysis_mesh_size_m=analysis_mesh_size_m, roi_radius_m=roi_radius_m,
     )
+    # D passes the runner's authoritative clock into B's public ScenarioConfig
+    # without changing B's engine implementation.
+    scenario.config.parameters["time_step_s"] = float(time_step_s)  # type: ignore[attr-defined]
     return SimulationRunner(
         integrated_simulation_factory(scenario),
         output_root=output_root,
@@ -327,6 +378,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--run-id", default="d_integrated_run")
     parser.add_argument("--random-seed", type=int)
     parser.add_argument("--time-step", type=float, default=0.5)
+    parser.add_argument("--physical-cell-size-m", type=float)
+    parser.add_argument("--sampling-window-s", type=float)
+    parser.add_argument("--analysis-mesh-size-m", type=float)
+    parser.add_argument("--roi-radius-m", type=float)
     parser.add_argument("--max-steps", type=int, default=500)
     parser.add_argument("--headless", action="store_true")
     return parser.parse_args()
@@ -343,6 +398,9 @@ def main() -> None:
         run_id=args.run_id,
         random_seed=args.random_seed,
         time_step_s=args.time_step,
+        physical_cell_size_m=args.physical_cell_size_m,
+        sampling_window_s=args.sampling_window_s,
+        analysis_mesh_size_m=args.analysis_mesh_size_m, roi_radius_m=args.roi_radius_m,
         max_steps=args.max_steps,
     )
     try:

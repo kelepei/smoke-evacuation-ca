@@ -12,6 +12,10 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
+from experiments.academic_crowd import write_academic_crowd_fields
+from experiments.congestion_level import write_congestion_level_field
+from experiments.crowd_metrics import resolve_analysis_contract, write_trajectory_kinematics, write_velocity_vector_field
+from experiments.guidance_interface import unavailable_guidance, write_guidance_artifacts
 from experiments.week6_analysis import analyze_run
 
 
@@ -114,6 +118,7 @@ def write_run_artifacts(
         "schema_version": snapshot.get("schema_version"),
         "random_seed": snapshot.get("random_seed"),
         "time_step_s": snapshot.get("time_step"),
+        "analysis_contract": snapshot.get("analysis_contract", {}),
         "grid": {
             "width": snapshot.get("grid", {}).get("width")
             if isinstance(snapshot.get("grid"), Mapping)
@@ -122,14 +127,64 @@ def write_run_artifacts(
             if isinstance(snapshot.get("grid"), Mapping)
             else None,
         },
+        "exit_entities": snapshot.get("exit_entities", []),
         "input_files": {key: str(path) for key, path in input_files.items()},
         "runtime_contract": "A Grid + C population/config + B EvacEngine through D adapters",
         "missing_upstream_fields": "CSV logger leaves unprovided upstream fields empty; D does not fabricate values.",
     }
+    scene_config_path = input_files.get("scene_config")
+    if scene_config_path is not None and Path(scene_config_path).is_file():
+        try:
+            scene_config = json.loads(Path(scene_config_path).read_text(encoding="utf-8"))
+            if isinstance(scene_config, Mapping):
+                config_used["config_source"] = scene_config.get("config_source", "ui")
+                config_used["scene_config"] = dict(scene_config)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            config_used["config_source"] = "unavailable"
+    people_log_path = destination / "people_log.csv"
+    if people_log_path.is_file():
+        grid = snapshot.get("grid")
+        kinematics = write_trajectory_kinematics(
+            people_log_path=people_log_path,
+            output_path=destination / "trajectory_kinematics.csv",
+            analysis_contract=(snapshot.get("analysis_contract") if isinstance(snapshot.get("analysis_contract"), Mapping) else None),
+            grid=grid if isinstance(grid, Mapping) else None,
+        )
+        raw_contract = snapshot.get("analysis_contract")
+        analysis_contract = raw_contract if isinstance(raw_contract, Mapping) and isinstance(raw_contract.get("sampling_window_s"), Mapping) else resolve_analysis_contract()
+        velocity_field = write_velocity_vector_field(
+            kinematics_path=destination / "trajectory_kinematics.csv",
+            output_path=destination / "velocity_vector_field.json",
+            csv_output_path=destination / "velocity_vector_field.csv",
+            analysis_contract=analysis_contract,
+        )
+        congestion_level = write_congestion_level_field(
+            kinematics_path=destination / "trajectory_kinematics.csv",
+            grid=grid if isinstance(grid, Mapping) else {}, analysis_contract=analysis_contract,
+            json_path=destination / "congestion_level_field.json", csv_path=destination / "congestion_level_field.csv",
+        )
+        academic_crowd = write_academic_crowd_fields(people_log_path=people_log_path, grid=grid if isinstance(grid, Mapping) else {}, analysis_contract=analysis_contract, json_path=destination / "academic_crowd_fields.json", csv_path=destination / "academic_crowd_fields.csv")
+    else:
+        kinematics = {"path": "trajectory_kinematics.csv", "status": "unavailable", "reason": "people_log.csv is not present"}
+        velocity_field = {"json_path": "velocity_vector_field.json", "csv_path": "velocity_vector_field.csv", "status": "unavailable", "reason": "trajectory_kinematics.csv is unavailable"}
+        congestion_level = {"json_path": "congestion_level_field.json", "csv_path": "congestion_level_field.csv", "status": "unavailable", "reason": "trajectory_kinematics.csv is unavailable"}
+        academic_crowd = {"json_path": "academic_crowd_fields.json", "csv_path": "academic_crowd_fields.csv", "status": "unavailable", "reason": "people_log.csv is unavailable"}
+    config_used["trajectory_kinematics"] = kinematics
+    config_used["velocity_vector_field"] = velocity_field
+    config_used["congestion_level"] = congestion_level
+    config_used["academic_crowd_fields"] = academic_crowd
     _write_json(destination / "config_used.json", config_used)
     metrics = snapshot_metrics(snapshot, destination)
     _write_json(destination / "metrics.json", metrics)
     _write_summary_csv(destination / "metrics_summary.csv", metrics)
+    # Persist the exact live annotation returned through the Web API.  This
+    # must not calculate another recommendation from a later/alternate state.
+    guidance = snapshot.get("guidance")
+    if not isinstance(guidance, Mapping):
+        guidance = unavailable_guidance(
+            snapshot, "normalized runtime snapshot did not contain guidance"
+        )
+    write_guidance_artifacts(guidance, destination)
     if save_frame:
         # Import lazily so non-rendering callers do not require Matplotlib.
         from visualization.integrated_runtime import save_snapshot_png

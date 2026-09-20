@@ -93,6 +93,36 @@ class IntegratedRuntimeTests(unittest.TestCase):
                     population_path=people_path,
                 )
 
+    def test_contiguous_exit_cells_keep_b_cells_and_share_one_d_entity(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            map_path, people_path = self._write_inputs(Path(raw))
+            payload = json.loads(map_path.read_text(encoding="utf-8"))
+            for cell in payload["cells"]:
+                if (cell["x"], cell["y"]) in {(9, 2), (9, 3), (9, 4)}:
+                    cell["type"] = "exit"
+            map_path.write_text(json.dumps(payload), encoding="utf-8")
+            scenario = build_integrated_scenario(
+                map_path=map_path,
+                population_path=people_path,
+                random_seed=42,
+            )
+        self.assertEqual(3, len(scenario.config.exits))
+        self.assertEqual(1, len(scenario.exit_entities))
+        self.assertEqual("exit_entity_01", scenario.exit_entity_by_cell_id["exit_30"])
+        self.assertEqual("exit_entity_01", scenario.exit_entity_by_cell_id["exit_40"])
+
+    def test_explicit_physical_scale_never_infers_legacy_cell_size(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            map_path, people_path = self._write_inputs(Path(raw))
+            unavailable = build_integrated_scenario(map_path=map_path, population_path=people_path)
+            self.assertEqual("unavailable", unavailable.config.parameters["d_analysis_contract"]["physical_scale"]["source"])
+            payload = json.loads(map_path.read_text(encoding="utf-8"))
+            payload["analysis"] = {"physical_cell_size_m": 0.4}
+            map_path.write_text(json.dumps(payload), encoding="utf-8")
+            explicit = build_integrated_scenario(map_path=map_path, population_path=people_path)
+            self.assertEqual("explicit_map", explicit.config.parameters["d_analysis_contract"]["physical_scale"]["source"])
+            self.assertEqual(0.4, explicit.config.parameters["d_analysis_contract"]["physical_scale"]["value"])
+
     def test_runner_uses_current_b_evac_engine_without_writing_b_code(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)

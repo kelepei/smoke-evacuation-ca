@@ -3,26 +3,75 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 
-from experiments.result_package import build_result_package
+from experiments.result_package import _heatmap_svg, _occupancy_display_color, build_result_package, build_runtime_analysis
 
 
 class ResultPackageTests(unittest.TestCase):
+    def test_occupancy_heatmap_uses_fixed_absolute_scale_without_changing_raw_counts(self) -> None:
+        run_a = [0, 1, 5, 10, 25, 50, 100]
+        run_b = [0, 1, 5, 10, 25, 50, 100, 137]
+
+        occupancy_a, occupancy_b = [run_a.copy()], [run_b.copy()]
+        svg_a, svg_b = _heatmap_svg(occupancy_a), _heatmap_svg(occupancy_b)
+        colors_a = dict(zip(run_a, re.findall(r'<rect[^>]+fill="([^"]+)" stroke="#e5e7eb"', svg_a)))
+        colors_b = dict(zip(run_b, re.findall(r'<rect[^>]+fill="([^"]+)" stroke="#e5e7eb"', svg_b)))
+        for value in (1, 5, 10, 25, 50, 100):
+            self.assertEqual(colors_a[value], colors_b[value])
+            self.assertEqual(colors_a[value], _occupancy_display_color(value))
+        self.assertEqual(colors_b[100], colors_b[137])
+        self.assertEqual("rgb(254,202,202)", colors_a[1])
+        self.assertNotEqual(colors_a[0], colors_a[1])
+        self.assertEqual([run_a], occupancy_a)
+        self.assertEqual([run_b], occupancy_b)
+        self.assertIn("最大值 100", svg_a)
+        self.assertIn("最大值 137", svg_b)
+        self.assertIn("100+", svg_a)
+        self.assertIn("颜色采用固定累计次数色标，便于不同实验直接比较；原始累计次数不变", svg_b)
+
+    def test_live_entity_topology_never_falls_back_to_cell_utilization(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with (root / "people_log.csv").open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=[
+                    "step", "time_s", "person_id", "x", "y", "evacuated",
+                    "actual_exit", "actual_exit_cell", "actual_exit_entity",
+                ])
+                writer.writeheader()
+                writer.writerows([
+                    {"step": 1, "time_s": 0.5, "person_id": 1, "x": 2, "y": 1, "evacuated": True, "actual_exit": "exit_01", "actual_exit_cell": "exit_01", "actual_exit_entity": "exit_entity_01"},
+                    {"step": 2, "time_s": 1.0, "person_id": 2, "x": 3, "y": 1, "evacuated": True, "actual_exit": "exit_02", "actual_exit_cell": "exit_02", "actual_exit_entity": "exit_entity_01"},
+                    {"step": 3, "time_s": 1.5, "person_id": 3, "x": 4, "y": 1, "evacuated": True, "actual_exit": "exit_03", "actual_exit_cell": "exit_03", "actual_exit_entity": "exit_entity_01"},
+                ])
+            analysis = build_runtime_analysis(
+                output_dir=root,
+                final_snapshot={
+                    "grid": {"width": 6, "height": 3},
+                    "exit_entities": [{"exit_entity_id": "exit_entity_01", "member_cells": [[5, 0], [5, 1], [5, 2]]}],
+                },
+            )
+            self.assertEqual("entity", analysis["exit_utilization_contract"]["representation"])
+            self.assertEqual({"exit_entity_01": 3}, analysis["week6_metrics"]["exit_distribution"])
+
     def test_packages_actual_logs_metrics_and_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             run_dir = root / "run_01"
             run_dir.mkdir()
             with (run_dir / "people_log.csv").open("w", encoding="utf-8", newline="") as handle:
-                writer = csv.DictWriter(handle, fieldnames=["step", "time_s", "person_id", "x", "y", "evacuated"])
+                writer = csv.DictWriter(handle, fieldnames=[
+                    "step", "time_s", "person_id", "x", "y", "evacuated",
+                    "actual_exit_cell", "actual_exit_entity",
+                ])
                 writer.writeheader()
                 writer.writerows([
                     {"step": 0, "time_s": 0, "person_id": 1, "x": 1, "y": 1, "evacuated": False},
-                    {"step": 1, "time_s": 0.5, "person_id": 1, "x": 2, "y": 1, "evacuated": True},
+                    {"step": 1, "time_s": 0.5, "person_id": 1, "x": 2, "y": 1, "evacuated": True, "actual_exit_cell": "exit_01", "actual_exit_entity": "exit_entity_01"},
                 ])
             (run_dir / "event_log.csv").write_text("event_type\nevac_success\n", encoding="utf-8")
             map_path = root / "map.json"; map_path.write_text("{}", encoding="utf-8")
@@ -37,6 +86,9 @@ class ResultPackageTests(unittest.TestCase):
                     "time_step": 0.5,
                     "step": 1,
                     "grid": {"width": 4, "height": 3},
+                    "analysis_contract": {
+                        "physical_scale": {"source": "unavailable", "value": None, "unit": "m"}
+                    },
                 },
                 input_files={"map": map_path, "population": population_path},
                 max_steps=10,
@@ -48,14 +100,60 @@ class ResultPackageTests(unittest.TestCase):
                         "run_01/people_log.csv", "run_01/event_log.csv", "run_01/metrics.csv",
                         "run_01/evacuation_curve.svg", "run_01/occupancy_heatmap.svg",
                         "run_01/week6_metrics.json", "run_01/week6_metrics_summary.csv",
+                        "run_01/trajectory_kinematics.csv",
+                        "run_01/velocity_vector_field.json", "run_01/velocity_vector_field.csv",
+                        "run_01/congestion_level_field.json", "run_01/congestion_level_field.csv",
+                        "run_01/academic_crowd_fields.json", "run_01/academic_crowd_fields.csv",
+                        "run_01/person_id_mapping.csv",
                         "run_01/metadata.json", "run_01/config.json", "run_01/inputs/map.json",
                         "run_01/inputs/population.json",
                     },
                 )
                 metadata = json.loads(archive.read("run_01/metadata.json"))
                 configuration = json.loads(archive.read("run_01/config.json"))
-                self.assertIn("累计占用热力图", archive.read("run_01/occupancy_heatmap.svg").decode("utf-8"))
+                people_log = archive.read("run_01/people_log.csv").decode("utf-8")
+                heatmap_svg = archive.read("run_01/occupancy_heatmap.svg").decode("utf-8")
+                self.assertIn("累计占用热力图", heatmap_svg)
+                self.assertIn("颜色采用固定累计次数色标，便于不同实验直接比较；原始累计次数不变", heatmap_svg)
+                self.assertIn("100+", heatmap_svg)
+                self.assertIn(_occupancy_display_color(1), heatmap_svg)
+                self.assertIn("actual_exit_entity", people_log)
+                self.assertIn("exit_entity_01", people_log)
+                self.assertEqual("unavailable", metadata["analysis_contract"]["physical_scale"]["source"])
+                self.assertEqual("unavailable", metadata["person_id_mapping"]["status"])
+                self.assertIn("speed_m_s", archive.read("run_01/trajectory_kinematics.csv").decode("utf-8"))
         self.assertEqual(metadata["summary"]["evacuated_count"], 1)
         self.assertEqual(metadata["summary"]["last_successful_exit_time"], 0.5)
         self.assertEqual(metadata["random_seed"], 17)
         self.assertEqual(configuration["random_seed"], 17)
+
+    def test_package_writes_verified_source_to_runtime_person_id_mapping(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_people = [{"person_id": source_id, "x": source_id + 1, "y": 3} for source_id in range(40)]
+            runtime_rows = "".join(
+                f"0,0,{source_id + 1},{source_id + 1},3,false\n" for source_id in range(40)
+            )
+            (root / "people_log.csv").write_text(
+                "step,time_s,person_id,x,y,evacuated\n" + runtime_rows,
+                encoding="utf-8",
+            )
+            (root / "event_log.csv").write_text("event_type\n", encoding="utf-8")
+            population_path = root / "generated_population_positioned.json"
+            population_path.write_text(json.dumps({"persons": source_people}), encoding="utf-8")
+            package = build_result_package(
+                output_dir=root,
+                final_snapshot={"run_id": "mapping_run", "grid": {"width": 42, "height": 5}},
+                input_files={"population": population_path}, max_steps=10,
+            )
+            with zipfile.ZipFile(io.BytesIO(package.content)) as archive:
+                metadata = json.loads(archive.read("mapping_run/metadata.json"))
+                mapping = list(csv.DictReader(io.StringIO(archive.read("mapping_run/person_id_mapping.csv").decode("utf-8"))))
+            self.assertEqual("verified", metadata["person_id_mapping"]["status"])
+            self.assertEqual("zero_based person_id", metadata["person_id_mapping"]["source_id_convention"])
+            self.assertEqual(40, metadata["person_id_mapping"]["mapped_person_count"])
+            self.assertEqual(40, len(mapping))
+            self.assertEqual({"source_person_id": "0", "runtime_person_id": "1"}, mapping[0])
+            self.assertEqual({"source_person_id": "39", "runtime_person_id": "40"}, mapping[-1])
+            self.assertEqual(40, len({row["source_person_id"] for row in mapping}))
+            self.assertEqual(40, len({row["runtime_person_id"] for row in mapping}))

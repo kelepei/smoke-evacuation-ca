@@ -106,9 +106,10 @@ def analyze_run(run_dir: str | Path) -> dict[str, Any]:
         dose = _float(row.get("dose"))
         if dose is not None:
             all_dose.append(dose)
-        # A planned target is not evidence of the exit actually used.  Keep
-        # this analysis truthful until B emits ``actual_exit``.
-        exit_id = row.get("actual_exit")
+        # A planned target is not evidence of the exit actually used. Prefer
+        # D's entity alias only when it was mapped from B's actual cell exit;
+        # otherwise preserve backward-compatible cell-level actual_exit.
+        exit_id = row.get("actual_exit_entity") or row.get("actual_exit")
         if exit_id not in (None, ""):
             latest_exit_by_person[person_id] = str(exit_id)
 
@@ -170,7 +171,7 @@ def analyze_run(run_dir: str | Path) -> dict[str, Any]:
             else NA
         ),
         "exit_utilization_note": (
-            "shares calculated from logged actual_exit"
+            "shares calculated from actual_exit_entity when available; otherwise actual_exit"
             if latest_exit_by_person
             else "NA: B did not provide actual_exit"
         ),
@@ -194,7 +195,7 @@ def analyze_run(run_dir: str | Path) -> dict[str, Any]:
         "exit_distribution_note": (
             "NA: B did not provide actual_exit"
             if not exit_distribution
-            else "counts actual_exit only"
+            else "counts actual_exit_entity when available; otherwise actual_exit"
         ),
         "total_evacuation_time_s_note": (
             "all people evacuated"
