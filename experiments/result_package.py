@@ -143,20 +143,32 @@ def _curve_svg(points: list[tuple[float, int]], population: int) -> str:
 </svg>'''
 
 
-def _heat_color(value: float) -> str:
-    # White → orange → dark red, based solely on observed occupancy counts.
-    t = max(0.0, min(1.0, value))
-    red = int(255)
-    green = int(248 - 175 * t)
-    blue = int(242 - 210 * t)
-    return f"rgb({red},{green},{blue})"
+_OCCUPANCY_COLOR_STOPS: tuple[tuple[float, tuple[int, int, int]], ...] = (
+    (0.0, (255, 255, 255)),
+    (10.0, (254, 226, 226)),
+    (25.0, (252, 165, 165)),
+    (50.0, (248, 113, 113)),
+    (100.0, (153, 27, 27)),
+)
 
 
-def _occupancy_display_ratio(value: int | float, maximum: int | float) -> float:
-    """Map a raw occupancy count to a display-only logarithmic intensity."""
-    if maximum <= 0 or value <= 0:
-        return 0.0
-    return max(0.0, min(1.0, math.log1p(float(value)) / math.log1p(float(maximum))))
+def _occupancy_display_color(value: int | float) -> str:
+    """Return the fixed, display-only colour for a raw occupancy count.
+
+    The scale is deliberately independent of a run's observed maximum so that
+    the same count has the same visual meaning across result packages.
+    """
+    count = max(0.0, float(value))
+    for index, (upper_value, upper_color) in enumerate(_OCCUPANCY_COLOR_STOPS):
+        if count <= upper_value:
+            if index == 0:
+                return f"rgb({upper_color[0]},{upper_color[1]},{upper_color[2]})"
+            lower_value, lower_color = _OCCUPANCY_COLOR_STOPS[index - 1]
+            fraction = (count - lower_value) / (upper_value - lower_value)
+            channels = tuple(round(lower + (upper - lower) * fraction) for lower, upper in zip(lower_color, upper_color))
+            return f"rgb({channels[0]},{channels[1]},{channels[2]})"
+    saturated = _OCCUPANCY_COLOR_STOPS[-1][1]
+    return f"rgb({saturated[0]},{saturated[1]},{saturated[2]})"
 
 
 def _heatmap_svg(occupancy: list[list[int]]) -> str:
@@ -165,21 +177,27 @@ def _heatmap_svg(occupancy: list[list[int]]) -> str:
     if width <= 0 or height <= 0:
         return "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"320\" height=\"120\"><text x=\"12\" y=\"30\">无可绘制网格数据</text></svg>"
     cell = max(5, min(24, int(620 / max(width, height))))
-    margin, title_h = 44, 48
+    margin, title_h = 44, 76
     svg_w, svg_h = margin * 2 + width * cell, title_h + margin + height * cell
     maximum = max((value for row in occupancy for value in row), default=0)
     cells: list[str] = []
     for y, row in enumerate(occupancy):
         for x, value in enumerate(row):
-            # This affects only SVG colour contrast; ``occupancy`` remains raw counts.
-            ratio = _occupancy_display_ratio(value, maximum)
+            # This affects only SVG colour; ``occupancy`` remains raw counts.
             cells.append(
-                f'<rect x="{margin + x * cell}" y="{title_h + y * cell}" width="{cell}" height="{cell}" fill="{_heat_color(ratio)}" stroke="#e5e7eb" stroke-width="0.4"/>'
+                f'<rect x="{margin + x * cell}" y="{title_h + y * cell}" width="{cell}" height="{cell}" fill="{_occupancy_display_color(value)}" stroke="#e5e7eb" stroke-width="0.4"/>'
             )
+    legend_values = (0, 10, 25, 50, 100)
+    legend = "".join(
+        f'<rect x="{margin + index * 64}" y="50" width="13" height="10" fill="{_occupancy_display_color(value)}" stroke="#cbd5e1" stroke-width="0.4"/>'
+        f'<text x="{margin + index * 64 + 17}" y="59" font-family="Arial" font-size="10" fill="#556070">{"100+" if value == 100 else value}</text>'
+        for index, value in enumerate(legend_values)
+    )
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{svg_w}" height="{svg_h}" viewBox="0 0 {svg_w} {svg_h}">
   <rect width="100%" height="100%" fill="#ffffff"/>
   <text x="{margin}" y="24" font-family="Arial, Microsoft YaHei" font-size="17" fill="#18243a">累计占用热力图（真实日志）</text>
-  <text x="{margin}" y="40" font-family="Arial, Microsoft YaHei" font-size="11" fill="#556070">颜色采用对数拉伸以增强低占用区域可见性，原始累计次数不变；最大值 {maximum}</text>
+  <text x="{margin}" y="40" font-family="Arial, Microsoft YaHei" font-size="11" fill="#556070">颜色采用固定累计次数色标，便于不同实验直接比较；原始累计次数不变；最大值 {maximum}</text>
+  {legend}
   {''.join(cells)}
 </svg>'''
 

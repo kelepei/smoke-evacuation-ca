@@ -3,28 +3,34 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 
-from experiments.result_package import _heatmap_svg, _occupancy_display_ratio, build_result_package, build_runtime_analysis
+from experiments.result_package import _heatmap_svg, _occupancy_display_color, build_result_package, build_runtime_analysis
 
 
 class ResultPackageTests(unittest.TestCase):
-    def test_occupancy_heatmap_uses_logarithmic_display_without_changing_raw_counts(self) -> None:
-        values = [0, 1, 2, 5, 10, 137]
-        ratios = [_occupancy_display_ratio(value, 137) for value in values]
-        self.assertEqual(0.0, ratios[0])
-        self.assertEqual(1.0, ratios[-1])
-        self.assertEqual(ratios, sorted(ratios))
-        self.assertGreater(ratios[1], 0.1)  # visibly stronger than linear 1 / 137
+    def test_occupancy_heatmap_uses_fixed_absolute_scale_without_changing_raw_counts(self) -> None:
+        run_a = [0, 10, 25, 50, 62]
+        run_b = [0, 10, 25, 50, 100, 137]
 
-        occupancy = [values.copy()]
-        svg = _heatmap_svg(occupancy)
-        self.assertEqual([[0, 1, 2, 5, 10, 137]], occupancy)
-        self.assertIn("最大值 137", svg)
-        self.assertIn("颜色采用对数拉伸以增强低占用区域可见性，原始累计次数不变", svg)
+        occupancy_a, occupancy_b = [run_a.copy()], [run_b.copy()]
+        svg_a, svg_b = _heatmap_svg(occupancy_a), _heatmap_svg(occupancy_b)
+        colors_a = dict(zip(run_a, re.findall(r'<rect[^>]+fill="([^"]+)" stroke="#e5e7eb"', svg_a)))
+        colors_b = dict(zip(run_b, re.findall(r'<rect[^>]+fill="([^"]+)" stroke="#e5e7eb"', svg_b)))
+        for value in (10, 25, 50):
+            self.assertEqual(colors_a[value], colors_b[value])
+            self.assertEqual(colors_a[value], _occupancy_display_color(value))
+        self.assertEqual(colors_b[100], colors_b[137])
+        self.assertEqual([run_a], occupancy_a)
+        self.assertEqual([run_b], occupancy_b)
+        self.assertIn("最大值 62", svg_a)
+        self.assertIn("最大值 137", svg_b)
+        self.assertIn("100+", svg_a)
+        self.assertIn("颜色采用固定累计次数色标，便于不同实验直接比较；原始累计次数不变", svg_b)
 
     def test_live_entity_topology_never_falls_back_to_cell_utilization(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
