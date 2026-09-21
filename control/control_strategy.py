@@ -91,7 +91,9 @@ class ControlStrategyEngine:
         self.zone_assignment: Dict[int, str] = {}
         self.route_weight_map: Dict[Tuple[int, int, int, int], float] = {}
         self.route_weight_base: Dict[Tuple[int, int, int, int], float] = {}
-        self.zone_distribution: Dict[str, int] = {} 
+        self.zone_distribution: Dict[str, int] = {}
+        # 路线管控：按出口负载均衡后给每个人指派的出口
+        self.route_target: Dict[int, str] = {}
 
         self.step_stats = defaultdict(int)
         self.strategy_log = []
@@ -209,6 +211,9 @@ class ControlStrategyEngine:
                     self.closure_status[exit_id] = False
 
         for person in all_persons:
+            # 死亡/已撤离人员不再改派出口
+            if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
+                continue
             if hasattr(person, 'target_exit'):
                 if self.closure_status.get(person.target_exit, False):
                     self._reassign_exit(person)
@@ -260,6 +265,8 @@ class ControlStrategyEngine:
 
         locked_in = 0
         for person in all_persons:
+            if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
+                continue
             if self.lockdown_status.get((int(person.x), int(person.y)), False):
                 locked_in += 1
                 if not getattr(person, "_locked_alert", False):
@@ -280,6 +287,8 @@ class ControlStrategyEngine:
 
     def _update_zoned_evacuation(self, all_persons: List, _current_step: int):  
         for person in all_persons:
+            if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
+                continue
             pid = person.id
             if pid in self.zone_assignment:
                 assigned_exit = self.zone_assignment[pid]
@@ -306,6 +315,71 @@ class ControlStrategyEngine:
                 self.route_weight_map[(fx, fy, tx, ty)] = base
 
         self.step_stats["route_controlled"] = len(self.route_weight_map)
+
+    # ============================================================
+    # 平台接入口（main.py 调用）
+    # ============================================================
+
+    def assign_zones_by_positions(self, all_persons: List,
+                                  exit_ids: Optional[List[str]] = None) -> Dict[int, str]:
+        """按行人当前位置把人员均衡分配到各出口分区（分区疏散）。
+
+        与"就近出口"不同：这里按位置排序后平均切段，主动把一部分人
+        引向较远/空闲的出口，用于验证分区疏导效果。
+        """
+        alive = [
+            p for p in all_persons
+            if not getattr(p, "evacuated", False) and not getattr(p, "is_dead", False)
+        ]
+        exits = list(exit_ids) if exit_ids else list(self.exit_positions.keys())
+        if not alive or not exits:
+            return {}
+        alive.sort(key=lambda p: (int(p.x), int(p.y)))
+        k = len(exits)
+        n = len(alive)
+        self.zone_assignment = {}
+        for index, person in enumerate(alive):
+            self.zone_assignment[int(person.id)] = exits[min(k - 1, index * k // max(1, n))]
+        counts: Dict[str, int] = defaultdict(int)
+        for exit_id in self.zone_assignment.values():
+            counts[exit_id] += 1
+        self.zone_distribution = dict(counts)
+        self.step_stats["zones_assigned"] = n
+        return dict(self.zone_assignment)
+
+    def update_route_balance(self, all_persons: List,
+                             exit_ids: Optional[List[str]] = None,
+                             shift_ratio: float = 0.2) -> Dict[int, str]:
+        """路线管控：按各出口当前负载均衡改派目标出口，缓解拥堵。"""
+        alive = [
+            p for p in all_persons
+            if not getattr(p, "evacuated", False) and not getattr(p, "is_dead", False)
+        ]
+        exits = [e for e in (exit_ids or list(self.exit_positions.keys())) if self.is_exit_open(e)]
+        if not alive or len(exits) < 2:
+            return dict(self.route_target)
+
+        load: Dict[str, List[Any]] = {e: [] for e in exits}
+        for person in alive:
+            current = getattr(person, "target_exit", None) or exits[0]
+            if current not in load:
+                current = min(exits, key=lambda e: len(load[e]))
+            load[current].append(person)
+
+        busiest = max(load, key=lambda e: len(load[e]))
+        idlest = min(load, key=lambda e: len(load[e]))
+        movable = load[busiest]
+        shift = int(len(movable) * max(0.0, min(1.0, shift_ratio)))
+        for person in movable[:shift]:
+            self.route_target[int(person.id)] = idlest
+        for exit_id, persons in load.items():
+            for person in persons:
+                self.route_target.setdefault(int(person.id), exit_id)
+        self.step_stats["route_balanced"] = shift
+        return dict(self.route_target)
+
+    def get_route_target(self, person_id: int) -> Optional[str]:
+        return self.route_target.get(person_id)
 
     # ============================================================
     # 给B组的查询接口
