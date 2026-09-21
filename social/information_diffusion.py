@@ -163,8 +163,13 @@ class InformationDiffusionEngine:
             return 0
 
         target_state = InfoState.ALERTED if str(state).upper() != "CONFIRMED" else InfoState.CONFIRMED
-        count = max(1, int(round(len(all_persons) * ratio)))
-        candidates = list(all_persons)
+        candidates = [
+            p for p in all_persons
+            if not getattr(p, "evacuated", False) and not getattr(p, "is_dead", False)
+        ]
+        if not candidates:
+            return 0
+        count = max(1, int(round(len(candidates) * ratio)))
         np.random.shuffle(candidates)
 
         informed = 0
@@ -191,6 +196,9 @@ class InformationDiffusionEngine:
         """
         notified = 0
         for person in all_persons:
+            # 死亡/已撤离人员不再接收警报
+            if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
+                continue
             pid = int(person.id)
             state = self.info_engine.get_state_value(pid)
             if state == "UNKNOWN":
@@ -221,6 +229,8 @@ class InformationDiffusionEngine:
 
         broadcast_count = 0
         for person in all_persons:
+            if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
+                continue
             pid = int(person.id)
             if self.info_engine.get_state_value(pid) == "UNKNOWN":
                 if self.info_engine.transition_state(
@@ -247,6 +257,8 @@ class InformationDiffusionEngine:
         # 找出所有可传播信息的人
         spreaders = []
         for person in all_persons:
+            if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
+                continue
             pid = int(person.id)
             state = self.info_engine.get_state_value(pid)
             if self.info_engine.state_priority_str(state) >= required_priority:
@@ -265,7 +277,7 @@ class InformationDiffusionEngine:
                 person_id = int(person.id)
                 if person_id == spreader_id:
                     continue
-                if getattr(person, "evacuated", False):
+                if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
                     continue
 
                 dist = self._distance(spreader, person)
@@ -316,6 +328,8 @@ class InformationDiffusionEngine:
         # 找出所有可传播的人（CONFIRMED 或 GUIDED）
         spreaders = []
         for person in all_persons:
+            if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
+                continue
             pid = int(person.id)
             state = self.info_engine.get_state_value(pid)
             if state in ["CONFIRMED", "GUIDED"]:
@@ -383,7 +397,10 @@ class InformationDiffusionEngine:
         source = int(inject_params.get("source", -2))
         message = str(inject_params.get("message", ""))
 
-        candidates = [p for p in all_persons if not getattr(p, "evacuated", False)]
+        candidates = [
+            p for p in all_persons
+            if not getattr(p, "evacuated", False) and not getattr(p, "is_dead", False)
+        ]
         np.random.shuffle(candidates)
         inject_count = max(1, int(len(candidates) * 0.2))
 
@@ -415,7 +432,12 @@ class InformationDiffusionEngine:
 
         base_prob = float(spread_params.get("base_prob", 0.4))
 
-        misinformed = [p for p in all_persons if self.info_engine.get_state_value(int(p.id)) == "MISINFORMED"]
+        misinformed = [
+            p for p in all_persons
+            if not getattr(p, "evacuated", False)
+            and not getattr(p, "is_dead", False)
+            and self.info_engine.get_state_value(int(p.id)) == "MISINFORMED"
+        ]
 
         if not misinformed:
             return
@@ -427,7 +449,7 @@ class InformationDiffusionEngine:
                 person_id = int(person.id)
                 if person_id == spreader_id:
                     continue
-                if getattr(person, "evacuated", False):
+                if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
                     continue
 
                 dist = self._distance(spreader, person)
@@ -468,6 +490,8 @@ class InformationDiffusionEngine:
         smoke_confirm_threshold = float(correction_params.get("smoke_confirm_threshold", 0.15))
 
         for person in all_persons:
+            if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
+                continue
             pid = int(person.id)
             state = self.info_engine.get_state_value(pid)
 
@@ -554,6 +578,8 @@ class InformationDiffusionEngine:
         confirmed = 0
 
         for person in all_persons:
+            if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
+                continue
             pid = int(person.id)
             state = self.info_engine.get_state_value(pid)
 
