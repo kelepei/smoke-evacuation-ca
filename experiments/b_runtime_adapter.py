@@ -305,7 +305,23 @@ class EvacEngineRuntimeAdapter:
             self._run_one_step(dict(behavior))
         else:
             self._engine.step()
+        after_step = getattr(self._behavior_provider, "after_b_step", None)
+        if callable(after_step):
+            after_step(self._engine)
         self._record_exit_entity_ids()
+
+    @property
+    def c_runtime_state(self) -> Any:
+        """Read C's published bridge state when a real provider is installed."""
+
+        return getattr(self._engine, "c_runtime_state", None)
+
+    @property
+    def guides(self) -> Any:
+        state = self.c_runtime_state
+        if isinstance(state, Mapping):
+            return state.get("guides", [])
+        return []
 
     def _record_exit_entity_ids(self) -> None:
         """Attach D aliases after B has recorded its original cell-level ID."""
