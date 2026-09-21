@@ -117,7 +117,9 @@ class GroupBehaviorEngine:
             active_members = []
             for pid in member_ids:
                 person = persons_by_id.get(pid)
-                if person is not None and not person.evacuated:
+                if (person is not None
+                        and not getattr(person, "evacuated", False)
+                        and not getattr(person, "is_dead", False)):
                     active_members.append(person)
 
             if len(active_members) < 2:
