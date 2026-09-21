@@ -1,4 +1,21 @@
-""" 主程序入口 - A+B+C+D 完整联调版本 功能：     1. A 模块加载地图     2. C 模块生成人群和社会关系     3. C 模块为行人按所选地图分配位置     4. C 行为引擎（结伴/从众/信息/引导/指示牌/错误信息）逐帧输出 c_step_data     5. B 模块 CA 仿真     6. D 模块记录 CSV 日志     7. 【新增】实时可视化渲染（可开关，不影响原有实验逻辑）  命令行（便于"开/关关系模型"与">=2 种引导策略"对比实验）：     python main.py --map maps/edited_map.json                     # 默认：关系模型开启 + 可视化开启     python main.py --social off --visual off                       # 基线：B纯CA，关闭可视化用于批量跑实验     python main.py --guide fixed / --guide patrol / --guide toward_exit ...     python main.py --misinfo off                                   # 关闭错误出口信息     python main.py --info off                                      # 关闭广播/局部口头传播     python main.py --signage off                                   # 关闭静态指示牌 """
+""" 主程序入口 - A+B+C+D 完整联调版本
+功能：
+    1. A 模块加载地图
+    2. C 模块生成人群和社会关系
+    3. C 模块为行人按所选地图分配位置
+    4. C 行为引擎（结伴/从众/信息/引导/指示牌/错误信息）逐帧输出 c_step_data
+    5. B 模块 CA 仿真
+    6. D 模块记录 CSV 日志
+    7. 【新增】实时可视化渲染（可开关，不影响原有实验逻辑）
+
+命令行（便于"开/关关系模型"与">=2 种引导策略"对比实验）：
+    python main.py --map maps/edited_map.json                     # 默认：关系模型开启 + 可视化开启
+    python main.py --social off --visual off                       # 基线：B纯CA，关闭可视化用于批量跑实验
+    python main.py --guide fixed / --guide patrol / --guide toward_exit ...
+    python main.py --misinfo off                                   # 关闭错误出口信息
+    python main.py --info off                                      # 关闭广播/局部口头传播
+    python main.py --signage off                                   # 关闭静态指示牌
+"""
 import argparse
 import random
 import sys
@@ -558,6 +575,9 @@ def main(options=None):
                         target_exit = guide_exit_id
                         exit_pref[guide_exit_id] = max(exit_pref.get(guide_exit_id, 0.0), 1.5)
 
+                    # =====================【新增 is_informed 字段】=====================
+                    is_informed = info_state != "UNKNOWN"
+                    # ===================================================================
                     c_step_data[pid] = {
                         "target_exit": target_exit,
                         "exit_preference": exit_pref,
@@ -571,6 +591,7 @@ def main(options=None):
                         "is_waiting": group_beh.get("is_waiting", False),
                         "waiting_for": group_beh.get("waiting_for"),
                         "group_id": getattr(person, "group_id", ""),
+                        "is_informed": is_informed # <=====新增，传递给CA模型
                     }
 
                     person.info_state = info_state
@@ -674,6 +695,7 @@ def main(options=None):
         print(f"速度/拥堵模型: 本步累计被拥堵影响次数={speed_stats['congested_total']} "
               f"累计原地等待人次={speed_stats['blocked_total']}")
     print(f"输出目录: outputs/experiments/{unique_run_id}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="A+B+C+D 完整联调主程序（C 行为可开关、可对比，带实时可视化）")

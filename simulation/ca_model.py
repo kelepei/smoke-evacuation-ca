@@ -23,6 +23,7 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
     ✅迭代2：新增动态同伴跟随引力（感知范围内存活行人吸引力）
     ✅迭代3：增加风险权衡，同伴区域烟雾高时自动抑制跟随引力
     ✅迭代4：增加行人个体从众偏好异质性，不同行人从众倾向不同
+    ✅迭代5：行人必须知情is_informed=True之后，才会开始撤离移动；不知情原地停留
     """
     px, py = int(person.x), int(person.y)
 
@@ -34,6 +35,23 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
     if single_behavior is not None and single_behavior.get("is_waiting", False):
         return px, py
     # =========================================================================
+
+    # =====================【迭代5】不知情行人原地不动，不执行撤离计算【修改此处：增加兜底读取person.info_state】 =====================
+    # 兼容 dict字典 和 对象两种single_behavior
+    if isinstance(single_behavior, dict):
+        is_informed = single_behavior.get("is_informed", False)
+    else:
+        is_informed = getattr(single_behavior, "is_informed", False)
+
+    # ✅【关键新增兜底】如果C模块没有传入is_informed，就读取person对象自身info_state（引擎自动设置）
+    if not is_informed:
+        info_state = getattr(person, "info_state", "UNKNOWN")
+        if info_state != "UNKNOWN":
+            is_informed = True
+
+    if not is_informed:
+        return (px, py)
+    # ======================================================================================
 
     # ===================== B03 出口选择模块 =====================
     if exit_chooser is not None and single_behavior is not None:

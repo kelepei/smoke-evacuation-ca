@@ -1,7 +1,4 @@
-"""
-B08 烟雾暴露剂量统计模块 risk_metrics.py
-累计每个行人全程烟雾吸入剂量Dose，写入CSV日志.
-"""
+""" B08 烟雾暴露剂量统计模块 risk_metrics.py 累计每个行人全程烟雾吸入剂量Dose，写入CSV日志. """
 from core.schema import Person
 import numpy as np
 
@@ -32,3 +29,7 @@ class SmokeDoseRecorder:
     def get_person_total_dose(self, pid: int) -> float:
         """获取指定行人总暴露剂量"""
         return self.person_dose.get(pid, 0.0)
+
+    def get_dose(self, pid: int) -> float:
+        """兼容调用，获取行人总烟雾剂量"""
+        return self.get_person_total_dose(pid)
