@@ -141,8 +141,8 @@ class HerdingModel:
         for person in all_persons:
             pid = person.id
 
-            # 如果已撤离，跳过
-            if getattr(person, "evacuated", False):
+            # 如果已撤离或已死亡，跳过（死亡人员不参与从众）
+            if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
                 results[pid] = self._no_behavior()
                 continue
 
@@ -210,7 +210,7 @@ class HerdingModel:
         """构建位置→行人对象索引，用于快速查找（不依赖列表下标==id）"""
         index = {}
         for p in all_persons:
-            if not getattr(p, "evacuated", False):
+            if not getattr(p, "evacuated", False) and not getattr(p, "is_dead", False):
                 index[(p.x, p.y)] = p
         return index
 
@@ -244,7 +244,8 @@ class HerdingModel:
                     neighbor = pos_index[(nx, ny)]
                     if neighbor.id != person.id:
                         # 检查是否已撤离
-                        if not getattr(neighbor, "evacuated", False):
+                        if (not getattr(neighbor, "evacuated", False)
+                                and not getattr(neighbor, "is_dead", False)):
                             visible.append(neighbor)
 
         return visible
