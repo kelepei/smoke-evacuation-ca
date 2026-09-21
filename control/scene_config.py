@@ -68,7 +68,9 @@ class SceneConfig:
     # ---- 信息传播 / 警报（新增）----
     initial_informed_ratio: float = 0.15   # 火灾初期已知道险情的人员比例
     alarm_enabled: bool = True             # 烟雾达阈值时是否触发警报广播
-    alarm_smoke_threshold: float = 3.0     # 警报触发的烟雾浓度阈值
+    alarm_smoke_threshold: float = 0.45    # 警报触发的烟雾浓度阈值（新烟雾模型 0~1）
+    smoke_intensity: float = 2.0           # 烟源目标释放强度（配合爬升使用）
+    smoke_ramp_steps: int = 120            # 烟源强度从0爬到目标值的步数（越小越快，0=不爬升）
 
 
 # ============================================================
@@ -98,6 +100,8 @@ FIELD_ALIASES = {
     "initial_informed_ratio": ["初始知情比例", "先知情比例", "初始知情率"],
     "alarm_enabled": ["警报启用", "启用警报"],
     "alarm_smoke_threshold": ["警报阈值", "烟雾报警阈值"],
+    "smoke_intensity": ["烟源强度", "烟雾强度"],
+    "smoke_ramp_steps": ["烟源爬升步数", "烟雾爬升步数"],
 }
 
 
@@ -387,11 +391,25 @@ class SceneConfigGenerator:
 
         alarm_enabled = bool(normalized.get("alarm_enabled", True))
         try:
-            alarm_smoke_threshold = float(normalized.get("alarm_smoke_threshold", 3.0))
+            alarm_smoke_threshold = float(normalized.get("alarm_smoke_threshold", 0.45))
         except (TypeError, ValueError):
-            alarm_smoke_threshold = 3.0
+            alarm_smoke_threshold = 0.45
         if alarm_smoke_threshold < 0:
             alarm_smoke_threshold = 0.0
+
+        try:
+            smoke_intensity = float(normalized.get("smoke_intensity", 2.0))
+        except (TypeError, ValueError):
+            smoke_intensity = 2.0
+        if smoke_intensity <= 0:
+            smoke_intensity = 2.0
+
+        try:
+            smoke_ramp_steps = int(normalized.get("smoke_ramp_steps", 120))
+        except (TypeError, ValueError):
+            smoke_ramp_steps = 120
+        if smoke_ramp_steps < 0:
+            smoke_ramp_steps = 0
 
         profile_ratios = normalized.get("profile_ratios", {"student": 0.8, "teacher": 0.1, "staff": 0.1})
         if isinstance(profile_ratios, dict):
@@ -454,6 +472,8 @@ class SceneConfigGenerator:
             initial_informed_ratio=initial_informed_ratio,
             alarm_enabled=alarm_enabled,
             alarm_smoke_threshold=alarm_smoke_threshold,
+            smoke_intensity=smoke_intensity,
+            smoke_ramp_steps=smoke_ramp_steps,
         )
 
 
