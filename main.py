@@ -1,22 +1,6 @@
-""" 主程序入口 - A+B+C+D 完整联调版本
-功能：
-    1. A 模块加载地图
-    2. C 模块生成人群和社会关系
-    3. C 模块为行人按所选地图分配位置
-    4. C 行为引擎（结伴/从众/信息/引导/指示牌/错误信息）逐帧输出 c_step_data
-    5. B 模块 CA 仿真
-    6. D 模块记录 CSV 日志
-    7. 【新增】实时可视化渲染（可开关，不影响原有实验逻辑）
-
-命令行（便于"开/关关系模型"与">=2 种引导策略"对比实验）：
-    python main.py --map maps/edited_map.json                     # 默认：关系模型开启 + 可视化开启
-    python main.py --social off --visual off                       # 基线：B纯CA，关闭可视化用于批量跑实验
-    python main.py --guide fixed / --guide patrol / --guide toward_exit ...
-    python main.py --misinfo off                                   # 关闭错误出口信息
-    python main.py --info off                                      # 关闭广播/局部口头传播
-    python main.py --signage off                                   # 关闭静态指示牌
-"""
+""" 主程序入口 - A+B+C+D 完整联调版本 功能：     1. A 模块加载地图     2. C 模块生成人群和社会关系     3. C 模块为行人按所选地图分配位置     4. C 行为引擎（结伴/从众/信息/引导/指示牌/错误信息）逐帧输出 c_step_data     5. B 模块 CA 仿真     6. D 模块记录 CSV 日志     7. 【新增】实时可视化渲染（可开关，不影响原有实验逻辑）  命令行（便于"开/关关系模型"与">=2 种引导策略"对比实验）：     python main.py --map maps/edited_map.json                     # 默认：关系模型开启 + 可视化开启     python main.py --social off --visual off                       # 基线：B纯CA，关闭可视化用于批量跑实验     python main.py --guide fixed / --guide patrol / --guide toward_exit ...     python main.py --misinfo off                                   # 关闭错误出口信息     python main.py --info off                                      # 关闭广播/局部口头传播     python main.py --signage off                                   # 关闭静态指示牌 """
 import argparse
+import json
 import random
 import sys
 import time
@@ -50,6 +34,7 @@ from social.group_behavior import GroupBehaviorEngine
 from social.herding_model import HerdingModel
 from social.guide_agent import GuideAgentModel, GuideMoveStrategy
 from control.signage_model import SignageModel
+from control.control_strategy import ControlStrategyEngine, ControlStrategyType
 
 # 仿真引擎 + A人员位置加载器
 from simulation.evac_simulation import EvacEngine
@@ -149,7 +134,7 @@ def _build_patrol_points(grid, step=2):
     return points
 
 
-def load_A_scene(map_path) -> ScenarioConfig:
+def load_A_scene(map_path, smoke_intensity=0.08) -> ScenarioConfig:
     grid_path = Path(map_path)
     if not grid_path.is_file():
         raise SystemExit(f"[ERROR] 地图文件不存在: {grid_path}")
@@ -183,7 +168,8 @@ def load_A_scene(map_path) -> ScenarioConfig:
         grid=grid,
         persons=[],
         exits=[Exit(id=eid, x=x, y=y) for eid, x, y in exit_entries],
-        smoke_sources=[SmokeSource(x=smoke_x, y=smoke_y, intensity=10)]
+        # 烟源强度可配置：过大（如 10）会让浓度第 1 步就顶到上限，导致警报立刻触发
+        smoke_sources=[SmokeSource(x=smoke_x, y=smoke_y, intensity=smoke_intensity)]
     )
     return scene
 
@@ -196,7 +182,11 @@ class SimVisualizer:
             self.fig = None
             self.ax = None
             return
-        plt.rcParams['font.sans-serif'] = ['SimHei']
+        # 优先使用带粗体的中文字体，避免 "Failed to find font weight bold" 警告
+        plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'DejaVu Sans']
+        plt.rcParams['axes.unicode_minus'] = False
+        import logging as _logging
+        _logging.getLogger('matplotlib.font_manager').setLevel(_logging.ERROR)
         self.fig, self.ax = plt.subplots(figsize=(10, 8))
         self.w = grid_width
         self.h = grid_height
@@ -222,7 +212,7 @@ class SimVisualizer:
         smoke_mat = sim.smoke_matrix
         if smoke_mat is not None:
             smoke_np = np.array(smoke_mat)
-            im = self.ax.imshow(smoke_np, cmap="gray_r", vmin=0, vmax=10, alpha=0.4, origin="lower")
+            im = self.ax.imshow(smoke_np, cmap="gray_r", vmin=0, vmax=1.0, alpha=0.4, origin="lower")
 
         # 绘制出口（红色方块）
         for eid, ex, ey in exit_list:
@@ -237,13 +227,15 @@ class SimVisualizer:
             if getattr(p, "is_dead", False):
                 color = "black"
             else:
-                info_state = getattr(p, "info_state", "UNKNOWN")
+                info_state = str(getattr(p, "info_state", "UNKNOWN"))
                 if info_state == "MISINFORMED":
                     color = "orange"
                 elif info_state == "GUIDED":
                     color = "blue"
-                elif info_state == "INFORMED":
+                elif info_state == "CONFIRMED":
                     color = "green"
+                elif info_state == "ALERTED":
+                    color = "gold"
                 else:
                     color = "deepskyblue"
             circ = Circle((p.x, p.y), 0.3, color=color)
@@ -255,7 +247,7 @@ class SimVisualizer:
             for g in guide_engine.guides:
                 circ = Circle((g.x, g.y), 0.4, color="magenta")
                 self.ax.add_patch(circ)
-                self.ax.text(g.x + 0.3, g.y, "G", color="magenta", fontweight="bold")
+                self.ax.text(g.x + 0.3, g.y, "G", color="magenta")
 
         plt.pause(0.01)
 
@@ -305,16 +297,46 @@ def main(options=None):
     congestion_radius = int(options.get("congestion_radius", 2))
     congestion_threshold = int(options.get("congestion_threshold", 4))
     patrol_step = int(options.get("patrol_step", 2))
+    alarm_source = str(options.get("alarm_source", "b")).lower()
+    if alarm_source not in ("b", "threshold", "both"):
+        alarm_source = "b"
+    smoke_opt = options.get("smoke_intensity")
+    smoke_intensity = float(
+        smoke_opt if smoke_opt is not None else getattr(scene_cfg, "smoke_intensity", 2.0)
+    )
+    ramp_opt = options.get("smoke_ramp_steps")
+    smoke_ramp_steps = int(
+        ramp_opt if ramp_opt is not None else getattr(scene_cfg, "smoke_ramp_steps", 120)
+    )
+    if smoke_ramp_steps < 0:
+        smoke_ramp_steps = 0
+
+    # C10 管控策略选项
+    strategy_keys = [s.strip().lower() for s in str(options.get("strategy", "none")).split(",") if s.strip()]
+    if "all" in strategy_keys:
+        strategy_keys = [s.value for s in ControlStrategyType]
+    if "none" in strategy_keys:
+        strategy_keys = []
+    closed_exits_opt = str(options.get("closed_exits") or "").strip()
+    strategy_trigger = int(options.get("strategy_trigger_step", 10))
+    lockdown_area_opt = str(options.get("lockdown_area") or "").strip()
+    route_shift_ratio = float(options.get("route_shift_ratio", 0.2))
 
     print("===== C 行为实验开关 =====")
     print(f"  social={social_on} info={info_on} misinfo={misinfo_on} "
           f"signage={signage_on} guide={guide_key} max_frames={max_frame} run_id={unique_run_id}")
     print(f"  初始知情比例={initial_informed_ratio} 警报={alarm_on}(阈值{alarm_threshold}) "
           f"引导比例={guide_share} 引导出口={guide_exit_id} 速度模型={speed_model_on}")
+    if smoke_ramp_steps > 0:
+        print(f"  烟源强度={smoke_intensity}，爬升 {smoke_ramp_steps} 步（浓度缓慢增大后才可能报警）")
+    else:
+        print(f"  烟源强度={smoke_intensity}（不爬升，立即满强度）")
+    print(f"  报警来源={alarm_source}（b=B报警器 / threshold=C阈值 / both=任一）")
+    print(f"  C10 管控策略={strategy_keys or ['none']}（触发步={strategy_trigger}）")
     print(f"  实时可视化：{'开启' if visual_on else '关闭'}")
 
     # 1. 初始化地图
-    ca_scene = load_A_scene(map_path)
+    ca_scene = load_A_scene(map_path, smoke_intensity=smoke_intensity)
     grid_w = ca_scene.grid.width
     grid_h = ca_scene.grid.height
     max_valid_x = grid_w - 1
@@ -495,6 +517,64 @@ def main(options=None):
     sim = EvacEngine(scene=ca_scene)
     print(f"本次实验run_id：{unique_run_id}")
 
+    # 【阈值口径统一】把 YAML/命令行的阈值同步给 B 的报警器，
+    # 否则 B 内部写死的 0.45 会先于你配置的阈值（如 0.5）触发。
+    b_alarm_threshold_old = getattr(sim, "alarm_threshold", None)
+    if b_alarm_threshold_old is not None:
+        sim.alarm_threshold = float(alarm_threshold)
+        print(f"🚨 B 报警器阈值已同步：{b_alarm_threshold_old} -> {alarm_threshold}")
+
+    # ===== C10 管控策略：创建引擎并按命令行启用 =====
+    control_engine = None
+    if strategy_keys:
+        if not social_on:
+            print("[WARN] C10 管控策略需要 --social on（依赖 C03 关系图与 C06 信息引擎），已跳过")
+        else:
+            exit_pos_dict = {eid: (ex, ey) for eid, ex, ey in exit_check_list}
+            control_engine = ControlStrategyEngine(
+                builder, info_state_engine, grid_w, grid_h, exit_pos_dict
+            )
+            for key in strategy_keys:
+                if key == "exit_closure":
+                    closed = [e.strip() for e in closed_exits_opt.split(",") if e.strip()]
+                    if not closed:
+                        closed = [exit_check_list[-1][0]]      # 默认关闭最后一个出口
+                    control_engine.enable_strategy(
+                        ControlStrategyType.EXIT_CLOSURE,
+                        {"closed_exits": closed,
+                         "trigger_time": strategy_trigger,
+                         "reopen_after_evacuation": False},
+                    )
+                    print(f"🚧 C10 出口关闭：第 {strategy_trigger} 步关闭 {closed}")
+                elif key == "zone_lockdown":
+                    if lockdown_area_opt:
+                        try:
+                            x1, y1, x2, y2 = [int(v) for v in lockdown_area_opt.split(",")]
+                        except ValueError:
+                            raise SystemExit("[ERROR] --lockdown-area 格式应为 x1,y1,x2,y2")
+                    else:
+                        x1, y1 = grid_w // 3, grid_h // 3
+                        x2, y2 = grid_w * 2 // 3, grid_h * 2 // 3
+                    control_engine.enable_strategy(
+                        ControlStrategyType.ZONE_LOCKDOWN,
+                        {"locked_zones": [[x1, y1, x2, y2]], "lockdown_trigger": "manual"},
+                    )
+                    print(f"🚧 C10 区域封锁：({x1},{y1})-({x2},{y2})，行人不得进入")
+                elif key == "zoned_evacuation":
+                    control_engine.enable_strategy(ControlStrategyType.ZONED_EVACUATION, {})
+                    zone_exits = [eid for eid, _, _ in exit_check_list]
+                    assigned = control_engine.assign_zones_by_positions(
+                        list(sim.person_map.values()), zone_exits
+                    )
+                    print(f"🚧 C10 分区疏散：按位置均衡分配 {len(assigned)} 人到 {len(zone_exits)} 个出口")
+                elif key == "route_control":
+                    control_engine.enable_strategy(
+                        ControlStrategyType.ROUTE_CONTROL, {"controlled_routes": []}
+                    )
+                    print(f"🚧 C10 路线管控：按出口负载均衡改派（比例 {route_shift_ratio}）")
+                else:
+                    print(f"[WARN] 未知策略 '{key}'，已忽略")
+
     # 火灾初期：让一定比例的人员先知道险情
     if social_on and info_on and initial_informed_ratio > 0:
         sim_persons = list(sim.person_map.values())
@@ -519,6 +599,7 @@ def main(options=None):
         # 速度差异 + 拥堵减速
         move_credit = {}
         speed_stats = {"blocked_total": 0, "congested_total": 0}
+        max_smoke_seen = 0.0
         _speeds = [float(getattr(p, "speed", 1.0) or 1.0) for p in sim.person_map.values()]
         mean_speed = (sum(_speeds) / len(_speeds)) if _speeds else 1.0
         if mean_speed <= 0:
@@ -537,16 +618,36 @@ def main(options=None):
 
             c_step_data = {}
             if social_on:
-                if alarm_on and not info_diff_engine.alarm_triggered and smoke_data is not None:
-                    try:
-                        max_smoke = float(np.max(np.asarray(smoke_data, dtype=float)))
-                    except Exception:
-                        max_smoke = 0.0
-                    if max_smoke >= alarm_threshold:
+                # C10 管控策略每步更新（出口关闭改派 / 区域封锁 / 分区疏散 / 路线均衡）
+                if control_engine is not None:
+                    control_engine.update_all(ped_list, frame, smoke_data)
+                    if ControlStrategyType.ROUTE_CONTROL in control_engine.active_strategies:
+                        control_engine.update_route_balance(
+                            ped_list, [eid for eid, _, _ in exit_check_list], route_shift_ratio
+                        )
+
+                if alarm_on and not info_diff_engine.alarm_triggered:
+                    b_alarm = bool(getattr(sim, "is_alarm_triggered", False))
+                    max_smoke = 0.0
+                    if smoke_data is not None:
+                        try:
+                            max_smoke = float(np.max(np.asarray(smoke_data, dtype=float)))
+                        except Exception:
+                            max_smoke = 0.0
+                    if max_smoke > max_smoke_seen:
+                        max_smoke_seen = max_smoke
+                    b_threshold = float(getattr(sim, "alarm_threshold", alarm_threshold))
+                    hit_b = b_alarm and alarm_source in ("b", "both")
+                    hit_c = (max_smoke >= alarm_threshold) and alarm_source in ("threshold", "both")
+                    if hit_b or hit_c:
                         notified = info_diff_engine.trigger_alarm(ped_list, frame)
                         if guide_engine is not None and guide_engine.guides:
                             guide_engine.activate_guidance(guide_exit_id)
-                        print(f"🚨 帧{frame} 烟雾峰值 {max_smoke:.3f} >= {alarm_threshold}，"
+                        if hit_b:
+                            src_txt = f"B报警器(阈值{b_threshold:g})"
+                        else:
+                            src_txt = f"C烟雾阈值({alarm_threshold:g})"
+                        print(f"🚨 帧{frame} {src_txt}触发：烟雾峰值 {max_smoke:.3f}，"
                               f"警报广播通知 {notified} 人；引导员转为引导出口 {guide_exit_id}")
                 info_diff_engine.update_all(ped_list, current_step=frame, smoke_grid=smoke_data)
                 group_result = group_engine.update_all(ped_dict, frame)
@@ -558,6 +659,10 @@ def main(options=None):
                     guide_result = {}
 
                 for pid, person in ped_dict.items():
+                    # 死亡人员：不参与 C 行为与信息统计，仅在日志中标记 DEAD
+                    if getattr(person, "is_dead", False):
+                        person.status = "DEAD"
+                        continue
                     info_state = info_state_engine.get_state_value(pid)
                     group_beh = group_result.get(pid, {}) or {}
                     herd_beh = herd_result.get(pid, {}) or {}
@@ -575,9 +680,16 @@ def main(options=None):
                         target_exit = guide_exit_id
                         exit_pref[guide_exit_id] = max(exit_pref.get(guide_exit_id, 0.0), 1.5)
 
-                    # =====================【新增 is_informed 字段】=====================
-                    is_informed = info_state != "UNKNOWN"
-                    # ===================================================================
+                    # C10：分区疏散/路线管控指派的出口优先（出口必须处于开启状态）
+                    if control_engine is not None:
+                        assigned_exit = (control_engine.get_assigned_exit(pid)
+                                         or control_engine.get_route_target(pid))
+                        if assigned_exit and control_engine.is_exit_open(assigned_exit):
+                            target_exit = assigned_exit
+                            exit_pref[assigned_exit] = max(
+                                exit_pref.get(assigned_exit, 0.0), 1.2
+                            )
+
                     c_step_data[pid] = {
                         "target_exit": target_exit,
                         "exit_preference": exit_pref,
@@ -591,7 +703,6 @@ def main(options=None):
                         "is_waiting": group_beh.get("is_waiting", False),
                         "waiting_for": group_beh.get("waiting_for"),
                         "group_id": getattr(person, "group_id", ""),
-                        "is_informed": is_informed # <=====新增，传递给CA模型
                     }
 
                     person.info_state = info_state
@@ -608,7 +719,7 @@ def main(options=None):
                 move_allowed = {}
                 active_positions = [(p.x, p.y) for p in ped_list if not p.evacuated]
                 for person in ped_list:
-                    if person.evacuated:
+                    if person.evacuated or getattr(person, "is_dead", False):
                         continue
                     speed = float(getattr(person, "speed", 1.0) or 1.0)
                     density = 0
@@ -629,6 +740,12 @@ def main(options=None):
                         speed_stats["blocked_total"] += 1
                     move_credit[person.id] = credit
 
+            # 烟源强度随时间线性爬升：让烟雾浓度缓慢增大，避免过早触发警报
+            if smoke_ramp_steps > 0:
+                ramp_factor = min(1.0, (frame + 1) / float(smoke_ramp_steps))
+                for src in getattr(sim, "smoke_sources", None) or []:
+                    src.intensity = smoke_intensity * ramp_factor
+
             # 执行仿真
             sim.run_one_step(
                 c_step_data=c_step_data,
@@ -643,6 +760,18 @@ def main(options=None):
                         person.x = getattr(person, "prev_x", person.x)
                         person.y = getattr(person, "prev_y", person.y)
 
+            # C10 区域封锁：只禁止"进入"封锁区；封锁前已在区内的人允许离开
+            if control_engine is not None:
+                for person in ped_list:
+                    if person.evacuated or getattr(person, "is_dead", False):
+                        continue
+                    if not control_engine.is_cell_accessible(int(person.x), int(person.y)):
+                        prev_x = getattr(person, "prev_x", person.x)
+                        prev_y = getattr(person, "prev_y", person.y)
+                        if control_engine.is_cell_accessible(int(prev_x), int(prev_y)):
+                            person.x = prev_x
+                            person.y = prev_y
+
             # 【新增】刷新可视化窗口
             visualizer.update(sim, exit_check_list, guide_engine, frame)
 
@@ -652,11 +781,20 @@ def main(options=None):
                 informed_now = sum(
                     1 for p in ped_list
                     if str(getattr(p, "info_state", "UNKNOWN")) != "UNKNOWN"
+                    and not getattr(p, "is_dead", False)
                 )
+                dead_now = sim.get_dead_count() if hasattr(sim, "get_dead_count") else 0
                 print(f"帧{frame} | 已撤离 {sim.evacuated_count}/{sim.total_persons}"
+                      f" | 死亡 {dead_now}" 
                       f" | 已知情 {informed_now}/{len(ped_list)}")
             if sim.is_all_evacuated():
-                print(f"\n🎉 全员疏散完成，总仿真帧数：{frame}")
+                evac_now = sim.get_evacuated_count()
+                dead_now = sim.get_dead_count() if hasattr(sim, "get_dead_count") else 0
+                if dead_now > 0:
+                    print(f"\n⚠️ 仿真结束（撤离 {evac_now}/{sim.total_persons}，"
+                          f"死亡 {dead_now}/{sim.total_persons}），总仿真帧数：{frame}")
+                else:
+                    print(f"\n🎉 全员疏散完成，总仿真帧数：{frame}")
                 break
         else:
             print(f"\n⏱ 达到最大仿真帧数 {max_frame}，仿真结束")
@@ -673,6 +811,8 @@ def main(options=None):
     print(f"run_id: {unique_run_id}")
     print(f"地图: {map_path}")
     print(f"疏散人数: {sim.get_evacuated_count()} / {sim.total_persons}")
+    if hasattr(sim, "get_dead_count"):
+        print(f"死亡人数: {sim.get_dead_count()} / {sim.total_persons}")
     if social_on:
         print("信息状态统计:", info_state_engine.get_statistics())
         print("信息传播:", info_diff_engine.get_propagation_summary())
@@ -682,9 +822,26 @@ def main(options=None):
             print("引导员统计:", guide_engine.get_statistics())
     if signage_engine is not None:
         print("指示牌统计:", signage_engine.get_statistics())
+    if control_engine is not None:
+        strategy_stats = control_engine.get_statistics()
+        print("C10 管控策略统计:", strategy_stats)
+        print("C10 策略状态:", control_engine.get_strategy_status())
+        try:
+            run_dir = project_root / "outputs" / "experiments" / unique_run_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            (run_dir / "strategy_summary.json").write_text(
+                json.dumps(strategy_stats, ensure_ascii=False, indent=2, default=str),
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            print(f"[WARN] 策略统计写入失败（不影响仿真）：{exc}")
     if social_on:
         print(f"警报: triggered={info_diff_engine.alarm_triggered} "
-              f"step={info_diff_engine.alarm_trigger_step} 阈值={alarm_threshold}")
+              f"step={info_diff_engine.alarm_trigger_step} 阈值={alarm_threshold} 来源={alarm_source}")
+        print(f"烟雾峰值（全程最大）: {max_smoke_seen:.3f}")
+        if not info_diff_engine.alarm_triggered and max_smoke_seen < alarm_threshold:
+            print(f"⚠️ 全程烟雾峰值 {max_smoke_seen:.3f} 低于阈值 {alarm_threshold}，警报未触发；"
+                  f"可调高 --smoke-intensity（当前 {smoke_intensity}）或降低 alarm_smoke_threshold")
         print(f"引导目标出口: {guide_exit_id} 计划引导人数: {len(guided_ids)}")
         if guide_engine is not None:
             print("引导员标记(供 B/D 上色):", [
@@ -695,6 +852,23 @@ def main(options=None):
         print(f"速度/拥堵模型: 本步累计被拥堵影响次数={speed_stats['congested_total']} "
               f"累计原地等待人次={speed_stats['blocked_total']}")
     print(f"输出目录: outputs/experiments/{unique_run_id}")
+
+    # ===== 自动更新可视化报告（PNG + index.html）=====
+    if options.get("report", True):
+        try:
+            from control.visual_report import generate_report
+            # 优先写到项目外层 outputs/figures（你一直在看的 index.html 所在目录）
+            outer_figs = project_root.parent / "outputs" / "figures"
+            default_figs = outer_figs if outer_figs.parent.is_dir() else project_root / "outputs" / "figures"
+            report_dir = Path(options["report_dir"]) if options.get("report_dir") else default_figs
+            report_path = generate_report(
+                run_dir=project_root / "outputs" / "experiments" / unique_run_id,
+                figures_dir=report_dir,
+                people_file=pos_output,
+            )
+            print(f"📊 可视化报告已自动更新：{report_path}")
+        except Exception as exc:
+            print(f"[WARN] 可视化报告生成失败（不影响仿真结果）：{exc}")
 
 
 if __name__ == "__main__":
@@ -725,7 +899,13 @@ if __name__ == "__main__":
     parser.add_argument("--alarm", choices=["on", "off"], default=None,
                         help="烟雾达阈值时是否触发警报广播（不传则用 YAML 的 alarm_enabled）")
     parser.add_argument("--alarm-smoke-threshold", type=float, default=None,
-                        help="触发警报的烟雾浓度阈值（不传则用 YAML 的 alarm_smoke_threshold）")
+                        help="触发警报的烟雾浓度阈值（0~1；不传则用 YAML 的 alarm_smoke_threshold）")
+    parser.add_argument("--smoke-intensity", type=float, default=None,
+                        help="烟源目标强度（配合爬升使用；不传则用 YAML 的 smoke_intensity）")
+    parser.add_argument("--smoke-ramp-steps", type=int, default=None,
+                        help="烟源强度从0线性爬升到目标值所需步数；0=不爬升")
+    parser.add_argument("--alarm-source", choices=["b", "threshold", "both"], default="b",
+                        help="报警由谁决定：b=B报警器(阈值已同步为配置值)；threshold=仅用C阈值；both=任一满足")
     parser.add_argument("--guide-exit", default=None,
                         help="引导员要引导人群前往的较远出口 id（默认取距地图中心最远出口）")
     parser.add_argument("--guide-share", type=float, default=0.30,
@@ -738,8 +918,22 @@ if __name__ == "__main__":
                         help="拥堵密度统计半径（元胞）")
     parser.add_argument("--congestion-threshold", type=int, default=4,
                         help="达到该人数视为拥堵并开始减速")
+    parser.add_argument("--strategy", default="none",
+                        help="C10 管控策略：none / exit_closure / zone_lockdown / zoned_evacuation / route_control / all（可逗号组合）")
+    parser.add_argument("--closed-exits", default=None,
+                        help="出口关闭策略关闭哪些出口，逗号分隔（默认关闭最后一个出口）")
+    parser.add_argument("--strategy-trigger-step", type=int, default=10,
+                        help="出口关闭的触发步（默认第10步）")
+    parser.add_argument("--lockdown-area", default=None,
+                        help="区域封锁范围 x1,y1,x2,y2（默认地图中央三分之一区域）")
+    parser.add_argument("--route-shift-ratio", type=float, default=0.2,
+                        help="路线管控每次从最拥挤出口改派到最空闲出口的人员比例")
     parser.add_argument("--visual", choices=["on", "off"], default="on",
                         help="【新增】开启/关闭matplotlib实时可视化窗口，批量实验建议off")
+    parser.add_argument("--report", choices=["on", "off"], default="on",
+                        help="跑完后是否自动生成可视化报告（PNG + index.html）")
+    parser.add_argument("--report-dir", default=None,
+                        help="报告输出目录（默认写到项目外层 outputs/figures，即你查看 index.html 的目录）")
     args = parser.parse_args()
     main(options={
         "map": args.map,
@@ -754,11 +948,21 @@ if __name__ == "__main__":
         "initial_informed_ratio": args.initial_informed_ratio,
         "alarm": None if args.alarm is None else args.alarm == "on",
         "alarm_smoke_threshold": args.alarm_smoke_threshold,
+        "smoke_intensity": args.smoke_intensity,
+        "smoke_ramp_steps": args.smoke_ramp_steps,
+        "alarm_source": args.alarm_source,
         "guide_exit": args.guide_exit,
         "guide_share": args.guide_share,
         "patrol_step": args.patrol_step,
         "speed_model": args.speed_model == "on",
         "congestion_radius": args.congestion_radius,
         "congestion_threshold": args.congestion_threshold,
+        "strategy": args.strategy,
+        "closed_exits": args.closed_exits,
+        "strategy_trigger_step": args.strategy_trigger_step,
+        "lockdown_area": args.lockdown_area,
+        "route_shift_ratio": args.route_shift_ratio,
         "visual": args.visual == "on",
+        "report": args.report == "on",
+        "report_dir": args.report_dir,
     })
