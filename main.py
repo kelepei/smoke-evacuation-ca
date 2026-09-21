@@ -294,6 +294,7 @@ def main(options=None):
     guide_exit_id = options.get("guide_exit")
     guide_share = float(options.get("guide_share", 0.30))
     speed_model_on = bool(options.get("speed_model", True))
+    freeze_unknown = bool(options.get("freeze_unknown", True))
     congestion_radius = int(options.get("congestion_radius", 2))
     congestion_threshold = int(options.get("congestion_threshold", 4))
     patrol_step = int(options.get("patrol_step", 2))
@@ -333,6 +334,7 @@ def main(options=None):
         print(f"  烟源强度={smoke_intensity}（不爬升，立即满强度）")
     print(f"  报警来源={alarm_source}（b=B报警器 / threshold=C阈值 / both=任一）")
     print(f"  C10 管控策略={strategy_keys or ['none']}（触发步={strategy_trigger}）")
+    print(f"  未获知险情者原地不动={freeze_unknown}（--freeze-unknown off 可关闭）")
     print(f"  实时可视化：{'开启' if visual_on else '关闭'}")
 
     # 1. 初始化地图
@@ -586,9 +588,20 @@ def main(options=None):
     # 初始化可视化【新增】
     visualizer = SimVisualizer(grid_w, grid_h, enable=visual_on)
 
+    # run_id 去重：D 的日志器拒绝覆盖已有日志，这里自动加序号，避免重复运行时直接报错
+    _exp_root = project_root / "outputs" / "experiments"
+    _base_run_id = unique_run_id
+    _suffix = 1
+    while ((_exp_root / unique_run_id / "people_log.csv").exists()
+           or (_exp_root / unique_run_id / "event_log.csv").exists()):
+        _suffix += 1
+        unique_run_id = f"{_base_run_id}_{_suffix:02d}"
+    if unique_run_id != _base_run_id:
+        print(f"⚠️ run_id {_base_run_id} 已存在，自动改用 {unique_run_id}（不覆盖旧结果）")
+
     d_view = DVisualizationEntry(
         simulation=sim,
-        output_root="outputs/experiments",
+        output_root=str(project_root / "outputs" / "experiments"),
         run_id=unique_run_id,
         time_step_s=0.5,
     )
@@ -599,6 +612,7 @@ def main(options=None):
         # 速度差异 + 拥堵减速
         move_credit = {}
         speed_stats = {"blocked_total": 0, "congested_total": 0}
+        freeze_stats = {"frozen_total": 0}
         max_smoke_seen = 0.0
         _speeds = [float(getattr(p, "speed", 1.0) or 1.0) for p in sim.person_map.values()]
         mean_speed = (sum(_speeds) / len(_speeds)) if _speeds else 1.0
@@ -714,13 +728,29 @@ def main(options=None):
                     person.is_waiting = group_beh.get("is_waiting", False)
                     person.target_exit = target_exit
                     person.exit_preference = exit_pref
-                move_allowed = None
-            if speed_model_on and ped_list:
+            # 移动门控：① 未获知险情者原地不动 ② 速度差异 ③ 拥堵减速
+            move_allowed = None
+            if ped_list and (speed_model_on or (freeze_unknown and social_on)):
                 move_allowed = {}
                 active_positions = [(p.x, p.y) for p in ped_list if not p.evacuated]
                 for person in ped_list:
                     if person.evacuated or getattr(person, "is_dead", False):
                         continue
+
+                    # ① 尚未获知火灾信息的人不移动（警报/人际传播获知后才会疏散）
+                    if freeze_unknown and social_on:
+                        state_now = str(getattr(person, "info_state", "UNKNOWN"))
+                        if state_now == "UNKNOWN":
+                            move_allowed[person.id] = False
+                            freeze_stats["frozen_total"] += 1
+                            continue
+
+                    # ② 关闭速度模型时，获知者直接允许移动
+                    if not speed_model_on:
+                        move_allowed[person.id] = True
+                        continue
+
+                    # ③ 速度差异 + 拥堵减速
                     speed = float(getattr(person, "speed", 1.0) or 1.0)
                     density = 0
                     for qx, qy in active_positions:
@@ -851,6 +881,8 @@ def main(options=None):
     if speed_model_on:
         print(f"速度/拥堵模型: 本步累计被拥堵影响次数={speed_stats['congested_total']} "
               f"累计原地等待人次={speed_stats['blocked_total']}")
+    if freeze_unknown and social_on:
+        print(f"信息门控: 未获知险情而原地等待 累计 {freeze_stats['frozen_total']} 人次")
     print(f"输出目录: outputs/experiments/{unique_run_id}")
 
     # ===== 自动更新可视化报告（PNG + index.html）=====
@@ -912,6 +944,8 @@ if __name__ == "__main__":
                         help="接受引导的人群比例（只引导部分人群）")
     parser.add_argument("--patrol-step", type=int, default=2,
                         help="巡查路线采样间隔（越小巡查点越密）")
+    parser.add_argument("--freeze-unknown", choices=["on", "off"], default="on",
+                        help="未获知火灾信息的人是否原地不动（默认on；关闭则所有人一开始就会疏散）")
     parser.add_argument("--speed-model", choices=["on", "off"], default="on",
                         help="是否启用速度差异与拥堵减速模型")
     parser.add_argument("--congestion-radius", type=int, default=2,
@@ -955,6 +989,7 @@ if __name__ == "__main__":
         "guide_share": args.guide_share,
         "patrol_step": args.patrol_step,
         "speed_model": args.speed_model == "on",
+        "freeze_unknown": args.freeze_unknown == "on",
         "congestion_radius": args.congestion_radius,
         "congestion_threshold": args.congestion_threshold,
         "strategy": args.strategy,
