@@ -22,6 +22,7 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
     ✅迭代1：支持C传入is_waiting原地等待；person_map预留用于后续跟随行为
     ✅迭代2：新增动态同伴跟随引力（感知范围内存活行人吸引力）
     ✅迭代3：增加风险权衡，同伴区域烟雾高时自动抑制跟随引力
+    ✅迭代4：增加行人个体从众偏好异质性，不同行人从众倾向不同
     """
     px, py = int(person.x), int(person.y)
 
@@ -104,6 +105,11 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
                 # 烟雾越高，跟随系数越低；烟雾大于0.4直接取消跟随
                 follow_weight_scale = max(0.0, 1.0 - group_smoke_val * 2.5)
             # ====================================================================
+
+            # ==========【迭代4新增】读取行人个体从众偏好，叠加到缩放系数 ==========
+            herd_preference = getattr(person, "herd_preference", 1.0)
+            follow_weight_scale = follow_weight_scale * herd_preference
+            # ====================================================================
     # ===============================================================
 
     for dx, dy in DIRS:
@@ -154,7 +160,7 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
         # 行人感知风险越高，整体移动意愿下降，规避烟雾区域
         utility -= w_risk * person_risk
 
-        # ========== 迭代2同伴跟随引力（迭代3增加scale缩放） ==========
+        # ========== 迭代2同伴跟随引力（迭代3增加scale缩放，迭代4叠加个体从众偏好） ==========
         if follow_target_x is not None and follow_target_y is not None:
             # 目标邻域格离同伴质心越近，效用越高
             dist_to_group = math.hypot(tx - follow_target_x, ty - follow_target_y)
