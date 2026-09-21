@@ -46,6 +46,12 @@ def validate_canonical_scene_config(raw: Mapping[str, Any]) -> dict[str, Any]:
     intensity = _number(raw.get("relation_intensity", 0.7), "relation_intensity")
     if not 0 <= intensity <= 1:
         raise SceneConfigPipelineError("relation_intensity 必须在 0 到 1 之间")
+    initial_informed_ratio = _number(raw.get("initial_informed_ratio", 0.15), "initial_informed_ratio")
+    if not 0 <= initial_informed_ratio <= 1:
+        raise SceneConfigPipelineError("initial_informed_ratio 必须在 0 到 1 之间")
+    alarm_enabled = raw.get("alarm_enabled", True)
+    if not isinstance(alarm_enabled, bool):
+        raise SceneConfigPipelineError("alarm_enabled 必须是布尔值")
     ratios = raw.get("profile_ratios")
     if not isinstance(ratios, Mapping) or not ratios:
         raise SceneConfigPipelineError("profile_ratios 至少需要一个角色比例")
@@ -78,6 +84,8 @@ def validate_canonical_scene_config(raw: Mapping[str, Any]) -> dict[str, Any]:
         "total_persons": total,
         "random_seed": seed,
         "relation_intensity": intensity,
+        "initial_informed_ratio": initial_informed_ratio,
+        "alarm_enabled": alarm_enabled,
         "profile_ratios": normalized_ratios,
         "group_config": normalized_group,
     }
@@ -93,6 +101,8 @@ def canonical_from_c_scene_config(config: Any) -> dict[str, Any]:
         "total_persons": getattr(config, "total_persons", None),
         "random_seed": getattr(config, "random_seed", None),
         "relation_intensity": getattr(config, "relation_intensity", None),
+        "initial_informed_ratio": getattr(config, "initial_informed_ratio", 0.15),
+        "alarm_enabled": getattr(config, "alarm_enabled", True),
         "profile_ratios": getattr(config, "profile_ratios", None),
         "group_config": raw_group,
     })

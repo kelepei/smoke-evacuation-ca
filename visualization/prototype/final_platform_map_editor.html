@@ -123,6 +123,7 @@
     <label>总人数 <input id="totalPersons" type="number" min="1" step="1" value="40"></label>
     <label>random_seed（留空为随机）<input id="randomSeed" type="number" value="42"></label>
     <label>relation_intensity <input id="relationIntensity" type="number" min="0" max="1" step="0.01" value="0.6"></label>
+    <label>initial_informed_ratio <input id="initialInformedRatio" type="number" min="0" max="1" step="0.01" value="0.15"></label>
     <div class="row"><label>student <input id="ratioStudent" type="number" min="0" step="0.01" value="0.8"></label><label>teacher <input id="ratioTeacher" type="number" min="0" step="0.01" value="0.1"></label><label>staff <input id="ratioStaff" type="number" min="0" step="0.01" value="0.1"></label></div>
     <button id="generatePeopleBtn" class="primary" disabled>生成 / 初始化人员</button>
     <div class="row"><label>time_step / s<input id="timeStep" type="number" min="0.01" max="60" step="0.01" value="0.5"></label><label>最大步数<input id="maxSteps" type="number" min="1" max="5000" value="500"></label></div>
@@ -138,9 +139,9 @@
 
     <details class="diagnostics">
       <summary>待接入参数与 C 静态字段</summary>
-      <div class="hint">scene、profile、relation_intensity 与 group_config 由 YAML/人员文件记录。当前人员已预生成，C 每步行为尚未进入 B 移动决策，因此此处不提供会造成误解的滑块。</div>
+      <div class="hint">scene、profile、relation_intensity 与 group_config 由 YAML/人员文件记录；initial_informed_ratio 使用 C 的正式配置字段。C 每步行为真实传入 B runtime。</div>
       <label>profile_ratios / group_config <input value="使用 C 正式生成器；高级群体参数可由 YAML 提供" disabled></label>
-      <label>C 每步策略 <input value="待 C→B person_id 契约接入" disabled></label>
+      <label>C 每步策略 <input value="信息、结伴、从众与引导员由 C runtime bridge 传入" disabled></label>
     </details>
 
     <details class="diagnostics">
@@ -194,6 +195,9 @@
     <div class="kv"><span>当前 step</span><b id="runtimeStep">0</b></div>
     <div class="kv"><span>当前模拟时间</span><b id="simTime">0.0 s</b></div>
     <div class="kv"><span>人员总数</span><b id="peopleCount">NA</b></div>
+    <div class="kv"><span>知情人数</span><b id="informedCount">NA</b></div>
+    <div class="kv"><span>引导员状态</span><b id="guideState">NA</b></div>
+    <div class="kv"><span>死亡人数</span><b id="deadCount">NA</b></div>
     <div class="kv"><span>已撤离</span><b id="evacCount">0</b></div>
     <div class="kv"><span>撤离率</span><b id="evacRate">NA</b></div>
     <div class="kv"><span>滞留人数</span><b id="remainingCount">NA</b></div>
@@ -555,7 +559,8 @@
       const px = ox + (x + .5) * cell;
       const py = oy + (y + .5) * cell;
       ctx.beginPath();
-      ctx.fillStyle = "#2563eb";
+      const profileColor = {security:"#ff7f0e", staff:"#1f77b4", teacher:"#2ca02c"};
+      ctx.fillStyle = person.is_dead ? "#111827" : (profileColor[String(person.profile || "").toLowerCase()] || "#2563eb");
       ctx.strokeStyle = "#fff";
       ctx.lineWidth = Math.max(1.5, cell * .08);
       ctx.arc(px, py, Math.max(3, Math.min(8, cell * .32)), 0, Math.PI * 2);
@@ -655,6 +660,7 @@
     }
     drawTrajectories(grid, ox, oy, cell);
     if(layerEnabled("layerPeople")) drawPeople(snapshot.people, grid, ox, oy, cell);
+    drawGuides(snapshot.guides, ox, oy, cell);
     drawGuidanceOverlay(grid, ox, oy, cell);
     ctx.strokeStyle = "#0f172a";
     ctx.lineWidth = 2;
@@ -843,6 +849,10 @@
     $("gridSize").textContent = grid ? `${grid.width} x ${grid.height}` : "NA";
     const hasPeople = activeSession && observed.people.length > 0;
     $("peopleCount").textContent = hasPeople ? observed.people.length : "NA";
+    const cRuntime = snapshot && snapshot.c_runtime && typeof snapshot.c_runtime === "object" ? snapshot.c_runtime : null;
+    $("informedCount").textContent = cRuntime ? `${cRuntime.informed_count ?? "NA"} / ${cRuntime.active_person_count ?? "NA"}` : "NA";
+    $("guideState").textContent = cRuntime ? (cRuntime.guide_state || "NA") : "NA";
+    $("deadCount").textContent = hasPeople ? String(observed.people.filter(person => person && person.is_dead).length) : "NA";
     if(hasPeople) $("totalPersons").value = String(observed.people.length);
     $("evacCount").textContent = observed.evacuated;
     $("evacRate").textContent = hasPeople ? `${(observed.evacuated / observed.people.length * 100).toFixed(1)}%` : "NA";
@@ -1146,6 +1156,21 @@
     log("已刷新本次运行的 CSV 分析图表");
   }
 
+  function drawGuides(guides, ox, oy, cell){
+    (guides || []).forEach(guide => {
+      const x = Number(guide && guide.x), y = Number(guide && guide.y);
+      if(!Number.isFinite(x) || !Number.isFinite(y)) return;
+      const px = ox + (x + .5) * cell, py = oy + (y + .5) * cell;
+      const size = Math.max(3, cell * .28);
+      ctx.beginPath();
+      ctx.fillStyle = guide.color || "#1f77b4";
+      ctx.strokeStyle = "#111827";
+      ctx.lineWidth = Math.max(1.5, cell * .1);
+      ctx.rect(px - size, py - size, size * 2, size * 2);
+      ctx.fill(); ctx.stroke();
+    });
+  }
+
   function renderSelectedHeatmap(){
     const kind=$("academicHeatmapSelect").value;
     const labels={occupancy:["累计占用热力图","累计占用：人员停留频度；颜色采用固定累计次数色标，便于不同实验直接比较；原始累计次数不变。"],density:["Density 热力图","Density：真实 academic artifact。"],cl:["CL 热力图","CL：真实 academic artifact。"],cn:["CN 热力图","CN：真实 academic artifact。"],crowd_danger:["Crowd Danger 热力图","Crowd Danger：真实 academic artifact。"]};
@@ -1368,7 +1393,9 @@
     if(Object.values(ratios).some(v => !Number.isFinite(v) || v < 0)) throw new Error("角色比例必须为非负数字");
     const ratioSum = Object.values(ratios).reduce((a,b)=>a+b,0);
     if(Math.abs(ratioSum - 1) > 0.01) throw new Error("角色比例之和必须约等于 1");
-    return {total_persons:total, random_seed:seed, relation_intensity:intensity, profile_ratios:ratios};
+    const initialInformedRatio = Number($("initialInformedRatio").value);
+    if(!Number.isFinite(initialInformedRatio) || initialInformedRatio < 0 || initialInformedRatio > 1) throw new Error("initial_informed_ratio 必须在 0 到 1 之间");
+    return {total_persons:total, random_seed:seed, relation_intensity:intensity, initial_informed_ratio:initialInformedRatio, alarm_enabled:true, profile_ratios:ratios};
   }
 
   async function generatePeopleSession(){

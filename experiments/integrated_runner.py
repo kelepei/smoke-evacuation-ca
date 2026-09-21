@@ -27,6 +27,7 @@ import numpy as np
 
 from core.schema import AlarmPoint, CellType, Exit, Person, Relation, ScenarioConfig, SmokeSource
 from experiments.b_runtime_adapter import EvacEngineRuntimeAdapter
+from experiments.c_runtime_bridge import CWebRuntimeBridge
 from experiments.congestion_level import resolve_congestion_level_contract
 from experiments.crowd_metrics import resolve_analysis_contract
 from experiments.exit_topology import ExitEntity, entity_id_by_cell, extract_exit_entities
@@ -147,6 +148,7 @@ def build_integrated_scenario(
     sampling_window_s: float | None = None,
     analysis_mesh_size_m: float | None = None,
     roi_radius_m: float | None = None,
+    c_runtime_config: Mapping[str, Any] | None = None,
 ) -> IntegratedScenario:
     """Read A/C files and assemble B's existing ``ScenarioConfig`` input.
 
@@ -272,6 +274,15 @@ def build_integrated_scenario(
         },
         "d_placement_mode": placement_mode,
         "d_analysis_contract": analysis_contract,
+        "d_c_runtime": {
+            "initial_informed_ratio": float(
+                (c_runtime_config or {}).get("initial_informed_ratio", getattr(config_view.config, "initial_informed_ratio", 0.15) if config_view is not None else 0.15)
+            ),
+            "alarm_enabled": bool(
+                (c_runtime_config or {}).get("alarm_enabled", getattr(config_view.config, "alarm_enabled", True) if config_view is not None else True)
+            ),
+            "source": "C YAML" if config_view is not None else ("UI canonical C config" if c_runtime_config is not None else "C SceneConfig defaults"),
+        },
     }
 
     return IntegratedScenario(
@@ -301,8 +312,11 @@ def integrated_simulation_factory(
         if seed is not None:
             random.seed(seed)
             np.random.seed(seed)
+        engine = EvacEngine(scenario.config)
+        c_bridge = CWebRuntimeBridge(engine)
         wrapped = EvacEngineRuntimeAdapter(
-            EvacEngine(scenario.config),
+            engine,
+            behavior_provider=c_bridge,
             exit_entities=scenario.exit_entities,
             exit_entity_by_cell_id=scenario.exit_entity_by_cell_id,
             adapter_meta={
@@ -315,6 +329,8 @@ def integrated_simulation_factory(
                 "person_count": scenario.person_count,
                 "relation_count": scenario.relation_count,
                 "smoke_source_count": scenario.smoke_source_count,
+                "c_runtime_bridge": "C information/group/herding/guide engines",
+                "behavior_input": "C per-step behavior bridge",
             },
         )
         return wrapped
@@ -342,6 +358,7 @@ def create_integrated_runner(
     sampling_window_s: float | None = None,
     analysis_mesh_size_m: float | None = None,
     roi_radius_m: float | None = None,
+    c_runtime_config: Mapping[str, Any] | None = None,
 ) -> SimulationRunner:
     scenario = build_integrated_scenario(
         map_path=map_path,
@@ -352,6 +369,7 @@ def create_integrated_runner(
         physical_cell_size_m=physical_cell_size_m,
         sampling_window_s=sampling_window_s,
         analysis_mesh_size_m=analysis_mesh_size_m, roi_radius_m=roi_radius_m,
+        c_runtime_config=c_runtime_config,
     )
     # D passes the runner's authoritative clock into B's public ScenarioConfig
     # without changing B's engine implementation.

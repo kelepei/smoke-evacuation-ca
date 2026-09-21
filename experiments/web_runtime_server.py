@@ -377,6 +377,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 max_steps=_positive_steps(payload.get("max_steps")),
                 random_seed=canonical["random_seed"],
                 time_step_s=_positive_time_step(payload.get("time_step_s")),
+                c_runtime_config=canonical,
             )
             result["initialization"] = {
                 "config_source": config_source,
@@ -592,6 +593,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         max_steps: int,
         random_seed: int | None = None,
         time_step_s: float = 0.5,
+        c_runtime_config: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         run_id = _new_run_id()
         output_root = self.server.root / "outputs" / "experiments"
@@ -606,6 +608,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             random_seed=random_seed,
             time_step_s=time_step_s,
             max_steps=max_steps,
+            c_runtime_config=c_runtime_config,
         )
         try:
             snapshot = runner.initialize()

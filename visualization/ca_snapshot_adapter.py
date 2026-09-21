@@ -403,6 +403,7 @@ class CaSnapshotAdapter:
                     "actual_exit_cell": actual_exit_cell,
                     "actual_exit_entity": _optional_attr(person, "actual_exit_entity"),
                     "evacuated": evacuated,
+                    "is_dead": bool(_optional_attr(person, "is_dead") or False),
                     "smoke": smoke_concentration,
                     "smoke_concentration": smoke_concentration,
                     "risk": _optional_attr(person, "risk", "risk_value"),
@@ -415,6 +416,8 @@ class CaSnapshotAdapter:
                         person, "receive_time", "first_alert_time"
                     ),
                     "follow_target": _optional_attr(person, "follow_target"),
+                    "is_waiting": bool(_optional_attr(person, "is_waiting") or False),
+                    "profile": _optional_attr(person, "profile"),
                 }
             )
 
@@ -523,6 +526,8 @@ class CaSnapshotAdapter:
             "people": people,
             "exits": exits,
             "exit_entities": list(_optional_attr(simulation, "exit_entities") or []),
+            "guides": list(_optional_attr(simulation, "guides") or []),
+            "c_runtime": _optional_attr(simulation, "c_runtime_state"),
             "fields": {
                 "smoke_field": smoke_field,
                 "smoke_sources": smoke_sources,

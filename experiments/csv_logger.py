@@ -33,6 +33,7 @@ PEOPLE_LOG_FIELDS = [
     "actual_exit_cell",
     "actual_exit_entity",
     "evacuated",
+    "is_dead",
     "smoke",
     "smoke_concentration",
     "risk",
@@ -42,6 +43,8 @@ PEOPLE_LOG_FIELDS = [
     "info_source",
     "receive_time",
     "follow_target",
+    "is_waiting",
+    "profile",
 ]
 
 EVENT_LOG_FIELDS = [
@@ -385,6 +388,7 @@ class CsvExperimentLogger:
                 "actual_exit_cell": actual_exit_cell,
                 "actual_exit_entity": actual_exit_entity,
                 "evacuated": raw_evacuated,
+                "is_dead": bool(raw_person.get("is_dead", False)),
                 "smoke": raw_person.get("smoke", smoke_concentration),
                 "smoke_concentration": smoke_concentration,
                 "risk": risk,
@@ -394,6 +398,8 @@ class CsvExperimentLogger:
                 "info_source": raw_person.get("info_source"),
                 "receive_time": receive_time,
                 "follow_target": follow_target,
+                "is_waiting": bool(raw_person.get("is_waiting", False)),
+                "profile": raw_person.get("profile"),
             }
             people_rows.append(row)
 
