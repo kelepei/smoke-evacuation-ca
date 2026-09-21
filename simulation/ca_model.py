@@ -21,6 +21,7 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
     ✅适配死亡逻辑：is_dead=True直接返回原地坐标，不执行移动决策
     ✅迭代1：支持C传入is_waiting原地等待；person_map预留用于后续跟随行为
     ✅迭代2：新增动态同伴跟随引力（感知范围内存活行人吸引力）
+    ✅迭代3：增加风险权衡，同伴区域烟雾高时自动抑制跟随引力
     """
     px, py = int(person.x), int(person.y)
 
@@ -75,6 +76,7 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
 
     # ========== 迭代2：预计算感知范围内存活同伴的平均坐标 ==========
     follow_target_x, follow_target_y = None, None
+    follow_weight_scale = 1.0 # 迭代3：跟随引力缩放系数
     if person_map is not None and alive_person_pos is not None:
         neighbor_positions = []
         for pid, alive_person in person_map.items():
@@ -92,6 +94,16 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
             ys = [p[1] for p in neighbor_positions]
             follow_target_x = sum(xs)/len(xs)
             follow_target_y = sum(ys)/len(ys)
+
+            # ==========【迭代3新增】根据同伴质心烟雾动态缩放跟随引力 ==========
+            gx = int(round(follow_target_x))
+            gy = int(round(follow_target_y))
+            # 判断坐标是否在烟雾矩阵范围内
+            if 0 <= gy < len(smoke_matrix) and 0 <= gx < len(smoke_matrix[0]):
+                group_smoke_val = smoke_matrix[gy][gx]
+                # 烟雾越高，跟随系数越低；烟雾大于0.4直接取消跟随
+                follow_weight_scale = max(0.0, 1.0 - group_smoke_val * 2.5)
+            # ====================================================================
     # ===============================================================
 
     for dx, dy in DIRS:
@@ -142,11 +154,11 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
         # 行人感知风险越高，整体移动意愿下降，规避烟雾区域
         utility -= w_risk * person_risk
 
-        # ========== 迭代2新增：同伴跟随引力项 ==========
+        # ========== 迭代2同伴跟随引力（迭代3增加scale缩放） ==========
         if follow_target_x is not None and follow_target_y is not None:
             # 目标邻域格离同伴质心越近，效用越高
             dist_to_group = math.hypot(tx - follow_target_x, ty - follow_target_y)
-            utility += w_follow / (dist_to_group + 1e-6)
+            utility += w_follow * follow_weight_scale / (dist_to_group + 1e-6)
         # ===============================================
 
         # 5. 熟悉度偏好（C 组提供）
