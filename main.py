@@ -1,21 +1,4 @@
-""" 主程序入口 - A+B+C+D 完整联调版本
-功能：
-    1. A 模块加载地图
-    2. C 模块生成人群和社会关系
-    3. C 模块为行人按所选地图分配位置
-    4. C 行为引擎（结伴/从众/信息/引导/指示牌/错误信息）逐帧输出 c_step_data
-    5. B 模块 CA 仿真
-    6. D 模块记录 CSV 日志
-
-命令行（便于"开/关关系模型"与">=2 种引导策略"对比实验）：
-    python main.py --map maps/edited_map.json                     # 默认：关系模型开启
-    python main.py --social off                                   # 基线：B 纯 CA（无 C 行为）
-    python main.py --guide fixed / --guide patrol / --guide toward_exit ...
-    python main.py --misinfo off                                  # 关闭错误出口信息
-    python main.py --info off                                     # 关闭广播/局部口头传播
-    python main.py --signage off                                  # 关闭静态指示牌
-"""
-
+""" 主程序入口 - A+B+C+D 完整联调版本 功能：     1. A 模块加载地图     2. C 模块生成人群和社会关系     3. C 模块为行人按所选地图分配位置     4. C 行为引擎（结伴/从众/信息/引导/指示牌/错误信息）逐帧输出 c_step_data     5. B 模块 CA 仿真     6. D 模块记录 CSV 日志     7. 【新增】实时可视化渲染（可开关，不影响原有实验逻辑）  命令行（便于"开/关关系模型"与">=2 种引导策略"对比实验）：     python main.py --map maps/edited_map.json                     # 默认：关系模型开启 + 可视化开启     python main.py --social off --visual off                       # 基线：B纯CA，关闭可视化用于批量跑实验     python main.py --guide fixed / --guide patrol / --guide toward_exit ...     python main.py --misinfo off                                   # 关闭错误出口信息     python main.py --info off                                      # 关闭广播/局部口头传播     python main.py --signage off                                   # 关闭静态指示牌 """
 import argparse
 import random
 import sys
@@ -23,6 +6,8 @@ import time
 
 import numpy as np
 from pathlib import Path
+import matplotlib.pyplot as plt
+from matplotlib.patches import Circle, Rectangle
 
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
@@ -186,6 +171,82 @@ def load_A_scene(map_path) -> ScenarioConfig:
     return scene
 
 
+# ---------------------- 可视化渲染函数【新增】 ----------------------
+class SimVisualizer:
+    def __init__(self, grid_width, grid_height, enable=True):
+        self.enable = enable
+        if not self.enable:
+            self.fig = None
+            self.ax = None
+            return
+        plt.rcParams['font.sans-serif'] = ['SimHei']
+        self.fig, self.ax = plt.subplots(figsize=(10, 8))
+        self.w = grid_width
+        self.h = grid_height
+        self.ax.set_xlim(-1, self.w)
+        self.ax.set_ylim(-1, self.h)
+        self.ax.set_aspect("equal")
+        self.ax.invert_yaxis()
+        self.ax.set_title("疏散仿真实时可视化")
+        self.ax.set_xlabel("X")
+        self.ax.set_ylabel("Y")
+        plt.tight_layout()
+
+    def update(self, sim, exit_list, guide_engine, frame):
+        if not self.enable:
+            return
+        self.ax.clear()
+        self.ax.set_xlim(-1, self.w)
+        self.ax.set_ylim(-1, self.h)
+        self.ax.invert_yaxis()
+        self.ax.set_title(f"疏散仿真 | 帧:{frame} | 已撤离:{sim.evacuated_count}/{sim.total_persons}")
+
+        # 绘制烟雾
+        smoke_mat = sim.smoke_matrix
+        if smoke_mat is not None:
+            smoke_np = np.array(smoke_mat)
+            im = self.ax.imshow(smoke_np, cmap="gray_r", vmin=0, vmax=10, alpha=0.4, origin="lower")
+
+        # 绘制出口（红色方块）
+        for eid, ex, ey in exit_list:
+            rect = Rectangle((ex - 0.4, ey - 0.4), 0.8, 0.8, color="red", alpha=0.7)
+            self.ax.add_patch(rect)
+            self.ax.text(ex + 0.3, ey, eid, color="red", fontsize=8)
+
+        # 绘制行人
+        for p in sim.person_map.values():
+            if p.evacuated:
+                continue
+            if getattr(p, "is_dead", False):
+                color = "black"
+            else:
+                info_state = getattr(p, "info_state", "UNKNOWN")
+                if info_state == "MISINFORMED":
+                    color = "orange"
+                elif info_state == "GUIDED":
+                    color = "blue"
+                elif info_state == "INFORMED":
+                    color = "green"
+                else:
+                    color = "deepskyblue"
+            circ = Circle((p.x, p.y), 0.3, color=color)
+            self.ax.add_patch(circ)
+
+        # ==========【修复这里】guide_engine.guides 是 list，不再用 .items() ==========
+        # 绘制引导员（紫色）
+        if guide_engine is not None:
+            for g in guide_engine.guides:
+                circ = Circle((g.x, g.y), 0.4, color="magenta")
+                self.ax.add_patch(circ)
+                self.ax.text(g.x + 0.3, g.y, "G", color="magenta", fontweight="bold")
+
+        plt.pause(0.01)
+
+    def close(self):
+        if self.enable and self.fig is not None:
+            plt.close(self.fig)
+
+
 # ---------------------- 主仿真入口 ----------------------
 def main(options=None):
     options = options or {}
@@ -206,6 +267,7 @@ def main(options=None):
     guide_strategy = GUIDE_STRATEGIES.get(guide_key, GuideMoveStrategy.PATROL)
     max_frame = int(options.get("max_frames", 600))
     unique_run_id = options.get("run_id") or f"exp_classroom_smoke_{int(time.time())}"
+    visual_on = bool(options.get("visual", True)) # 【新增可视化开关】
 
     # 信息延迟 / 警报 / 引导 / 速度模型参数（命令行优先，其次 YAML，最后默认值）
     ratio_opt = options.get("initial_informed_ratio")
@@ -227,12 +289,12 @@ def main(options=None):
     congestion_threshold = int(options.get("congestion_threshold", 4))
     patrol_step = int(options.get("patrol_step", 2))
 
-    print("===== C 行为实验开关 =====")    # =============================================================================
-
+    print("===== C 行为实验开关 =====")
     print(f"  social={social_on} info={info_on} misinfo={misinfo_on} "
           f"signage={signage_on} guide={guide_key} max_frames={max_frame} run_id={unique_run_id}")
     print(f"  初始知情比例={initial_informed_ratio} 警报={alarm_on}(阈值{alarm_threshold}) "
           f"引导比例={guide_share} 引导出口={guide_exit_id} 速度模型={speed_model_on}")
+    print(f"  实时可视化：{'开启' if visual_on else '关闭'}")
 
     # 1. 初始化地图
     ca_scene = load_A_scene(map_path)
@@ -424,6 +486,9 @@ def main(options=None):
         print(f"✅ 初始知情人员：{seeded}/{len(sim_persons)}"
               f"（比例 {initial_informed_ratio}），其余靠局部口头/关系传播获知")
 
+    # 初始化可视化【新增】
+    visualizer = SimVisualizer(grid_w, grid_h, enable=visual_on)
+
     d_view = DVisualizationEntry(
         simulation=sim,
         output_root="outputs/experiments",
@@ -466,7 +531,6 @@ def main(options=None):
                             guide_engine.activate_guidance(guide_exit_id)
                         print(f"🚨 帧{frame} 烟雾峰值 {max_smoke:.3f} >= {alarm_threshold}，"
                               f"警报广播通知 {notified} 人；引导员转为引导出口 {guide_exit_id}")
-
                 info_diff_engine.update_all(ped_list, current_step=frame, smoke_grid=smoke_data)
                 group_result = group_engine.update_all(ped_dict, frame)
                 herd_result = herd_engine.update_all(ped_list, grid_w, grid_h, frame)
@@ -518,10 +582,7 @@ def main(options=None):
                     person.is_waiting = group_beh.get("is_waiting", False)
                     person.target_exit = target_exit
                     person.exit_preference = exit_pref
-
-
-
-            move_allowed = None
+                move_allowed = None
             if speed_model_on and ped_list:
                 move_allowed = {}
                 active_positions = [(p.x, p.y) for p in ped_list if not p.evacuated]
@@ -561,6 +622,9 @@ def main(options=None):
                         person.x = getattr(person, "prev_x", person.x)
                         person.y = getattr(person, "prev_y", person.y)
 
+            # 【新增】刷新可视化窗口
+            visualizer.update(sim, exit_check_list, guide_engine, frame)
+
             d_view.capture()
 
             if frame % 20 == 0 or sim.is_all_evacuated():
@@ -570,14 +634,13 @@ def main(options=None):
                 )
                 print(f"帧{frame} | 已撤离 {sim.evacuated_count}/{sim.total_persons}"
                       f" | 已知情 {informed_now}/{len(ped_list)}")
-
             if sim.is_all_evacuated():
                 print(f"\n🎉 全员疏散完成，总仿真帧数：{frame}")
                 break
         else:
             print(f"\n⏱ 达到最大仿真帧数 {max_frame}，仿真结束")
-
     finally:
+        visualizer.close() # 关闭可视化窗口
         d_view.close()
         print(f"D 日志已关闭，结果输出至 outputs/experiments/{unique_run_id}")
 
@@ -612,9 +675,8 @@ def main(options=None):
               f"累计原地等待人次={speed_stats['blocked_total']}")
     print(f"输出目录: outputs/experiments/{unique_run_id}")
 
-
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="A+B+C+D 完整联调主程序（C 行为可开关、可对比）")
+    parser = argparse.ArgumentParser(description="A+B+C+D 完整联调主程序（C 行为可开关、可对比，带实时可视化）")
     parser.add_argument(
         "--map",
         default=None,
@@ -654,6 +716,8 @@ if __name__ == "__main__":
                         help="拥堵密度统计半径（元胞）")
     parser.add_argument("--congestion-threshold", type=int, default=4,
                         help="达到该人数视为拥堵并开始减速")
+    parser.add_argument("--visual", choices=["on", "off"], default="on",
+                        help="【新增】开启/关闭matplotlib实时可视化窗口，批量实验建议off")
     args = parser.parse_args()
     main(options={
         "map": args.map,
@@ -674,4 +738,5 @@ if __name__ == "__main__":
         "speed_model": args.speed_model == "on",
         "congestion_radius": args.congestion_radius,
         "congestion_threshold": args.congestion_threshold,
+        "visual": args.visual == "on",
     })
