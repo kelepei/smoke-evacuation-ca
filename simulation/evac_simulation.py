@@ -24,6 +24,7 @@ class EvacEngine:
     改动：接入外部conflict_solver冲突消解、增加actual_exit出口记录；新增B03出口选择、B09拥堵模型
     新增：支持人员烟雾中毒死亡，死亡人员原地占用元胞，不参与移动
     新增B08：烟雾警报功能。场景存在alarm点位时检测报警器；无alarm点位自动回退检测烟源，快照输出警报状态
+    【新增迭代2】自动知情机制：警报触发后行人有概率接收警报；烟雾剂量达到阈值强制知情，不会永久原地不动
     """
     MAX_SIM_STEP = 2000  # 最大仿真步数，防止死循环
 
@@ -166,6 +167,35 @@ class EvacEngine:
 
         # 3. 更新烟雾累积剂量
         self.dose_recorder.update_all_dose(list(self.person_map.values()), smoke_mat)
+
+        # =====================【迭代2新增：自动知情逻辑，解决永久UNKNOWN不动】=====================
+        # 可调参数
+        base_alert_prob = 0.006        # 警报触发后每帧基础收到警报概率
+        smoke_alert_scale = 0.022      # 烟雾浓度放大知情概率
+        dose_force_alert = 8.0         # 烟雾剂量达到该值，强制知情，不管警报是否触发
+
+        for pid, person in self.person_map.items():
+            if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
+                continue
+            # 获取行人当前位置烟雾浓度
+            px, py = int(person.x), int(person.y)
+            smoke_val = smoke_mat[py, px] if (0 <= py < self.height and 0 <= px < self.width) else 0
+            # 获取当前烟雾累积剂量
+            person_dose = self.dose_recorder.get_dose(pid)
+
+            # 烟雾剂量达标：强制转为知情，立刻开始撤离
+            if person_dose >= dose_force_alert:
+                person.info_state = "INFORMED"
+                continue
+
+            # 仅对还处于UNKNOWN不知情的行人做警报感知判断
+            if getattr(person, "info_state", "UNKNOWN") == "UNKNOWN":
+                # 警报已经触发，行人有概率感知警报
+                if self.is_alarm_triggered:
+                    alert_prob = base_alert_prob + smoke_val * smoke_alert_scale
+                    if self.random.random() < alert_prob:
+                        person.info_state = "INFORMED"
+        # =====================================================================================
 
         # 4. 标记占用坐标，避免行人重叠 ✅ 死亡人员保留占用元胞
         occupied_positions = set()
