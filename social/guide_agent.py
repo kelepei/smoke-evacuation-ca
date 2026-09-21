@@ -296,19 +296,29 @@ class GuideAgentModel:
         _, target_x, target_y = chosen
         self._move_toward_point(guide, target_x, target_y)
 
+    @staticmethod
+    def _alive_persons(all_persons: List) -> List:
+        """只保留未撤离且未死亡的行人（死亡人员不参与引导目标选择）。"""
+        return [
+            p for p in all_persons
+            if not getattr(p, "evacuated", False) and not getattr(p, "is_dead", False)
+        ]
+
     def _move_toward_crowd(self, guide: GuideAgent, all_persons: List, _current_step: int):
-        if not all_persons:
+        alive = self._alive_persons(all_persons)
+        if not alive:
             return
 
-        center_x = np.mean([p.x for p in all_persons])
-        center_y = np.mean([p.y for p in all_persons])
+        center_x = np.mean([p.x for p in alive])
+        center_y = np.mean([p.y for p in alive])
         self._move_toward_point(guide, int(center_x), int(center_y))
 
     def _move_escort(self, guide: GuideAgent, all_persons: List, exits: List, _current_step: int):
-        if not all_persons or not exits:
+        alive = self._alive_persons(all_persons)
+        if not alive or not exits:
             return
 
-        nearest_person = min(all_persons, key=lambda p: (p.x - guide.x) ** 2 + (p.y - guide.y) ** 2)
+        nearest_person = min(alive, key=lambda p: (p.x - guide.x) ** 2 + (p.y - guide.y) ** 2)
         dist_to_person = ((nearest_person.x - guide.x) ** 2 + (nearest_person.y - guide.y) ** 2) ** 0.5
 
         if dist_to_person > 3.0:
@@ -327,6 +337,15 @@ class GuideAgentModel:
 
         for person in all_persons:
             pid = person.id
+            # 死亡人员不参与引导，也不再被置为 GUIDED
+            if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
+                results[pid] = {
+                    "guide_influence": 0.0,
+                    "nearest_guide_id": None,
+                    "is_guided": False,
+                    "guide_trust": 0.0,
+                }
+                continue
             result = self._calc_person_guidance(person, current_step)
             results[pid] = result
 
