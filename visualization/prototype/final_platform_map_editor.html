@@ -42,6 +42,7 @@
   .init-control{flex:0 0 88px;min-width:88px;white-space:nowrap}
   .run-control{flex:0 0 56px;min-width:56px;white-space:nowrap}
   .run-controls{display:flex;align-items:center;gap:4px;flex:0 0 auto;margin-left:4px}
+  .map-expand{margin-left:4px}
   .layer-controls{display:flex;flex:0 0 auto;align-items:center;gap:4px;flex-wrap:nowrap;white-space:nowrap;padding-left:3px;border-left:1px solid #d5dfeb;font-size:11px;color:#475569}.layer-controls label{display:flex;align-items:center;gap:2px;margin:0;color:inherit}.layer-controls label:has(input:disabled){color:#94a3b8}.layer-controls input{width:auto;margin:0}
   #timeText{flex:0 0 86px;width:86px;text-align:right;white-space:nowrap;font-size:11px;font-variant-numeric:tabular-nums}
   .layer-notice{position:absolute;left:12px;right:auto;top:55px;width:auto;max-width:180px;height:32px;display:block;padding:6px 9px;overflow:hidden;white-space:nowrap;text-align:left;text-overflow:ellipsis;border:1px solid #cbd5e1;border-radius:6px;background:rgba(255,255,255,.94);color:#475569;font-size:11px;pointer-events:none}
@@ -73,6 +74,7 @@
   .figure-panel .figure-wrap{height:auto;flex:1 1 auto}
   .figure-expand{width:28px;height:28px;min-width:28px;padding:0;display:grid;place-items:center;border-color:#cbd5e1;color:#475569;font-size:18px;line-height:1;font-weight:700}.figure-expand:hover{color:#1559bc;border-color:#9db9df;background:#f4f8fd}
   .figure-modal{position:fixed;inset:0;z-index:30;display:none;align-items:center;justify-content:center;padding:4vh 5vw;background:rgba(15,23,42,.62)}.figure-modal.open{display:flex}.figure-dialog{width:min(1680px,90vw);height:min(980px,90vh);max-width:90vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;border-radius:10px;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.32)}.figure-dialog header{height:auto;min-height:52px;display:flex;align-items:center;padding:9px 12px;background:#fff;color:var(--ink);box-shadow:none;border-bottom:1px solid var(--line)}.figure-dialog header strong{margin-right:auto}.figure-dialog-body{min-width:0;min-height:0;flex:1;display:grid;place-items:center;overflow:hidden;padding:16px;box-sizing:border-box;background:#f8fafc}.figure-dialog-body img{display:block;box-sizing:border-box;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;flex:0 1 auto}.figure-dialog .close-figure{min-width:68px;padding:0 12px}
+  .map-dialog{width:min(1680px,94vw);height:min(1020px,92vh)}.map-dialog-body{position:relative;min-width:0;min-height:0;flex:1;overflow:hidden;background:#f8fafc}.map-dialog-body canvas{width:100%;height:100%;display:block;cursor:grab}.map-dialog-body canvas.panning{cursor:grabbing}.map-zoom-hint{position:absolute;right:12px;bottom:12px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:rgba(255,255,255,.92);color:#475569;font-size:11px;pointer-events:none}
   .metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .metric{padding:8px;border:1px solid #dbe4ef;border-radius:7px;background:#f8fafc;min-width:0}
   .metric span{display:block;color:var(--muted);font-size:12px}.metric b{display:block;margin-top:3px;font-size:18px;overflow-wrap:anywhere}
@@ -167,6 +169,7 @@
         <label><input id="layerTrajectories" type="checkbox" disabled>轨迹</label>
       </div>
       <div class="spacer"></div>
+      <button id="mapExpandBtn" class="figure-expand map-expand" type="button" aria-label="放大查看主地图" title="放大查看地图">⛶</button>
       <span id="timeText">step 0 / 0.0s</span>
       <div class="run-controls" aria-label="运行控制">
         <button id="resetBtn" class="danger run-control">重置</button>
@@ -316,11 +319,22 @@
   </div>
 </div>
 
+<div class="figure-modal" id="mapModal" role="dialog" aria-modal="true" aria-labelledby="mapModalTitle">
+  <div class="figure-dialog map-dialog">
+    <header><strong id="mapModalTitle">主地图放大查看</strong><button id="closeMapModal" class="close-figure" type="button">关闭</button></header>
+    <div class="map-dialog-body"><canvas id="mapExpandedView"></canvas><div class="map-zoom-hint">滚轮缩放 · 中键单击恢复适配 · 中键拖动平移</div></div>
+  </div>
+</div>
+
 <script>
 (() => {
   const $ = id => document.getElementById(id);
   const canvas = $("view");
-  const ctx = canvas.getContext("2d");
+  let ctx = canvas.getContext("2d");
+  const expandedCanvas = $("mapExpandedView");
+  const mainMapView = {scale:1, panX:0, panY:0};
+  const expandedMapView = {scale:1, panX:0, panY:0};
+  let currentMapViewKey = "";
   let snapshot = null;
   let activeSession = false;
   let timer = null;
@@ -384,13 +398,29 @@
   }
 
   function resize(){
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = Math.max(1, Math.floor(rect.width * dpr));
-    canvas.height = Math.max(1, Math.floor(rect.height * dpr));
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    resizeCanvas(canvas);
     draw();
+    if($("mapModal").classList.contains("open")) drawExpandedMap();
     drawInsights();
+  }
+
+  function resizeCanvas(target){
+    const dpr = window.devicePixelRatio || 1;
+    const rect = target.getBoundingClientRect();
+    target.width = Math.max(1, Math.floor(rect.width * dpr));
+    target.height = Math.max(1, Math.floor(rect.height * dpr));
+    target.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function resetMapView(view){
+    view.scale = 1;
+    view.panX = 0;
+    view.panY = 0;
+  }
+
+  function resetAllMapViews(){
+    resetMapView(mainMapView);
+    resetMapView(expandedMapView);
   }
 
   async function readFilePayload(input){
@@ -634,9 +664,21 @@
     personTransitionFrame = requestAnimationFrame(animate);
   }
 
-  function draw(){
-    const w = canvas.clientWidth || 1;
-    const h = canvas.clientHeight || 1;
+  function mapTransform(target, view, grid){
+    const w = target.clientWidth || 1;
+    const h = target.clientHeight || 1;
+    const pad = 24;
+    const fitCell = Math.max(2, Math.min((w - pad * 2) / grid.width, (h - pad * 2) / grid.height));
+    const baseOx = (w - fitCell * grid.width) / 2;
+    const baseOy = (h - fitCell * grid.height) / 2;
+    return {w, h, cell:fitCell * view.scale, ox:baseOx + view.panX, oy:baseOy + view.panY, baseOx, baseOy, fitCell};
+  }
+
+  function renderMap(target, view){
+    const previousCtx = ctx;
+    ctx = target.getContext("2d");
+    const w = target.clientWidth || 1;
+    const h = target.clientHeight || 1;
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = "#f8fafc";
     ctx.fillRect(0, 0, w, h);
@@ -645,13 +687,11 @@
       ctx.font = "700 18px Microsoft YaHei";
       ctx.textAlign = "center";
       ctx.fillText("等待 A 地图导入", w/2, h/2);
+      ctx = previousCtx;
       return;
     }
     const grid = snapshot.grid;
-    const pad = 24;
-    const cell = Math.max(2, Math.min((w - pad * 2) / grid.width, (h - pad * 2) / grid.height));
-    const ox = (w - cell * grid.width) / 2;
-    const oy = (h - cell * grid.height) / 2;
+    const {cell, ox, oy} = mapTransform(target, view, grid);
     drawGrid(grid, ox, oy, cell);
     drawCumulativeOccupancy(grid, ox, oy, cell);
     if(layerEnabled("layerSmoke")){
@@ -665,6 +705,75 @@
     ctx.strokeStyle = "#0f172a";
     ctx.lineWidth = 2;
     ctx.strokeRect(ox, oy, grid.width * cell, grid.height * cell);
+    ctx = previousCtx;
+  }
+
+  function draw(){
+    renderMap(canvas, mainMapView);
+  }
+
+  function drawExpandedMap(){
+    if($("mapModal").classList.contains("open")) renderMap(expandedCanvas, expandedMapView);
+  }
+
+  function clientPointOnCanvas(event, target){
+    const rect = target.getBoundingClientRect();
+    return {x:event.clientX - rect.left, y:event.clientY - rect.top};
+  }
+
+  function zoomMapAt(event, target, view){
+    if(!snapshot || !snapshot.grid) return;
+    event.preventDefault();
+    const point = clientPointOnCanvas(event, target);
+    const before = mapTransform(target, view, snapshot.grid);
+    const gridX = (point.x - before.ox) / before.cell;
+    const gridY = (point.y - before.oy) / before.cell;
+    const factor = event.deltaY < 0 ? 1.16 : 1 / 1.16;
+    view.scale = Math.max(.35, Math.min(8, view.scale * factor));
+    const after = mapTransform(target, view, snapshot.grid);
+    view.panX = point.x - after.baseOx - gridX * after.cell;
+    view.panY = point.y - after.baseOy - gridY * after.cell;
+    if(target === canvas) draw(); else drawExpandedMap();
+  }
+
+  function attachMapInteractions(target, view){
+    let panStart = null;
+    target.addEventListener("wheel", event => zoomMapAt(event, target, view), {passive:false});
+    target.addEventListener("pointerdown", event => {
+      if(event.button !== 1) return;
+      event.preventDefault();
+      panStart = {x:event.clientX, y:event.clientY, panX:view.panX, panY:view.panY, moved:false, pointerId:event.pointerId};
+      target.setPointerCapture(event.pointerId);
+      target.classList.add("panning");
+    });
+    target.addEventListener("pointermove", event => {
+      if(!panStart || event.pointerId !== panStart.pointerId) return;
+      const dx = event.clientX - panStart.x, dy = event.clientY - panStart.y;
+      if(Math.abs(dx) + Math.abs(dy) > 3) panStart.moved = true;
+      view.panX = panStart.panX + dx;
+      view.panY = panStart.panY + dy;
+      if(target === canvas) draw(); else drawExpandedMap();
+    });
+    const finishPan = event => {
+      if(!panStart || event.pointerId !== panStart.pointerId) return;
+      event.preventDefault();
+      if(!panStart.moved) resetMapView(view);
+      panStart = null;
+      target.classList.remove("panning");
+      if(target === canvas) draw(); else drawExpandedMap();
+    };
+    target.addEventListener("pointerup", finishPan);
+    target.addEventListener("pointercancel", finishPan);
+    target.addEventListener("auxclick", event => event.preventDefault());
+  }
+
+  function openMapModal(){
+    $("mapModal").classList.add("open");
+    requestAnimationFrame(() => { resizeCanvas(expandedCanvas); drawExpandedMap(); $("closeMapModal").focus(); });
+  }
+
+  function closeMapModal(){
+    $("mapModal").classList.remove("open");
   }
 
   function inspectSnapshot(){
@@ -908,6 +1017,12 @@
 
   function applySnapshot(next, extra = {}){
     const previousSnapshot = snapshot;
+    const nextGrid = next && next.grid;
+    const mapKey = nextGrid ? `${nextGrid.width}x${nextGrid.height}:${JSON.stringify(nextGrid.cell_type || []).length}` : "";
+    if(extra.resetMapView || extra.resetHistory || mapKey !== currentMapViewKey){
+      resetAllMapViews();
+      currentMapViewKey = mapKey;
+    }
     if(extra.resetHistory){
       logLayers = null;
       liveExitUtilizationRepresentation = Array.isArray(next && next.exit_entities) && next.exit_entities.length > 0
@@ -1624,7 +1739,7 @@
     lastAnalysisStep = -1;
     stopTimer();
     resetDerivedAnalysis("正在读取重置后的新日志。");
-    applySnapshot(result.snapshot, {output_dir:result.output_dir, resetHistory:true});
+    applySnapshot(result.snapshot, {output_dir:result.output_dir, resetHistory:true, resetMapView:true});
     showEffectiveRuntime(result, $("configSourceValue").textContent);
     refreshRealAnalysis().catch(error => log(`重置后分析未刷新：${error.message}`));
     setStatus(`已重置。新的输出目录：${result.output_dir}`, "已重置");
@@ -1693,7 +1808,14 @@
   });
   $("closeFigureModal").onclick = closeFigureModal;
   $("figureModal").onclick = event => { if(event.target === $("figureModal")) closeFigureModal(); };
-  document.addEventListener("keydown", event => { if(event.key === "Escape" && $("figureModal").classList.contains("open")) closeFigureModal(); });
+  $("mapExpandBtn").onclick = openMapModal;
+  $("closeMapModal").onclick = closeMapModal;
+  $("mapModal").onclick = event => { if(event.target === $("mapModal")) closeMapModal(); };
+  document.addEventListener("keydown", event => {
+    if(event.key !== "Escape") return;
+    if($("figureModal").classList.contains("open")) closeFigureModal();
+    if($("mapModal").classList.contains("open")) closeMapModal();
+  });
   document.querySelectorAll(".top-nav a").forEach(link => {
     link.onclick = event => {
       event.preventDefault();
@@ -1703,6 +1825,8 @@
     };
   });
   $("clearLog").onclick = () => $("log").textContent = "";
+  attachMapInteractions(canvas, mainMapView);
+  attachMapInteractions(expandedCanvas, expandedMapView);
   window.addEventListener("resize", resize);
   resize();
   refreshStats();

@@ -76,6 +76,20 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
         self.assertIn("function getMapData()", self.editor)
         self.assertIn("JSON.parse(JSON.stringify(gridData))", self.editor)
 
+    def test_enhanced_map_has_view_only_zoom_controls_without_touching_stable_page(self) -> None:
+        for marker in (
+            'id="mapExpandBtn"',
+            'id="mapExpandedView"',
+            "function zoomMapAt",
+            "function attachMapInteractions",
+            'target.addEventListener("wheel"',
+            'if(event.button !== 1) return',
+            "function resetAllMapViews",
+            "function mapTransform",
+        ):
+            self.assertIn(marker, self.page)
+        self.assertNotIn("mapExpandedView", self.stable)
+
 
 if __name__ == "__main__":
     unittest.main()
