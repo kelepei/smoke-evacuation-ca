@@ -208,6 +208,48 @@ class WebRuntimeServerTests(unittest.TestCase):
                 server.server_close()
                 worker.join(timeout=5)
 
+    def test_generated_people_use_a_spawn_area_before_runtime_start(self) -> None:
+        server = DWebRuntimeServer(("127.0.0.1", 0), RuntimeRequestHandler, root=Path.cwd())
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        base_url = f"http://127.0.0.1:{server.server_port}"
+
+        def post(route: str, body: dict[str, object]) -> dict[str, object]:
+            request = Request(base_url + route, data=json.dumps(body).encode("utf-8"), headers={"Content-Type": "application/json"})
+            with urlopen(request, timeout=15) as response:
+                return json.loads(response.read().decode("utf-8"))
+
+        try:
+            with tempfile.TemporaryDirectory() as raw:
+                map_path, _ = self._write_inputs(Path(raw))
+                map_data = json.loads(map_path.read_text(encoding="utf-8"))
+                # An isolated FREE cell on the exterior must be excluded by A's mask.
+                next(cell for cell in map_data["cells"] if (cell["x"], cell["y"]) == (0, 0))["type"] = "free"
+                initial = post("/api/session/generate-people", {
+                    "map_data": map_data,
+                    "scene_config": {
+                        "total_persons": 4, "random_seed": 42, "relation_intensity": 0.6,
+                        "initial_informed_ratio": 0.15, "alarm_enabled": True,
+                        "profile_ratios": {"student": 0.75, "teacher": 0.25},
+                    },
+                    "random_seed": 42, "time_step_s": 0.25, "max_steps": 8,
+                })
+                self.assertEqual(4, initial["initialization"]["person_count"])
+                self.assertEqual("map_import.spawn_area.generate_spawn_mask", initial["initialization"]["spawn_area"]["source"])
+                positions = {(person["x"], person["y"]) for person in initial["snapshot"]["people"]}
+                self.assertEqual(4, len(positions))
+                self.assertNotIn((0, 0), positions)
+                stepped = post("/api/session/step", {})
+                self.assertEqual(1, stepped["snapshot"]["step"])
+        finally:
+            try:
+                post("/api/session/close", {})
+            finally:
+                server.shutdown()
+                server.close_session()
+                server.server_close()
+                worker.join(timeout=5)
+
     def test_edited_map_data_flows_to_preview_auto_positioning_and_runtime(self) -> None:
         server = DWebRuntimeServer(("127.0.0.1", 0), RuntimeRequestHandler, root=Path.cwd())
         worker = threading.Thread(target=server.serve_forever, daemon=True)
