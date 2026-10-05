@@ -118,7 +118,13 @@ def generate_positioned_population(*, scene_config: Mapping[str, Any], map_path:
     raw_path = destination / "generated_population.json"
     positioned_path = destination / "generated_population_positioned.json"
     try:
-        _generate_from_config(config, people_output=str(raw_path), map_file=str(map_path), position_output=str(positioned_path))
+        from experiments.spawn_area_adapter import prepare_spawn_area_map
+
+        source_map = json.loads(Path(map_path).read_text(encoding="utf-8"))
+        allocation_map, spawn_area = prepare_spawn_area_map(source_map)
+        allocation_map_path = destination / "map_with_spawn_area.json"
+        allocation_map_path.write_text(json.dumps(allocation_map, ensure_ascii=False), encoding="utf-8")
+        _generate_from_config(config, people_output=str(raw_path), map_file=str(allocation_map_path), position_output=str(positioned_path))
         payload = json.loads(positioned_path.read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError) as exc:
         raise SceneConfigPipelineError(f"人员生成或地图位置分配失败：{exc}") from exc
@@ -126,7 +132,13 @@ def generate_positioned_population(*, scene_config: Mapping[str, Any], map_path:
     if not isinstance(persons, list) or len(persons) != canonical["total_persons"]:
         actual = len(persons) if isinstance(persons, list) else 0
         raise SceneConfigPipelineError(f"人员生成数量异常：期望 {canonical['total_persons']}，实际 {actual}")
-    return {"canonical": canonical, "population_path": positioned_path, "person_count": len(persons), "profile_counts": _profile_counts(persons)}
+    return {
+        "canonical": canonical,
+        "population_path": positioned_path,
+        "person_count": len(persons),
+        "profile_counts": _profile_counts(persons),
+        "spawn_area": spawn_area,
+    }
 
 
 def _profile_counts(persons: list[Any]) -> dict[str, int]:

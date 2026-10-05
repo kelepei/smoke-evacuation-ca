@@ -384,6 +384,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 "person_count": generated["person_count"],
                 "profile_counts": generated["profile_counts"],
                 "canonical_config": canonical,
+                "spawn_area": generated["spawn_area"],
             }
             if self.server.session is not None:
                 self.server.session.input_files["scene_config"] = config_path

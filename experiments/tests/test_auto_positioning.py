@@ -41,7 +41,7 @@ class AutoPositioningTests(unittest.TestCase):
         first = _people_data()
         second = copy.deepcopy(first)
 
-        allocate_map_data_positions(map_data=map_data, people_data=first, random_seed=44)
+        allocation = allocate_map_data_positions(map_data=map_data, people_data=first, random_seed=44)
         allocate_map_data_positions(map_data=map_data, people_data=second, random_seed=44)
 
         self.assertEqual(first, second)
@@ -51,6 +51,7 @@ class AutoPositioningTests(unittest.TestCase):
         self.assertTrue(set(assigned).issubset(valid_free))
         self.assertEqual("preserve", first["persons"][0]["note"])
         self.assertEqual("g1", first["persons"][0]["group_id"])
+        self.assertEqual("map_import.spawn_area.generate_spawn_mask", allocation["spawn_area"]["source"])
 
     def test_edited_cell_type_is_used_as_the_allocation_constraint(self) -> None:
         map_data = _map_data()

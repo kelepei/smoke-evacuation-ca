@@ -7,6 +7,7 @@ import random
 from typing import Any, Mapping
 
 from control.position_allocator import allocate_positions, validate_allocated_positions
+from experiments.spawn_area_adapter import prepare_spawn_area_map
 
 
 class AutoPositioningError(ValueError):
@@ -36,8 +37,11 @@ def allocate_map_data_positions(
     if random_seed is not None:
         random.seed(random_seed)
     try:
-        allocate_positions(people, dict(map_data))
-        validate_allocated_positions(people, dict(map_data))
+        allocation_map, spawn_area = prepare_spawn_area_map(map_data)
+        allocate_positions(people, allocation_map, seed=random_seed)
+        validation_errors = validate_allocated_positions(people, allocation_map)
+        if validation_errors:
+            raise ValueError("; ".join(validation_errors))
     except (TypeError, ValueError) as exc:
         raise AutoPositioningError(str(exc)) from exc
 
@@ -54,4 +58,5 @@ def allocate_map_data_positions(
         "person_count": len(people),
         "random_seed": random_seed,
         "source": "control.position_allocator.allocate_positions",
+        "spawn_area": spawn_area,
     }
