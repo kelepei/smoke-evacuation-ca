@@ -90,6 +90,15 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
             self.assertIn(marker, self.page)
         self.assertNotIn("mapExpandedView", self.stable)
 
+    def test_enhanced_page_explains_spawn_area_capacity_without_touching_stable_page(self) -> None:
+        self.assertIn("function showSpawnCapacityError", self.page)
+        self.assertIn("可生成人员容量不足", self.page)
+        self.assertIn("spawn-area 规则", self.page)
+        self.assertIn("人员重叠或生成到墙体、出口、烟源及地图外区域", self.page)
+        self.assertIn("showSpawnCapacityError(error, \"人员生成\")", self.page)
+        self.assertIn("showSpawnCapacityError(error, \"自动位置分配\")", self.page)
+        self.assertNotIn("showSpawnCapacityError", self.stable)
+
 
 if __name__ == "__main__":
     unittest.main()

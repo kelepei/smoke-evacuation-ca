@@ -1513,6 +1513,19 @@
     return {total_persons:total, random_seed:seed, relation_intensity:intensity, initial_informed_ratio:initialInformedRatio, alarm_enabled:true, profile_ratios:ratios};
   }
 
+  function showSpawnCapacityError(error, actionLabel){
+    const detail = error && error.message ? error.message : String(error || "未知错误");
+    const match = detail.match(/需要\s*(\d+)\s*人，\s*只有\s*(\d+)\s*个/);
+    if(!match) return false;
+    const [, requested, capacity] = match;
+    setStatus(
+      `可生成人员容量不足\n当前地图按 spawn-area 规则只允许 ${capacity} 个出生格；本次请求 ${requested} 人。\n为避免人员重叠或生成到墙体、出口、烟源及地图外区域，本次${actionLabel}未开始。\n请减少人数，或请地图维护方检查外墙闭合 / 灰白 spawn-area 标注。`,
+      "容量不足"
+    );
+    log(`spawn-area 容量不足：请求 ${requested} 人，可用 ${capacity} 格`);
+    return true;
+  }
+
   async function generatePeopleSession(){
     if(pending){ log("当前运行正在计算，请稍候。"); return; }
     if(!currentMapData){ setStatus("请先导入并确认 JSON 地图，再生成人员。", "缺少地图"); return; }
@@ -1528,7 +1541,12 @@
       $("mapEditorHint").textContent = "已生成并定位 " + (init.person_count ?? "NA") + " 人；profile 分布：" + JSON.stringify(init.profile_counts || {});
       setStatus("人员已由 C 正式生成器创建，并由 A 自动分配初始位置\n实际人数：" + (init.person_count ?? "NA") + "\n配置来源：" + (init.config_source || "NA") + "\n同一 canonical config 可复现", "初始化成功");
       log("UI canonical config → C profile/social → A position allocator → B runtime");
-    }catch(error){ setStatus(error.message || String(error), "初始化失败"); log("人员初始化失败：" + (error.message || error)); }
+    }catch(error){
+      if(!showSpawnCapacityError(error, "人员生成")){
+        setStatus(error.message || String(error), "初始化失败");
+        log("人员初始化失败：" + (error.message || error));
+      }
+    }
   }
 
   async function initSession(){
@@ -1772,7 +1790,11 @@
   $("cancelSmokeImport").onclick = () => finishSmokeImportChoice("cancel");
   $("clearImportedSmoke").onclick = () => finishSmokeImportChoice("clear");
   $("keepImportedSmoke").onclick = () => finishSmokeImportChoice("keep");
-  $("autoPositionBtn").onclick = () => initAutoPositionSession().catch(error => setStatus(`自动位置分配失败：${error.message}`, "自动分配失败"));
+  $("autoPositionBtn").onclick = () => initAutoPositionSession().catch(error => {
+    if(!showSpawnCapacityError(error, "自动位置分配")){
+      setStatus(`自动位置分配失败：${error.message}`, "自动分配失败");
+    }
+  });
   document.querySelectorAll("[data-template]").forEach(button => {
     button.onclick = () => previewTemplate(button.dataset.template).catch(error => setStatus(`模板导入失败：${error.message}`, "导入失败"));
   });
