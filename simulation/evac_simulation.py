@@ -25,32 +25,29 @@ class EvacEngine:
     新增：支持人员烟雾中毒死亡，死亡人员原地占用元胞，不参与移动
     新增B08：烟雾警报功能。场景存在alarm点位时检测报警器；无alarm点位自动回退检测烟源，快照输出警报状态
     【新增迭代2】自动知情机制：警报触发后行人有概率接收警报；烟雾剂量达到阈值强制知情，不会永久原地不动
+    【本次改动】不改 schema：内部用 cell_index 字典替代 grid.get_cell
+    【本次改动】calc_next_position 传入 weights / use_softmax / softmax_lambda
     """
     MAX_SIM_STEP = 2000  # 最大仿真步数，防止死循环
 
     def __init__(self, scene: ScenarioConfig):
-        """
-        初始化仿真引擎
-        Args:
-            scene: ScenarioConfig 对象，scene.persons 是ca_loader加载完成、带x/y坐标的行人列表
-        """
         self.scene: ScenarioConfig = scene
         self.grid: Grid = scene.grid
         self.width = self.grid.width
         self.height = self.grid.height
         self.current_step = 0
 
-        # ===== 新增：读取仿真单步时间 =====
+        # 读取仿真单步时间
         self.time_step_s = scene.parameters.get("time_step_s", 1.0)
 
-        # ===== 新增B08烟雾警报配置 =====
-        self.alarm_threshold = 0.45  # 烟雾浓度触发阈值
-        self.is_alarm_triggered = False  # 警报状态，一旦触发永久保持开启
+        # B08 烟雾警报配置
+        self.alarm_threshold = 0.45
+        self.is_alarm_triggered = False
 
-        # 绑定场景seed，给外部冲突消解、出口选择、拥堵模型使用，保证仿真可复现
+        # 绑定场景seed
         self.random = random.Random(getattr(scene, "parameters", {}).get("random_seed"))
 
-        # ===== B03出口选择、B09拥堵模型实例化 =====
+        # B03出口选择、B09拥堵模型
         self.exit_chooser = ExitChooser(scene, rng=self.random)
         self.congestion_model = CongestionModel(grid=self.grid, neighbor_radius=2, density_threshold=0.35)
 
@@ -90,11 +87,11 @@ class EvacEngine:
         self.evacuated_count = 0
         self.step_log = []
 
-        # ========= 适配D可视化适配器新增属性 =========
+        # 适配D可视化适配器新增属性
         self.smoke_matrix = self.smoke_engine.smoke_matrix
         self.smoke_sources = scene.smoke_sources
         self.exits = scene.exits
-        self.alarm_points = getattr(scene, "alarm_points", []) # 新增：读取场景报警器点位
+        self.alarm_points = getattr(scene, "alarm_points", [])
 
     def load_external_persons(self, persons):
         self.person_map.clear()
@@ -102,7 +99,6 @@ class EvacEngine:
             self.person_map[person.id] = person
 
     def is_all_evacuated(self) -> bool:
-        # 全部撤离 OR 全部死亡，仿真结束
         return all(getattr(p, "evacuated", False) or getattr(p, "is_dead", False) for p in self.person_map.values())
 
     def get_evacuated_count(self) -> int:
@@ -115,6 +111,11 @@ class EvacEngine:
         if c_step_data is None:
             c_step_data = {}
 
+        # ===== 不改 schema：内部建坐标索引（只用一次，缓存在 grid 上） =====
+        if not hasattr(self.grid, "_cell_index"):
+            self.grid._cell_index = {(c.x, c.y): c for c in self.grid.cells}
+        cell_index = self.grid._cell_index
+
         # 1. 更新烟雾场
         try:
             self.smoke_engine.update_smoke()
@@ -125,7 +126,7 @@ class EvacEngine:
             print("======================================================")
             raise e
         smoke_mat = self.smoke_engine.smoke_matrix
-        self.smoke_matrix = smoke_mat   # 同步更新给可视化适配器
+        self.smoke_matrix = smoke_mat
 
         # 同步烟雾浓度到网格对象
         for cell in self.grid.cells:
@@ -133,11 +134,10 @@ class EvacEngine:
             if 0 <= y < self.height and 0 <= x < self.width:
                 cell.smoke = smoke_mat[y][x]
 
-        # ====================== B08 烟雾警报判断【兼容新旧地图】 ======================
+        # ====================== B08 烟雾警报判断 ======================
         if not self.is_alarm_triggered:
             alarm_points = getattr(self.scene, "alarm_points", [])
             if alarm_points and len(alarm_points) > 0:
-                # 场景有报警器点位：检测alarm点
                 for alarm in alarm_points:
                     ax, ay = int(alarm.x), int(alarm.y)
                     if 0 <= ax < self.width and 0 <= ay < self.height:
@@ -147,7 +147,6 @@ class EvacEngine:
                             print(f"[ALARM] 报警器触发！Step:{self.current_step}, 报警器坐标({ax},{ay}),浓度:{conc:.3f}")
                             break
             else:
-                # 场景无alarm点位，回退旧逻辑，检测烟源
                 for src in self.scene.smoke_sources:
                     sx, sy = int(src.x), int(src.y)
                     if 0 <= sx < self.width and 0 <= sy < self.height:
@@ -156,9 +155,9 @@ class EvacEngine:
                             self.is_alarm_triggered = True
                             print(f"[ALARM] 烟源触发警报！Step:{self.current_step},烟源浓度:{conc_at_source:.3f}")
                             break
-        # ============================================================================
+        # ==============================================================
 
-        # 2. 批量计算行人风险 ✅ 新增 time_step_s 参数
+        # 2. 批量计算行人风险
         risk_dict = self.risk_engine.batch_calc_all_risk(
             list(self.person_map.values()),
             smoke_mat,
@@ -168,43 +167,37 @@ class EvacEngine:
         # 3. 更新烟雾累积剂量
         self.dose_recorder.update_all_dose(list(self.person_map.values()), smoke_mat)
 
-        # =====================【迭代2新增：自动知情逻辑，解决永久UNKNOWN不动】=====================
-        # 可调参数
-        base_alert_prob = 0.006        # 警报触发后每帧基础收到警报概率
-        smoke_alert_scale = 0.022      # 烟雾浓度放大知情概率
-        dose_force_alert = 8.0         # 烟雾剂量达到该值，强制知情，不管警报是否触发
+        # ============= 自动知情逻辑 =============
+        base_alert_prob = 0.006
+        smoke_alert_scale = 0.022
+        dose_force_alert = 8.0
 
         for pid, person in self.person_map.items():
             if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
                 continue
-            # 获取行人当前位置烟雾浓度
             px, py = int(person.x), int(person.y)
             smoke_val = smoke_mat[py, px] if (0 <= py < self.height and 0 <= px < self.width) else 0
-            # 获取当前烟雾累积剂量
             person_dose = self.dose_recorder.get_dose(pid)
 
-            # 烟雾剂量达标：强制转为知情，立刻开始撤离
             if person_dose >= dose_force_alert:
                 person.info_state = "INFORMED"
                 continue
 
-            # 仅对还处于UNKNOWN不知情的行人做警报感知判断
             if getattr(person, "info_state", "UNKNOWN") == "UNKNOWN":
-                # 警报已经触发，行人有概率感知警报
                 if self.is_alarm_triggered:
                     alert_prob = base_alert_prob + smoke_val * smoke_alert_scale
                     if self.random.random() < alert_prob:
                         person.info_state = "INFORMED"
-        # =====================================================================================
+        # ========================================
 
-        # 4. 标记占用坐标，避免行人重叠 ✅ 死亡人员保留占用元胞
+        # 4. 标记占用坐标
         occupied_positions = set()
         for pid, person in self.person_map.items():
             if not getattr(person, "evacuated", False) and not getattr(person, "is_dead", False):
                 occupied_positions.add((int(person.x), int(person.y)))
         alive_person_pos = occupied_positions
 
-        # =========【修复】循环外提前构造出口列表，兼容Exit对象 / tuple元组 =========
+        # 构造出口列表
         exit_list = []
         for e in self.exits:
             if isinstance(e, tuple):
@@ -212,7 +205,7 @@ class EvacEngine:
             else:
                 exit_list.append((e.id, e.x, e.y))
 
-        # 5. 预计算下一时刻位置 ✅ 死亡人员跳过移动计算
+        # 5. 预计算下一时刻位置
         next_positions = {}
         for pid, person in self.person_map.items():
             if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
@@ -235,14 +228,17 @@ class EvacEngine:
                 congestion_model=self.congestion_model,
                 alive_person_pos=alive_person_pos,
                 rng=self.random,
-                person_map=self.person_map  # ✅迭代1：传入person_map给ca_model，为跟随预留
+                person_map=self.person_map,
+                weights=self.scene.parameters.get("ca_weights", {}),
+                use_softmax=True,
+                softmax_lambda=0.5,
             )
             next_positions[pid] = (nx, ny)
 
-        # -------- 调用外部conflict_solver做冲突消解 --------
+        # 冲突消解
         fixed_next_pos = resolve_conflict(next_positions, self.person_map, self.random)
 
-        # 6. 更新坐标 & 判断是否撤离，记录 actual_exit ✅【修复这里！兼容tuple/对象】
+        # 6. 更新坐标 & 判断是否撤离
         for pid, (nx, ny) in fixed_next_pos.items():
             person = self.person_map[pid]
             if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
@@ -252,14 +248,13 @@ class EvacEngine:
             person.x = nx
             person.y = ny
 
-            cell = self.grid.get_cell(int(nx), int(ny))
+            cell = cell_index.get((int(nx), int(ny)))     # ← 用字典，不用 get_cell
             if cell and cell.cell_type == CellType.EXIT:
                 person.evacuated = True
                 person.evac_step = self.current_step
                 px = int(nx)
                 py = int(ny)
                 for e in self.exits:
-                    # 兼容两种格式：Exit对象 或者 (id, x, y)元组
                     if isinstance(e, tuple):
                         eid, ex, ey = e
                     else:
@@ -273,7 +268,6 @@ class EvacEngine:
         dead_count = self.get_dead_count()
         self.current_step += 1
 
-        # 内存日志（仅内部查看）
         if self.current_step % 10 == 0:
             self.step_log.append({
                 "step": self.current_step,
@@ -290,7 +284,7 @@ class EvacEngine:
             "total": self.total_persons,
             "remaining": self.total_persons - self.evacuated_count - dead_count,
             "dead": dead_count,
-            "alarm": self.is_alarm_triggered # 输出警报状态给D可视化
+            "alarm": self.is_alarm_triggered
         }
 
     def get_person_positions(self) -> dict:
