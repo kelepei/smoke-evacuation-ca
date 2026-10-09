@@ -1,9 +1,8 @@
 """ CA 模型移动逻辑 计算行人下一步位置 """
-import random
 import math
+import numpy as np
 from core.schema import Grid, CellType
 
-# 8邻域方向
 DIRS = [(-1, -1), (-1, 0), (-1, 1),
         (0, -1),           (0, 1),
         (1, -1),  (1, 0),  (1, 1)]
@@ -12,90 +11,85 @@ DIRS = [(-1, -1), (-1, 0), (-1, 1),
 def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behavior=None,
                        floor_field=None, signage_model=None, occupied_positions=None, exit_list=None,
                        exit_chooser=None, congestion_model=None, alive_person_pos=None, rng=None,
-                       person_map: dict = None):  # ✅迭代1新增入参 person_map
-    """
-    计算行人的下一个位置
-    新增risk_dict：{person_id: 行人综合感知风险Risk_i(t)}
-    新增exit_list入参，用于兜底计算出口距离
-    新增B03出口选择、B09拥堵模型相关入参
-    ✅适配死亡逻辑：is_dead=True直接返回原地坐标，不执行移动决策
-    ✅迭代1：支持C传入is_waiting原地等待；person_map预留用于后续跟随行为
-    ✅迭代2：新增动态同伴跟随引力（感知范围内存活行人吸引力）
-    ✅迭代3：增加风险权衡，同伴区域烟雾高时自动抑制跟随引力
-    ✅迭代4：增加行人个体从众偏好异质性，不同行人从众倾向不同
-    ✅迭代5：行人必须知情is_informed=True之后，才会开始撤离移动；不知情原地停留
-    """
+                       person_map: dict = None,
+                       weights: dict = None,
+                       use_softmax: bool = True,
+                       softmax_lambda: float = 0.5):
+    """计算行人的下一个位置"""
     px, py = int(person.x), int(person.y)
 
-    # ========= 新增：死亡/已撤离行人直接原地不动 =========
+    # ===== 不改 schema：内部建坐标索引 =====
+    cell_index = getattr(grid, "_cell_index", None)
+    if cell_index is None:
+        cell_index = {(c.x, c.y): c for c in grid.cells}
+        try:
+            grid._cell_index = cell_index
+        except Exception:
+            pass
+
+    # 死亡/已撤离
     if getattr(person, "is_dead", False) or getattr(person, "evacuated", False):
         return px, py
 
-    # ===================== 迭代1新增：C模块is_waiting原地等待 =====================
+    # 等待
     if single_behavior is not None and single_behavior.get("is_waiting", False):
         return px, py
-    # =========================================================================
 
-    # =====================【迭代5】不知情行人原地不动，不执行撤离计算【修改此处：增加兜底读取person.info_state】 =====================
-    # 兼容 dict字典 和 对象两种single_behavior
+    # 不知情
     if isinstance(single_behavior, dict):
         is_informed = single_behavior.get("is_informed", False)
     else:
         is_informed = getattr(single_behavior, "is_informed", False)
 
-    # ✅【关键新增兜底】如果C模块没有传入is_informed，就读取person对象自身info_state（引擎自动设置）
     if not is_informed:
         info_state = getattr(person, "info_state", "UNKNOWN")
         if info_state != "UNKNOWN":
             is_informed = True
 
     if not is_informed:
-        return (px, py)
-    # ======================================================================================
+        return px, py
 
-    # ===================== B03 出口选择模块 =====================
+    # 出口选择
     if exit_chooser is not None and single_behavior is not None:
         if "target_exit" in single_behavior:
-            # C模块传入引导出口
-            target_exit = exit_chooser.select_exit(person, mode="guided", guided_exit_id=single_behavior["target_exit"])
+            target_exit = exit_chooser.select_exit(
+                person, mode="guided",
+                guided_exit_id=single_behavior["target_exit"]
+            )
         else:
-            # 默认最近出口模式
             target_exit = exit_chooser.select_exit(person, mode="nearest")
         if target_exit is not None:
             person.target_exit_id = target_exit[2]
 
-    # ===================== B09 拥堵等待判断 =====================
+    # 拥堵等待
     if congestion_model is not None and alive_person_pos is not None and rng is not None:
         if congestion_model.need_congestion_wait(person, alive_person_pos, rng):
-            # 拥堵触发，直接原地不动，不做邻域搜索
             return px, py
 
-    best_x, best_y = px, py
-    max_utility = -9999.0
-    # 拆分安全/高烟雾候选
-    safe_candidates = []
-    high_smoke_candidates = []
-
-    # 权重参数
-    w_d = 7.0      # 出口距离权重
-    w_s = 1.0      # 烟雾惩罚权重（格子客观浓度）
-    w_risk = 0.9   # 行人主观感知风险权重【新增】
-    w_g = 3.0      # 指示牌/引导员权重
-    w_h = 1.6      # 从众权重
-    w_rel = 1.9    # 关系/结伴权重
-    w_f = 1.0      # 熟悉度权重
-    w_follow = 1.2 # 【迭代2新增】同伴跟随引力权重
-    follow_max_dist = 6.0 #【迭代2新增】能感知同伴的最大距离
+    # 权重
+    weights = weights or {}
+    w_d      = weights.get("w_d", 7.0)
+    w_s      = weights.get("w_s", 12.0)
+    w_q      = weights.get("w_q", 0.8)
+    w_g      = weights.get("w_g", 3.0)
+    w_h      = weights.get("w_h", 1.6)
+    w_rel    = weights.get("w_rel", 1.9)
+    w_f      = weights.get("w_f", 1.0)
+    w_follow = weights.get("w_follow", 1.2)
+    w_dS     = weights.get("w_dS", 4.0)
+    follow_max_dist = weights.get("follow_max_dist", 6.0)
 
     if occupied_positions is None:
         occupied_positions = set()
 
-    # 获取当前行人综合感知风险
-    person_risk = risk_dict.get(person.id, 0.0)
+    # 当前格烟雾
+    current_cell_smoke = 0.0
+    if 0 <= py < len(smoke_matrix) and 0 <= px < len(smoke_matrix[0]):
+        current_cell_smoke = float(smoke_matrix[py][px])
 
-    # ========== 迭代2：预计算感知范围内存活同伴的平均坐标 ==========
+    # 同伴质心
     follow_target_x, follow_target_y = None, None
-    follow_weight_scale = 1.0 # 迭代3：跟随引力缩放系数
+    follow_weight_scale = 1.0
     if person_map is not None and alive_person_pos is not None:
         neighbor_positions = []
         for pid, alive_person in person_map.items():
@@ -104,60 +98,54 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
             if getattr(alive_person, "is_dead", False) or getattr(alive_person, "evacuated", False):
                 continue
             ax, ay = alive_person.x, alive_person.y
-            dist = math.hypot(ax - px, ay - py)
-            if dist <= follow_max_dist:
+            if math.hypot(ax - px, ay - py) <= follow_max_dist:
                 neighbor_positions.append((ax, ay))
-        if len(neighbor_positions) > 0:
-            # 取附近存活同伴质心，作为跟随目标点
+        if neighbor_positions:
             xs = [p[0] for p in neighbor_positions]
             ys = [p[1] for p in neighbor_positions]
-            follow_target_x = sum(xs)/len(xs)
-            follow_target_y = sum(ys)/len(ys)
+            follow_target_x = sum(xs) / len(xs)
+            follow_target_y = sum(ys) / len(ys)
 
-            # ==========【迭代3新增】根据同伴质心烟雾动态缩放跟随引力 ==========
             gx = int(round(follow_target_x))
             gy = int(round(follow_target_y))
-            # 判断坐标是否在烟雾矩阵范围内
             if 0 <= gy < len(smoke_matrix) and 0 <= gx < len(smoke_matrix[0]):
                 group_smoke_val = smoke_matrix[gy][gx]
-                # 烟雾越高，跟随系数越低；烟雾大于0.4直接取消跟随
                 follow_weight_scale = max(0.0, 1.0 - group_smoke_val * 2.5)
-            # ====================================================================
 
-            # ==========【迭代4新增】读取行人个体从众偏好，叠加到缩放系数 ==========
             herd_preference = getattr(person, "herd_preference", 1.0)
-            follow_weight_scale = follow_weight_scale * herd_preference
-            # ====================================================================
-    # ===============================================================
+            follow_weight_scale *= herd_preference
+
+    # 遍历 8 邻域
+    all_candidates = []
 
     for dx, dy in DIRS:
         tx = px + dx
         ty = py + dy
 
-        # 边界检查
         if not (0 <= tx < grid.width and 0 <= ty < grid.height):
             continue
 
-        cell = grid.get_cell(tx, ty)
+        cell = cell_index.get((tx, ty))          # ← 用字典，不用 get_cell
         if cell is None or cell.cell_type in [CellType.WALL, CellType.OBSTACLE]:
             continue
 
-        # 冲突检查：目标格已被占用
         if (tx, ty) in occupied_positions:
             continue
 
-        # ========== 计算效用 ==========
-        utility = 0.0
-        current_smoke = 0.0
-        # 读取当前格子烟雾浓度
+        next_smoke = 0.0
         if 0 <= ty < len(smoke_matrix) and 0 <= tx < len(smoke_matrix[0]):
-            current_smoke = smoke_matrix[ty][tx]
+            next_smoke = float(smoke_matrix[ty][tx])
 
-        # 1. 出口距离吸引力（核心兜底：兼容floor_field为空的情况）
+        # 极端浓度硬约束
+        if next_smoke > 0.9:
+            continue
+
+        utility = 0.0
+
+        # 1. 出口距离
         if floor_field is not None and floor_field.dist_field is not None:
             dist = floor_field.dist_field[ty][tx]
         else:
-            # 手动计算到最近出口的欧氏距离，强制生效出口吸引力
             dist = float("inf")
             if exit_list is not None:
                 for _, ex, ey in exit_list:
@@ -166,81 +154,83 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
                         dist = d
         utility -= w_d * dist
 
-        # 2. 出口格子额外奖励（让行人最终走出去）
         if cell.cell_type == CellType.EXIT:
             utility += 2.0
 
-        # 3. 客观烟雾浓度惩罚
-        smoke_cost = current_smoke * w_s
-        utility -= smoke_cost
+        # 2. 烟雾惩罚
+        risk_sens = getattr(person, "risk_sensitivity", 0.5)
+        w_s_eff = w_s * (0.5 + risk_sens)
+        utility -= w_s_eff * (next_smoke ** 1.5)
 
-        # 【新增4】行人主观综合风险惩罚 Risk_i(t)
-        # 行人感知风险越高，整体移动意愿下降，规避烟雾区域
-        utility -= w_risk * person_risk
+        # 3. ΔS
+        dS = next_smoke - current_cell_smoke
+        if dS > 0:
+            utility -= w_dS * dS
 
-        # ========== 迭代2同伴跟随引力（迭代3增加scale缩放，迭代4叠加个体从众偏好） ==========
+        # 4. 拥堵
+        local_density = 0
+        for ddx in (-1, 0, 1):
+            for ddy in (-1, 0, 1):
+                if (tx + ddx, ty + ddy) in occupied_positions:
+                    local_density += 1
+        utility -= w_q * local_density
+
+        # 5. 同伴跟随
         if follow_target_x is not None and follow_target_y is not None:
-            # 目标邻域格离同伴质心越近，效用越高
             dist_to_group = math.hypot(tx - follow_target_x, ty - follow_target_y)
             utility += w_follow * follow_weight_scale / (dist_to_group + 1e-6)
-        # ===============================================
 
-        # 5. 熟悉度偏好（C 组提供）
+        # 6. C模块行为
         if single_behavior:
             familiarity = getattr(person, 'familiarity', 0.5)
             utility += w_f * familiarity * 0.1
 
-            # 出口偏好修正
             exit_pref = single_behavior.get("exit_preference", {})
             for exit_id, bonus in exit_pref.items():
                 utility += bonus * 0.2
 
-            # 从众影响
             herding_influence = single_behavior.get("herding_influence", 0.0)
             dominant_dir = single_behavior.get("dominant_direction", (0, 0))
             if herding_influence > 0.1:
                 if dx == dominant_dir[0] and dy == dominant_dir[1]:
                     utility += w_h * herding_influence
 
-            # 结伴影响
             is_following = single_behavior.get("is_following", False)
             follow_strength = single_behavior.get("follow_strength", 0.0)
             follow_target = single_behavior.get("follow_target")
             if is_following and follow_target is not None:
                 utility += w_rel * follow_strength * 0.3
 
-            # 引导影响
             guide_influence = single_behavior.get("guide_influence", 0.0)
             if guide_influence > 0.1:
                 utility += w_g * guide_influence * 0.3
 
-        # 6. 指示牌引导
+        # 7. 指示牌
         if signage_model is not None:
             guide_u = signage_model.get_guidance_utility(person, (tx, ty))
             utility += w_g * guide_u
 
-        # 7. 行走惯性防抖
+        # 8. 惯性
         if hasattr(person, 'prev_x') and hasattr(person, 'prev_y'):
-            prev_dx = px - person.prev_x
-            prev_dy = py - person.prev_y
-            if prev_dx == dx and prev_dy == dy:
+            if px - person.prev_x == dx and py - person.prev_y == dy:
                 utility += 0.1
 
-        # 分类候选格子
-        candidate_info = {"utility": utility, "x": tx, "y": ty}
-        if current_smoke < 0.3:
-            safe_candidates.append(candidate_info)
-        else:
-            high_smoke_candidates.append(candidate_info)
+        all_candidates.append({"utility": utility, "x": tx, "y": ty})
 
-    # 择优选择移动目标
-    if len(safe_candidates) > 0:
-        safe_candidates.sort(key=lambda x: x["utility"], reverse=True)
-        best_x, best_y = safe_candidates[0]["x"], safe_candidates[0]["y"]
-    else:
-        all_candidates = safe_candidates + high_smoke_candidates
-        if len(all_candidates) > 0:
+    # 决策
+    best_x, best_y = px, py
+    if all_candidates:
+        if use_softmax and rng is not None:
+            U = np.array([c["utility"] for c in all_candidates], dtype=np.float64)
+            U = U - U.max()
+            p = np.exp(softmax_lambda * U)
+            p = p / p.sum()
+            idx = rng.choices(range(len(all_candidates)), weights=p.tolist(), k=1)[0]
+            best_x = all_candidates[idx]["x"]
+            best_y = all_candidates[idx]["y"]
+        else:
             all_candidates.sort(key=lambda x: x["utility"], reverse=True)
-            best_x, best_y = all_candidates[0]["x"], all_candidates[0]["y"]
+            best_x = all_candidates[0]["x"]
+            best_y = all_candidates[0]["y"]
 
     return best_x, best_y
