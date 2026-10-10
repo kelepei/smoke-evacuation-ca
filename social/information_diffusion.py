@@ -101,6 +101,7 @@ class InformationDiffusionEngine:
 
         # 初始知情比例 / 警报状态（新增）
         self.initial_informed_ratio = 0.0
+        self.smoke_confirmation_threshold = 0.1
         self.alarm_triggered = False
         self.alarm_trigger_step: Optional[int] = None
 
@@ -572,9 +573,18 @@ class InformationDiffusionEngine:
     # ============================================================
     # 5. 烟雾触发确认
     # ============================================================
+    def apply_smoke_exposure(self, all_persons: List,
+                             smoke_grid: np.ndarray, current_step: int) -> int:
+        """公开的烟雾暴露复核接口，供运行时在 B 步结束后立即调用。"""
+        if smoke_grid is None:
+            return 0
+        return self._apply_smoke_confirmation(all_persons, smoke_grid, current_step)
+
     def _apply_smoke_confirmation(self, all_persons: List,
                                   smoke_grid: np.ndarray, current_step: int):
-        smoke_threshold = 0.1
+        smoke_threshold = float(
+            getattr(self, "smoke_confirmation_threshold", 0.1)
+        )
         confirmed = 0
 
         for person in all_persons:
@@ -612,6 +622,7 @@ class InformationDiffusionEngine:
 
         if confirmed > 0:
             self.step_stats["smoke_confirmed"] = confirmed
+        return confirmed
 
     # ============================================================
     # 工具方法
