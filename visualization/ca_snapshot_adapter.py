@@ -418,6 +418,10 @@ class CaSnapshotAdapter:
                     "follow_target": _optional_attr(person, "follow_target"),
                     "is_waiting": bool(_optional_attr(person, "is_waiting") or False),
                     "profile": _optional_attr(person, "profile"),
+                    "speed": _optional_attr(person, "speed"),
+                    "is_panicked": bool(_optional_attr(person, "is_panicked") or False),
+                    "panic_level": _optional_attr(person, "panic_level"),
+                    "speed_multiplier": _optional_attr(person, "speed_multiplier"),
                 }
             )
 
