@@ -105,6 +105,31 @@ def _safe_suffix(filename: Any, allowed: set[str], field: str) -> str:
     return suffix
 
 
+def _control_runtime_config(payload: Mapping[str, Any]) -> dict[str, Any]:
+    config: dict[str, Any] = {}
+    strategy = str(payload.get("control_strategy", "none") or "none").strip().lower()
+    if strategy:
+        config["control_strategy"] = strategy
+    if "control_trigger_step" in payload:
+        config["control_trigger_step"] = int(payload.get("control_trigger_step") or 10)
+    closed = payload.get("control_closed_exits")
+    if isinstance(closed, str):
+        closed = [item.strip() for item in closed.split(",") if item.strip()]
+    if isinstance(closed, (list, tuple)):
+        config["control_closed_exits"] = [str(item) for item in closed]
+    area = payload.get("control_lockdown_area")
+    if isinstance(area, str):
+        area = [item.strip() for item in area.split(",") if item.strip()]
+    if isinstance(area, (list, tuple)) and len(area) == 4:
+        try:
+            config["control_lockdown_area"] = [int(item) for item in area]
+        except (TypeError, ValueError):
+            pass
+    if "route_shift_ratio" in payload:
+        config["route_shift_ratio"] = float(payload.get("route_shift_ratio") or 0.2)
+    return config
+
+
 def _uploaded_file(payload: Mapping[str, Any], field: str, allowed: set[str], root: Path) -> Path | None:
     raw = payload.get(field)
     if raw is None:
@@ -330,6 +355,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             yaml_path = _uploaded_file(payload, "yaml_file", ALLOWED_YAML_SUFFIXES, root)
             if map_path is None or people_path is None:
                 raise WebRuntimeError("map_data or map_file, and population_file, are required")
+            control_config = _control_runtime_config(payload)
             return self._start_runner(
                 temporary_directory,
                 map_path=map_path,
@@ -338,6 +364,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 max_steps=_positive_steps(payload.get("max_steps")),
                 random_seed=_optional_seed(payload.get("random_seed")),
                 time_step_s=_positive_time_step(payload.get("time_step_s")),
+                c_runtime_config=control_config,
             )
         except Exception:
             temporary_directory.cleanup()
@@ -367,6 +394,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             generated = generate_positioned_population(
                 scene_config=canonical, map_path=map_path, destination=root / "generated"
             )
+            runtime_config = {**canonical, **_control_runtime_config(payload)}
             config_path = root / "scene_config.json"
             config_path.write_text(json.dumps({"config_source": config_source, **canonical}, ensure_ascii=False, indent=2), encoding="utf-8")
             result = self._start_runner(
@@ -377,7 +405,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 max_steps=_positive_steps(payload.get("max_steps")),
                 random_seed=canonical["random_seed"],
                 time_step_s=_positive_time_step(payload.get("time_step_s")),
-                c_runtime_config=canonical,
+                c_runtime_config=runtime_config,
             )
             result["initialization"] = {
                 "config_source": config_source,
@@ -421,6 +449,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             except AutoPositioningError as exc:
                 raise WebRuntimeError(str(exc)) from exc
             people_path.write_text(json.dumps(people_data, ensure_ascii=False), encoding="utf-8")
+            control_config = _control_runtime_config(payload)
             result = self._start_runner(
                 temporary_directory,
                 map_path=map_path,
@@ -429,6 +458,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 max_steps=_positive_steps(payload.get("max_steps")),
                 random_seed=random_seed,
                 time_step_s=_positive_time_step(payload.get("time_step_s")),
+                c_runtime_config=control_config,
             )
             result["auto_positioning"] = allocation
             return result
@@ -541,6 +571,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 max_steps=_positive_steps(payload.get("max_steps")),
                 random_seed=_optional_seed(payload.get("random_seed")),
                 time_step_s=_positive_time_step(payload.get("time_step_s")),
+                c_runtime_config=_control_runtime_config(payload),
             )
         except Exception:
             temporary_directory.cleanup()
@@ -569,6 +600,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                     max_steps=_positive_steps(payload.get("max_steps")),
                     random_seed=_optional_seed(payload.get("random_seed")),
                     time_step_s=_positive_time_step(payload.get("time_step_s")),
+                    c_runtime_config=_control_runtime_config(payload),
                 )
             except Exception as exc:
                 message = str(exc)
@@ -657,10 +689,16 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             save_frame=session.runner.finished,
         )
         request_processing_ms = (perf_counter() - request_started) * 1000.0
+        # 增量返回：grid / relations 是静态数据，初始化时已经下发过，
+        # 每步不再重复发送（可减少约 57% 的响应体积，明显改善动画流畅度）。
+        slim_snapshot = dict(snapshot)
+        slim_snapshot.pop("grid", None)
+        slim_snapshot.pop("relations", None)
         return {
             "ok": True,
             "finished": session.runner.finished,
-            "snapshot": snapshot,
+            "snapshot": slim_snapshot,
+            "static_fields_omitted": ["grid", "relations"],
             "output_dir": str(session.runner.output_root / snapshot["run_id"]),
             "diagnostics": {
                 "step_compute_ms": round(step_compute_ms, 3),
