@@ -217,11 +217,19 @@ def build_integrated_scenario(
     # must not change B's cell-level movement or exit IDs.
     exit_entities = extract_exit_entities(grid)
     entity_by_coordinate = entity_id_by_cell(exit_entities)
-    exits = [
-        Exit(id=f"exit_{index + 1}", x=int(cell.x), y=int(cell.y))
-        for index, cell in enumerate(grid.cells)
-        if _cell_type_value(cell) == CellType.EXIT.value
-    ]
+    exits = []
+    used_exit_ids: set[str] = set()
+    for index, cell in enumerate(grid.cells):
+        if _cell_type_value(cell) != CellType.EXIT.value:
+            continue
+        base_exit_id = str(getattr(cell, "exit_id", "") or "").strip() or f"exit_{index + 1}"
+        exit_id = base_exit_id
+        suffix = 2
+        while exit_id in used_exit_ids:
+            exit_id = f"{base_exit_id}_{suffix}"
+            suffix += 1
+        used_exit_ids.add(exit_id)
+        exits.append(Exit(id=exit_id, x=int(cell.x), y=int(cell.y), label=exit_id))
     exit_entity_by_cell_id = {
         str(exit_obj.id): entity_by_coordinate[(int(exit_obj.x), int(exit_obj.y))]
         for exit_obj in exits
@@ -265,6 +273,17 @@ def build_integrated_scenario(
     )
     # ``parameters`` is not yet a constructor field in the shared schema.
     # Adding an instance attribute here preserves A/B/C code unchanged.
+    control_runtime = {}
+    if c_runtime_config:
+        for key in (
+            "control_strategy",
+            "control_trigger_step",
+            "control_closed_exits",
+            "control_lockdown_area",
+            "route_shift_ratio",
+        ):
+            if key in c_runtime_config:
+                control_runtime[key] = c_runtime_config[key]
     runtime_config.parameters = {  # type: ignore[attr-defined]
         "random_seed": effective_seed,
         "d_input_sources": {
@@ -282,6 +301,7 @@ def build_integrated_scenario(
                 (c_runtime_config or {}).get("alarm_enabled", getattr(config_view.config, "alarm_enabled", True) if config_view is not None else True)
             ),
             "source": "C YAML" if config_view is not None else ("UI canonical C config" if c_runtime_config is not None else "C SceneConfig defaults"),
+            **control_runtime,
         },
     }
 
