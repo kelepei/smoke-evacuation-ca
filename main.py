@@ -1,6 +1,7 @@
 """ 主程序入口 - A+B+C+D 完整联调版本 功能：     1. A 模块加载地图     2. C 模块生成人群和社会关系     3. C 模块为行人按所选地图分配位置     4. C 行为引擎（结伴/从众/信息/引导/指示牌/错误信息）逐帧输出 c_step_data     5. B 模块 CA 仿真     6. D 模块记录 CSV 日志     7. 【新增】实时可视化渲染（可开关，不影响原有实验逻辑）  命令行（便于"开/关关系模型"与">=2 种引导策略"对比实验）：     python main.py --map maps/edited_map.json                     # 默认：关系模型开启 + 可视化开启     python main.py --social off --visual off                       # 基线：B纯CA，关闭可视化用于批量跑实验     python main.py --guide fixed / --guide patrol / --guide toward_exit ...     python main.py --misinfo off                                   # 关闭错误出口信息     python main.py --info off                                      # 关闭广播/局部口头传播     python main.py --signage off                                   # 关闭静态指示牌 """
 import argparse
 import json
+import math
 import random
 import sys
 import time
@@ -52,6 +53,26 @@ GUIDE_STRATEGIES = {
     "toward_crowd": GuideMoveStrategy.TOWARD_CROWD,
     "escort": GuideMoveStrategy.ESCORT,
 }
+
+
+# 未获知险情人员“日常行走”的 8 邻域方向
+WALK_DIRS = [
+    (-1, -1), (-1, 0), (-1, 1),
+    (0, -1), (0, 1),
+    (1, -1), (1, 0), (1, 1),
+]
+WALKABLE_TYPES = {"free", "sign", "guide_zone"}
+
+
+def _cell_walkable(grid, x, y):
+    """日常行走只允许走在可通行元胞上（不进入墙体/障碍/出口）。"""
+    if not (0 <= x < grid.width and 0 <= y < grid.height):
+        return False
+    cell = grid.get_cell(x, y)
+    if cell is None:
+        return False
+    cell_type = str(getattr(cell.cell_type, "value", cell.cell_type)).lower()
+    return cell_type in WALKABLE_TYPES
 
 
 # ---------------------- 场景加载函数 ----------------------
@@ -115,6 +136,24 @@ def _far_exit(exits, x, y):
             best_d = d
             best = eid
     return best
+
+
+def _panic_state_for_person(person, smoke_matrix, dose_recorder):
+    smoke = 0.0
+    if smoke_matrix is not None:
+        x, y = int(person.x), int(person.y)
+        try:
+            if 0 <= y < smoke_matrix.shape[0] and 0 <= x < smoke_matrix.shape[1]:
+                smoke = float(smoke_matrix[y, x])
+        except Exception:
+            smoke = 0.0
+    dose = float(dose_recorder.get_dose(int(person.id))) if dose_recorder is not None else float(getattr(person, "dose", 0.0) or 0.0)
+    panic_curve = math.exp(-((smoke - 0.5) ** 2) / (2.0 * (0.25 ** 2)))
+    toxic_factor = 1.0 if smoke <= 0.65 else max(0.35, 1.0 - (smoke - 0.65) * 1.7)
+    dose_factor = max(0.35, 1.0 / (1.0 + dose / 6.0))
+    panic_level = max(panic_curve, min(1.0, smoke * 1.2))
+    speed_multiplier = max(0.20, (1.0 + 0.45 * panic_curve) * toxic_factor * dose_factor)
+    return {"is_panicked": bool(smoke >= 0.05 or panic_level >= 0.35), "panic_level": panic_level, "speed_multiplier": speed_multiplier}
 
 
 def _build_patrol_points(grid, step=2):
@@ -294,7 +333,15 @@ def main(options=None):
     guide_exit_id = options.get("guide_exit")
     guide_share = float(options.get("guide_share", 0.30))
     speed_model_on = bool(options.get("speed_model", True))
-    freeze_unknown = bool(options.get("freeze_unknown", True))
+    unknown_speed_factor = max(0.0, float(options.get("unknown_speed_factor", 0.35)))
+    informed_speed_factor = max(0.0, float(options.get("informed_speed_factor", 1.15)))
+    # 未获知险情人员行为：walk=正常速度随机行走（默认）/ freeze=原地不动 / evacuate=直接疏散
+    unknown_behavior = str(options.get("unknown_behavior") or "walk").strip().lower()
+    if unknown_behavior not in ("walk", "freeze", "evacuate"):
+        unknown_behavior = "walk"
+    freeze_opt = options.get("freeze_unknown")
+    if freeze_opt is not None:      # 兼容旧的 --freeze-unknown 参数
+        unknown_behavior = "freeze" if freeze_opt else "evacuate"
     congestion_radius = int(options.get("congestion_radius", 2))
     congestion_threshold = int(options.get("congestion_threshold", 4))
     patrol_step = int(options.get("patrol_step", 2))
@@ -334,7 +381,10 @@ def main(options=None):
         print(f"  烟源强度={smoke_intensity}（不爬升，立即满强度）")
     print(f"  报警来源={alarm_source}（b=B报警器 / threshold=C阈值 / both=任一）")
     print(f"  C10 管控策略={strategy_keys or ['none']}（触发步={strategy_trigger}）")
-    print(f"  未获知险情者原地不动={freeze_unknown}（--freeze-unknown off 可关闭）")
+    _unknown_desc = {"walk": "正常速度随机行走（获知后才疏散）",
+                     "freeze": "原地不动",
+                     "evacuate": "未获知也直接疏散"}[unknown_behavior]
+    print(f"  未获知险情人员行为={unknown_behavior}（{_unknown_desc}）")
     print(f"  实时可视化：{'开启' if visual_on else '关闭'}")
 
     # 1. 初始化地图
@@ -517,7 +567,29 @@ def main(options=None):
 
     # 5. 启动仿真器与 D 日志
     sim = EvacEngine(scene=ca_scene)
+    speed_variation = max(0.0, min(0.45, float(options.get("speed_variation", 0.30))))
+    if speed_variation > 0:
+        seed_raw = getattr(ca_scene, "parameters", {}).get("random_seed", 0)
+        base_seed = int(seed_raw) if seed_raw is not None else 0
+        for person in sim.person_map.values():
+            rng = random.Random(base_seed + int(person.id))
+            person.speed = max(
+                0.1,
+                float(getattr(person, "speed", 1.0) or 1.0)
+                * (1.0 + rng.uniform(-speed_variation, speed_variation)),
+            )
+    scene_smoke_sources = (
+        getattr(sim, "smoke_sources", None)
+        or getattr(getattr(sim, "scene", None), "smoke_sources", None)
+        or []
+    )
+    has_hazard = any(
+        float(getattr(source, "intensity", 1.0) or 0.0) > 0.0
+        for source in scene_smoke_sources
+    )
     print(f"本次实验run_id：{unique_run_id}")
+    if not has_hazard:
+        print("[C] 当前场景没有有效烟源：仅日常行为，不初始化知情者，不启动疏散引导")
 
     # 【阈值口径统一】把 YAML/命令行的阈值同步给 B 的报警器，
     # 否则 B 内部写死的 0.45 会先于你配置的阈值（如 0.5）触发。
@@ -577,8 +649,8 @@ def main(options=None):
                 else:
                     print(f"[WARN] 未知策略 '{key}'，已忽略")
 
-    # 火灾初期：让一定比例的人员先知道险情
-    if social_on and info_on and initial_informed_ratio > 0:
+    # 火灾初期：只有场景确实存在有效烟源时，才让一定比例人员先知情。
+    if social_on and info_on and initial_informed_ratio > 0 and has_hazard:
         sim_persons = list(sim.person_map.values())
         seeded = info_diff_engine.initialize_initial_informed(
             sim_persons, current_step=0, ratio=initial_informed_ratio)
@@ -611,8 +683,10 @@ def main(options=None):
 
         # 速度差异 + 拥堵减速
         move_credit = {}
-        speed_stats = {"blocked_total": 0, "congested_total": 0}
-        freeze_stats = {"frozen_total": 0}
+        speed_stats = {"blocked_total": 0, "congested_total": 0, "same_cell_congested_total": 0}
+        freeze_stats = {"frozen_total": 0, "walk_total": 0}
+        walk_credit = {}
+        walk_dir = {}
         max_smoke_seen = 0.0
         _speeds = [float(getattr(p, "speed", 1.0) or 1.0) for p in sim.person_map.values()]
         mean_speed = (sum(_speeds) / len(_speeds)) if _speeds else 1.0
@@ -668,7 +742,10 @@ def main(options=None):
                 herd_result = herd_engine.update_all(ped_list, grid_w, grid_h, frame)
                 if guide_engine is not None and guide_engine.guides:
                     guide_engine.update_guides(ped_list, exit_check_list, frame)
-                    guide_result = guide_engine.update_all(ped_list, frame)
+                    if has_hazard and guide_engine.guidance_active:
+                        guide_result = guide_engine.update_all(ped_list, frame)
+                    else:
+                        guide_result = {}
                 else:
                     guide_result = {}
 
@@ -717,6 +794,9 @@ def main(options=None):
                         "is_waiting": group_beh.get("is_waiting", False),
                         "waiting_for": group_beh.get("waiting_for"),
                         "group_id": getattr(person, "group_id", ""),
+                        "is_panicked": bool(panic_cache.get(pid, {}).get("is_panicked", False)),
+                        "panic_level": float(panic_cache.get(pid, {}).get("panic_level", 0.0) or 0.0),
+                        "speed_multiplier": float(panic_cache.get(pid, {}).get("speed_multiplier", 1.0) or 1.0),
                     }
 
                     person.info_state = info_state
@@ -728,21 +808,32 @@ def main(options=None):
                     person.is_waiting = group_beh.get("is_waiting", False)
                     person.target_exit = target_exit
                     person.exit_preference = exit_pref
-            # 移动门控：① 未获知险情者原地不动 ② 速度差异 ③ 拥堵减速
+                    person.is_panicked = bool(panic_cache.get(pid, {}).get("is_panicked", False))
+                    person.panic_level = float(panic_cache.get(pid, {}).get("panic_level", 0.0) or 0.0)
+                    person.speed_multiplier = float(panic_cache.get(pid, {}).get("speed_multiplier", 1.0) or 1.0)
+            # 移动门控：① 未获知险情者原地不动 ② 速度差异 ③ 拥堵减速 ④ 恐慌/毒性耦合
+            panic_cache = {
+                int(person.id): _panic_state_for_person(person, sim.smoke_matrix, getattr(sim, "dose_recorder", None))
+                for person in ped_list
+            }
             move_allowed = None
-            if ped_list and (speed_model_on or (freeze_unknown and social_on)):
+            if ped_list and (speed_model_on or (unknown_behavior != "evacuate" and social_on)):
                 move_allowed = {}
                 active_positions = [(p.x, p.y) for p in ped_list if not p.evacuated]
+                cell_counts = {}
+                for px, py in active_positions:
+                    cell_counts[(px, py)] = cell_counts.get((px, py), 0) + 1
                 for person in ped_list:
                     if person.evacuated or getattr(person, "is_dead", False):
                         continue
 
-                    # ① 尚未获知火灾信息的人不移动（警报/人际传播获知后才会疏散）
-                    if freeze_unknown and social_on:
+                    # ① 未获知险情：不走 B 的疏散路径（walk 稍后改为日常行走，freeze 则原地）
+                    if unknown_behavior != "evacuate" and social_on:
                         state_now = str(getattr(person, "info_state", "UNKNOWN"))
                         if state_now == "UNKNOWN":
                             move_allowed[person.id] = False
-                            freeze_stats["frozen_total"] += 1
+                            if unknown_behavior == "freeze":
+                                freeze_stats["frozen_total"] += 1
                             continue
 
                     # ② 关闭速度模型时，获知者直接允许移动
@@ -757,10 +848,15 @@ def main(options=None):
                         if abs(qx - person.x) <= congestion_radius and abs(qy - person.y) <= congestion_radius:
                             density += 1
                     congestion_factor = 1.0
+                    same_cell = cell_counts.get((int(person.x), int(person.y)), 1)
+                    if same_cell > 1:
+                        congestion_factor = min(congestion_factor, max(0.15, 1.0 / float(same_cell)))
+                        speed_stats["same_cell_congested_total"] += 1
                     if density >= congestion_threshold > 0:
-                        congestion_factor = max(0.3, congestion_threshold / float(density))
+                        congestion_factor = min(congestion_factor, max(0.3, congestion_threshold / float(density)))
                         speed_stats["congested_total"] += 1
-                    relative_speed = speed / mean_speed
+                    panic_speed = float(panic_cache.get(person.id, {}).get("speed_multiplier", 1.0) or 1.0)
+                    relative_speed = speed * informed_speed_factor * panic_speed / mean_speed
                     credit = move_credit.get(person.id, 0.0) + relative_speed * congestion_factor
                     if credit >= 1.0:
                         move_allowed[person.id] = True
@@ -784,11 +880,87 @@ def main(options=None):
 
             if move_allowed is not None:
                 for person in ped_list:
-                    if person.evacuated:
+                    if move_allowed.get(person.id, True):
                         continue
-                    if not move_allowed.get(person.id, True):
-                        person.x = getattr(person, "prev_x", person.x)
-                        person.y = getattr(person, "prev_y", person.y)
+                    prev_x = getattr(person, "prev_x", person.x)
+                    prev_y = getattr(person, "prev_y", person.y)
+                    # 未获知人员若被 B 判定“走到出口撤离”，撤销该撤离状态
+                    if getattr(person, "evacuated", False):
+                        person.evacuated = False
+                        if hasattr(person, "evac_step"):
+                            person.evac_step = -1
+                        if hasattr(person, "actual_exit"):
+                            person.actual_exit = None
+                    person.x = prev_x
+                    person.y = prev_y
+                if hasattr(sim, "get_evacuated_count"):
+                    sim.evacuated_count = sim.get_evacuated_count()
+
+            # 未获知险情者：以自身正常速度在可通行区域随机行走（不参与疏散）
+            if unknown_behavior == "walk" and social_on:
+                occupied_now = {
+                    (int(p.x), int(p.y))
+                    for p in ped_list
+                    if not getattr(p, "evacuated", False)
+                }
+                walk_cell_counts = {}
+                for px, py in occupied_now:
+                    walk_cell_counts[(px, py)] = sum(
+                        1 for q in ped_list if not getattr(q, "evacuated", False) and int(q.x) == px and int(q.y) == py
+                    )
+                walk_order = sorted(
+                    ped_list,
+                    key=lambda item: -(float(getattr(item, "speed", 1.0) or 1.0) * unknown_speed_factor),
+                )
+                for person in walk_order:
+                    if person.evacuated or getattr(person, "is_dead", False):
+                        continue
+                    if str(getattr(person, "info_state", "UNKNOWN")) != "UNKNOWN":
+                        continue
+
+                    speed = float(getattr(person, "speed", 1.0) or 1.0) * unknown_speed_factor
+                    same_cell = walk_cell_counts.get((int(person.x), int(person.y)), 1)
+                    if same_cell > 1:
+                        speed *= max(0.15, 1.0 / float(same_cell))
+                        speed_stats["same_cell_congested_total"] += 1
+                    credit = walk_credit.get(person.id, 0.0) + speed
+                    if credit < 1.0:
+                        walk_credit[person.id] = credit
+                        continue
+                    walk_credit[person.id] = credit - 1.0
+
+                    cx = int(person.x)
+                    cy = int(person.y)
+                    last = walk_dir.get(person.id)
+                    candidates = []
+                    for dx, dy in WALK_DIRS:
+                        nx, ny = cx + dx, cy + dy
+                        if (nx, ny) in occupied_now:
+                            continue
+                        if not _cell_walkable(sim.grid, nx, ny):
+                            continue
+                        if control_engine is not None and not control_engine.is_cell_accessible(nx, ny):
+                            continue
+                        candidates.append((dx, dy, nx, ny))
+                    if not candidates:
+                        continue
+
+                    chosen = None
+                    if last is not None:
+                        for cand in candidates:
+                            if (cand[0], cand[1]) == last:
+                                chosen = cand
+                                break
+                    if chosen is None:
+                        chosen = random.choice(candidates)
+
+                    dx, dy, nx, ny = chosen
+                    occupied_now.discard((cx, cy))
+                    person.x = nx
+                    person.y = ny
+                    occupied_now.add((nx, ny))
+                    walk_dir[person.id] = (dx, dy)
+                    freeze_stats["walk_total"] += 1
 
             # C10 区域封锁：只禁止"进入"封锁区；封锁前已在区内的人允许离开
             if control_engine is not None:
@@ -879,10 +1051,11 @@ def main(options=None):
                 for g in guide_engine.guides
             ])
     if speed_model_on:
-        print(f"速度/拥堵模型: 本步累计被拥堵影响次数={speed_stats['congested_total']} "
+        print(f"速度/拥堵模型: 邻域拥堵={speed_stats['congested_total']} 同格拥堵={speed_stats['same_cell_congested_total']} "
               f"累计原地等待人次={speed_stats['blocked_total']}")
-    if freeze_unknown and social_on:
-        print(f"信息门控: 未获知险情而原地等待 累计 {freeze_stats['frozen_total']} 人次")
+    if social_on and unknown_behavior != "evacuate":
+        print(f"信息门控: 未获知人员行为={unknown_behavior} | "
+              f"日常行走 {freeze_stats['walk_total']} 人次 | 原地不动 {freeze_stats['frozen_total']} 人次")
     print(f"输出目录: outputs/experiments/{unique_run_id}")
 
     # ===== 自动更新可视化报告（PNG + index.html）=====
@@ -944,10 +1117,18 @@ if __name__ == "__main__":
                         help="接受引导的人群比例（只引导部分人群）")
     parser.add_argument("--patrol-step", type=int, default=2,
                         help="巡查路线采样间隔（越小巡查点越密）")
-    parser.add_argument("--freeze-unknown", choices=["on", "off"], default="on",
-                        help="未获知火灾信息的人是否原地不动（默认on；关闭则所有人一开始就会疏散）")
+    parser.add_argument("--unknown-behavior", choices=["walk", "freeze", "evacuate"], default=None,
+                        help="未获知险情人员行为：walk=正常速度随机行走（默认）；freeze=原地不动；evacuate=直接疏散")
+    parser.add_argument("--freeze-unknown", choices=["on", "off"], default=None,
+                        help="（兼容旧参数）on=原地不动，off=直接疏散；不传则使用 --unknown-behavior")
     parser.add_argument("--speed-model", choices=["on", "off"], default="on",
                         help="是否启用速度差异与拥堵减速模型")
+    parser.add_argument("--unknown-speed-factor", type=float, default=0.35,
+                        help="未知情人员日常行走速度倍率（默认 0.45）")
+    parser.add_argument("--informed-speed-factor", type=float, default=1.15,
+                        help="知情人员疏散速度倍率（默认 1.40）")
+    parser.add_argument("--speed-variation", type=float, default=0.30,
+                        help="个体速度随机差异幅度（默认 ±18%）")
     parser.add_argument("--congestion-radius", type=int, default=2,
                         help="拥堵密度统计半径（元胞）")
     parser.add_argument("--congestion-threshold", type=int, default=4,
@@ -989,7 +1170,11 @@ if __name__ == "__main__":
         "guide_share": args.guide_share,
         "patrol_step": args.patrol_step,
         "speed_model": args.speed_model == "on",
-        "freeze_unknown": args.freeze_unknown == "on",
+        "unknown_speed_factor": args.unknown_speed_factor,
+        "informed_speed_factor": args.informed_speed_factor,
+        "speed_variation": args.speed_variation,
+        "unknown_behavior": args.unknown_behavior,
+        "freeze_unknown": None if args.freeze_unknown is None else args.freeze_unknown == "on",
         "congestion_radius": args.congestion_radius,
         "congestion_threshold": args.congestion_threshold,
         "strategy": args.strategy,
