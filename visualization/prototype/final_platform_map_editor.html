@@ -125,11 +125,26 @@
     <label>总人数 <input id="totalPersons" type="number" min="1" step="1" value="40"></label>
     <label>random_seed（留空为随机）<input id="randomSeed" type="number" value="42"></label>
     <label>relation_intensity <input id="relationIntensity" type="number" min="0" max="1" step="0.01" value="0.6"></label>
-    <label>initial_informed_ratio <input id="initialInformedRatio" type="number" min="0" max="1" step="0.01" value="0.15"></label>
+    <label>initial_informed_ratio（网页由烟源邻近感知替代） <input id="initialInformedRatio" type="number" min="0" max="1" step="0.01" value="0.0"></label>
     <div class="row"><label>student <input id="ratioStudent" type="number" min="0" step="0.01" value="0.8"></label><label>teacher <input id="ratioTeacher" type="number" min="0" step="0.01" value="0.1"></label><label>staff <input id="ratioStaff" type="number" min="0" step="0.01" value="0.1"></label></div>
     <button id="generatePeopleBtn" class="primary" disabled>生成 / 初始化人员</button>
     <div class="row"><label>time_step / s<input id="timeStep" type="number" min="0.01" max="60" step="0.01" value="0.5"></label><label>最大步数<input id="maxSteps" type="number" min="1" max="5000" value="500"></label></div>
     <div class="hint">time_step 真实决定模拟时间与日志时间轴；最大步数真实决定 runtime 停止上限。</div>
+    <div class="title" style="margin-top:12px">C10 管控策略 <span class="pill">真实接入</span></div>
+    <label>策略选择
+      <select id="controlStrategy">
+        <option value="none">不启用</option>
+        <option value="exit_closure">出口关闭</option>
+        <option value="zone_lockdown">区域封锁</option>
+        <option value="zoned_evacuation">分区疏散</option>
+        <option value="route_control">路线管控</option>
+        <option value="all">四种全部</option>
+      </select>
+    </label>
+    <div class="row"><label>触发步<input id="controlTriggerStep" type="number" min="0" step="1" value="10"></label><label>路线改派比例<input id="controlRouteShiftRatio" type="number" min="0" max="1" step="0.05" value="0.2"></label></div>
+    <label>关闭出口（逗号分隔）<input id="controlClosedExits" value="exit_04" placeholder="exit_04,exit_03"></label>
+    <label>封锁区域 x1,y1,x2,y2<input id="controlLockdownArea" value="" placeholder="40,30,70,60"></label>
+    <div class="hint">none 为对照组；all 会同时启用出口关闭、区域封锁、分区疏散和路线管控。</div>
     <div class="title" style="margin-top:12px">C 配置文件 <span class="pill">部分字段生效</span></div>
     <div class="row">
       <button id="yamlBtn">导入 YAML</button>
@@ -141,7 +156,7 @@
 
     <details class="diagnostics">
       <summary>待接入参数与 C 静态字段</summary>
-      <div class="hint">scene、profile、relation_intensity 与 group_config 由 YAML/人员文件记录；initial_informed_ratio 使用 C 的正式配置字段。C 每步行为真实传入 B runtime。</div>
+      <div class="hint">scene、profile、relation_intensity 与 group_config 由 YAML/人员文件记录；网页 C 信息采用“烟源附近先知情 → 烟雾阈值广播 → 口头/关系/引导传播”，不再随机选择初始知情者。C 每步行为真实传入 B runtime。</div>
       <label>profile_ratios / group_config <input value="使用 C 正式生成器；高级群体参数可由 YAML 提供" disabled></label>
       <label>C 每步策略 <input value="信息、结伴、从众与引导员由 C runtime bridge 传入" disabled></label>
     </details>
@@ -505,8 +520,10 @@
     field.forEach((row, y) => {
       if(!Array.isArray(row)) return;
       row.forEach((raw, x) => {
-        const value = Math.max(0, Math.min(1, Number(raw) / 10));
-        if(value <= 0) return;
+        const rawValue = Number(raw);
+        const exposureThreshold = Number(snapshot?.c_runtime?.smoke_exposure_threshold ?? 0.02);
+        if(!Number.isFinite(rawValue) || rawValue < exposureThreshold) return;
+        const value = Math.max(0, Math.min(1, rawValue / 10));
         ctx.fillStyle = `rgba(249,115,22,${0.12 + value * .48})`;
         ctx.fillRect(ox + x * cell, oy + y * cell, cell, cell);
       });
@@ -589,8 +606,15 @@
       const px = ox + (x + .5) * cell;
       const py = oy + (y + .5) * cell;
       ctx.beginPath();
-      const profileColor = {security:"#ff7f0e", staff:"#1f77b4", teacher:"#2ca02c"};
-      ctx.fillStyle = person.is_dead ? "#111827" : (profileColor[String(person.profile || "").toLowerCase()] || "#2563eb");
+      const profileColor = {security:"#8b5cf6", staff:"#8b5cf6", teacher:"#8b5cf6"};
+      const profile = String(person.profile || "").toLowerCase();
+      const guidePerson = Boolean(person.is_guide) || ["security", "staff", "teacher"].includes(profile);
+      const infoState = String(person.info_state || "UNKNOWN").toUpperCase();
+      const exposureThreshold = Number(snapshot?.c_runtime?.smoke_exposure_threshold ?? 0.02);
+      const personSmoke = Number(person.smoke_concentration ?? person.smoke ?? 0);
+      const inSmoke = Number.isFinite(personSmoke) && personSmoke >= exposureThreshold;
+      const knowsFire = inSmoke || ["ALERTED", "CONFIRMED", "GUIDED", "INFORMED"].includes(infoState);
+      ctx.fillStyle = person.is_dead ? "#111827" : (guidePerson ? "#8b5cf6" : (knowsFire ? "#dc2626" : (profileColor[profile] || "#2563eb")));
       ctx.strokeStyle = "#fff";
       ctx.lineWidth = Math.max(1.5, cell * .08);
       ctx.arc(px, py, Math.max(3, Math.min(8, cell * .32)), 0, Math.PI * 2);
@@ -651,7 +675,8 @@
       const from = {x:Number(oldPerson.x), y:Number(oldPerson.y)};
       const to = {x:Number(person.x), y:Number(person.y)};
       if(!Number.isFinite(from.x) || !Number.isFinite(from.y) || !Number.isFinite(to.x) || !Number.isFinite(to.y)) return;
-      if(from.x !== to.x || from.y !== to.y) transitions.set(key, {from, to, startedAt:performance.now(), duration:260});
+      const movementSpeed = Math.max(0.2, Number(person.speed) || 1);
+      if(from.x !== to.x || from.y !== to.y) transitions.set(key, {from, to, startedAt:performance.now(), duration:Math.max(140, Math.min(420, 260 / movementSpeed))});
     });
     if(!transitions.size) return;
     personTransition = transitions;
@@ -858,7 +883,8 @@
     body.replaceChildren();
     const fields = snapshot && snapshot.fields && typeof snapshot.fields === "object" ? snapshot.fields : {};
     if(!guidance){
-      $("guidanceAlarm").textContent = `alarm=${fields.alarm_triggered ?? "NA"} · max=${guidanceNumber(fields.max_smoke_concentration)}`;
+      const cRuntime = snapshot && snapshot.c_runtime && typeof snapshot.c_runtime === "object" ? snapshot.c_runtime : {};
+      $("guidanceAlarm").textContent = `alarm=${fields.alarm_triggered ?? "NA"} · max=${guidanceNumber(fields.max_smoke_concentration)} · 烟源=${guidanceNumber(cRuntime.source_smoke_concentration)} · 广播阈值=${guidanceNumber(cRuntime.broadcast_smoke_threshold)}`;
       $("guidancePolicy").textContent = "smoke_distance_baseline_v1";
       $("guidanceSummary").textContent = "推荐人数：NA；实体出口汇总：NA。";
       if(fields.alarm_triggered === false){
@@ -880,7 +906,8 @@
     const status = String(guidance.status || "unavailable").toLowerCase();
     const alarm = trigger.alarm_triggered ?? fields.alarm_triggered;
     const maxSmoke = trigger.max_smoke_concentration ?? fields.max_smoke_concentration;
-    $("guidanceAlarm").textContent = `alarm=${alarm ?? "NA"} · max=${guidanceNumber(maxSmoke)}`;
+    const cRuntime = snapshot && snapshot.c_runtime && typeof snapshot.c_runtime === "object" ? snapshot.c_runtime : {};
+    $("guidanceAlarm").textContent = `alarm=${alarm ?? "NA"} · max=${guidanceNumber(maxSmoke)} · 烟源=${guidanceNumber(cRuntime.source_smoke_concentration)} · 广播阈值=${guidanceNumber(cRuntime.broadcast_smoke_threshold)}`;
     $("guidancePolicy").textContent = guidance.policy_id || policy.policy_id || "smoke_distance_baseline_v1";
     const allRecommendations = Array.isArray(guidance.recommendations) ? guidance.recommendations : [];
     const people = new Map((snapshot && Array.isArray(snapshot.people) ? snapshot.people : []).map(person => [String(person && person.person_id), person]));
@@ -1017,6 +1044,14 @@
 
   function applySnapshot(next, extra = {}){
     const previousSnapshot = snapshot;
+    // 增量快照：grid / relations / exits 属于静态数据，服务端只在初始化时下发，
+    // 后续步骤复用上一帧，避免每步重复传输上百 KB 导致动画卡顿。
+    if(next){
+      if(!next.grid && previousSnapshot && previousSnapshot.grid) next.grid = previousSnapshot.grid;
+      if((!next.relations || !next.relations.length) && previousSnapshot && previousSnapshot.relations) next.relations = previousSnapshot.relations;
+      if(!next.exits && previousSnapshot && previousSnapshot.exits) next.exits = previousSnapshot.exits;
+      if(!next.exit_entities && previousSnapshot && previousSnapshot.exit_entities) next.exit_entities = previousSnapshot.exit_entities;
+    }
     const nextGrid = next && next.grid;
     const mapKey = nextGrid ? `${nextGrid.width}x${nextGrid.height}:${JSON.stringify(nextGrid.cell_type || []).length}` : "";
     if(extra.resetMapView || extra.resetHistory || mapKey !== currentMapViewKey){
@@ -1276,13 +1311,20 @@
       const x = Number(guide && guide.x), y = Number(guide && guide.y);
       if(!Number.isFinite(x) || !Number.isFinite(y)) return;
       const px = ox + (x + .5) * cell, py = oy + (y + .5) * cell;
-      const size = Math.max(3, cell * .28);
+      const radius = Math.max(5, Math.min(11, cell * .45));
       ctx.beginPath();
-      ctx.fillStyle = guide.color || "#1f77b4";
-      ctx.strokeStyle = "#111827";
-      ctx.lineWidth = Math.max(1.5, cell * .1);
-      ctx.rect(px - size, py - size, size * 2, size * 2);
+      ctx.fillStyle = "#8b5cf6";
+      ctx.strokeStyle = "#312e81";
+      ctx.lineWidth = Math.max(2, cell * .12);
+      ctx.arc(px, py, radius, 0, Math.PI * 2);
       ctx.fill(); ctx.stroke();
+      if(cell >= 7){
+        ctx.fillStyle = "#ffffff";
+        ctx.font = `700 ${Math.max(8, radius * 1.15)}px Arial`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("G", px, py + .5);
+      }
     });
   }
 
@@ -1393,11 +1435,23 @@
     const frame = $("mapEditorFrame");
     const edited = frame.contentWindow && frame.contentWindow.getMapData && frame.contentWindow.getMapData();
     validateEditableMap(edited);
+    const editorLockdown = Array.isArray(edited.lockdown_area)
+      ? edited.lockdown_area
+      : (frame.contentWindow.getLockdownArea ? frame.contentWindow.getLockdownArea() : null);
+    if(Array.isArray(editorLockdown) && editorLockdown.length === 4){
+      $("controlLockdownArea").value = editorLockdown.join(",");
+    }
     currentMapData = edited;
     $("editorModal").classList.remove("open");
     await previewCurrentMap();
-    $("mapEditorHint").textContent = `地图已编辑：${currentMapName}；确认后的同一份地图将进入自动分配和 runtime。`;
-    log("地图编辑已确认，currentMapData 已替换");
+    const strategy = String($("controlStrategy").value || "none");
+    const lockdownNote = Array.isArray(editorLockdown) && editorLockdown.length === 4
+      ? (strategy === "zone_lockdown" || strategy === "all"
+        ? `；封锁区域已写入并会在当前策略下生效：${editorLockdown.join(",")}`
+        : `；封锁区域已写入 ${editorLockdown.join(",")}，当前策略为 ${strategy}，只有选择 zone_lockdown 或 all 才生效`)
+      : "";
+    $("mapEditorHint").textContent = `地图已编辑：${currentMapName}；确认后的同一份地图将进入自动分配和 runtime${lockdownNote}`;
+    log("地图编辑已确认，currentMapData 已替换" + lockdownNote);
   }
 
   function cancelMapEdit(){
@@ -1493,7 +1547,23 @@
     if(seedRaw !== "" && !Number.isInteger(randomSeed)) throw new Error("random_seed 必须是整数或留空");
     if(!Number.isFinite(timeStep) || timeStep <= 0 || timeStep > 60) throw new Error("time_step 必须在 0 到 60 秒之间");
     if(!Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 5000) throw new Error("最大步数必须是 1 到 5000 的整数");
-    return {random_seed:randomSeed, time_step_s:timeStep, max_steps:maxSteps};
+    return {random_seed:randomSeed, time_step_s:timeStep, max_steps:maxSteps, ...controlConfigPayload()};
+  }
+
+  function controlConfigPayload(){
+    const strategy = String($("controlStrategy").value || "none").trim();
+    const triggerStep = Number($("controlTriggerStep").value);
+    const routeShiftRatio = Number($("controlRouteShiftRatio").value);
+    if(!Number.isInteger(triggerStep) || triggerStep < 0) throw new Error("C10 触发步必须是非负整数");
+    if(!Number.isFinite(routeShiftRatio) || routeShiftRatio < 0 || routeShiftRatio > 1) throw new Error("C10 路线改派比例必须在 0 到 1 之间");
+    const closed = String($("controlClosedExits").value || "").split(",").map(item => item.trim()).filter(Boolean);
+    const areaText = String($("controlLockdownArea").value || "").trim();
+    let area = null;
+    if(areaText){
+      area = areaText.split(",").map(item => Number(item.trim()));
+      if(area.length !== 4 || area.some(value => !Number.isInteger(value))) throw new Error("封锁区域必须是 x1,y1,x2,y2 四个整数");
+    }
+    return {control_strategy:strategy, control_trigger_step:triggerStep, control_closed_exits:closed, control_lockdown_area:area, route_shift_ratio:routeShiftRatio};
   }
 
   function sceneConfigPayload(){
@@ -1595,7 +1665,7 @@
       : (observed.smokeSourceCount
         ? `烟雾: ${observed.smokeActive ? "已显示" : "已接入，等待 B 首步更新"}`
         : "烟雾: 当前场景无 smoke_source，烟雾图层已禁用");
-    setStatus(`A+B+C 文件联调已初始化\nB: ${meta.b_runtime_api || "run_one_step(c_step_data)"}\nC 人员: 已接入\nC 配置: ${configSource}\nC 每步行为: ${behaviorStatus}\n${smokeStatus}\n绘图: ${drawingStatus}`, "真实联调");
+    setStatus(`A+B+C 文件联调已初始化\nB: ${meta.b_runtime_api || "run_one_step(c_step_data)"}\nC 人员: 已接入\nC 配置: ${configSource}\nC 每步行为: ${behaviorStatus}\nC 信息传播: 烟源附近先知情；烟雾达阈值后广播；其余靠口头/关系/引导\nC10: ${((result.snapshot.c_runtime || {}).control_strategy || {}).active_strategies || "none"}\n速度: 未知情 x0.35；知情 x1.15；个体速度差 ±30%；拥堵处继续减速\nB字段: is_panicked、panic_level、speed_multiplier 已随每步行为传入\n颜色: 红色=已知火情，紫色=引导员\n${smokeStatus}\n绘图: ${drawingStatus}`, "真实联调");
     log("A+B+C 联调初始化成功");
   }
 
