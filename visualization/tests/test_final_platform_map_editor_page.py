@@ -99,6 +99,12 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
         self.assertIn("showSpawnCapacityError(error, \"自动位置分配\")", self.page)
         self.assertNotIn("showSpawnCapacityError", self.stable)
 
+    def test_enhanced_page_uses_b06_normalized_smoke_scale(self) -> None:
+        self.assertIn("B06 publishes a normalized smoke concentration in [0, 1].", self.page)
+        self.assertIn("const value = Math.max(0, Math.min(1, rawValue));", self.page)
+        self.assertNotIn("Math.max(0, Math.min(1, rawValue / 10))", self.page)
+        self.assertNotIn("B06 publishes a normalized smoke concentration", self.stable)
+
 
 if __name__ == "__main__":
     unittest.main()

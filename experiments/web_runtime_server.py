@@ -106,7 +106,11 @@ def _safe_suffix(filename: Any, allowed: set[str], field: str) -> str:
 
 
 def _control_runtime_config(payload: Mapping[str, Any]) -> dict[str, Any]:
-    config: dict[str, Any] = {}
+    # This endpoint is the Enhanced Web Runtime, so opt into C's documented
+    # source-driven Web semantics.  CWebRuntimeBridge owns the algorithm;
+    # D only makes the runtime mode explicit instead of relying on an absent
+    # optional payload key.
+    config: dict[str, Any] = {"web_mode": True}
     strategy = str(payload.get("control_strategy", "none") or "none").strip().lower()
     if strategy:
         config["control_strategy"] = strategy

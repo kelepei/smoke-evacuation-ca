@@ -14,10 +14,17 @@ from urllib.request import Request, urlopen
 
 from PIL import Image, ImageDraw
 
-from experiments.web_runtime_server import DWebRuntimeServer, RuntimeRequestHandler
+from experiments.web_runtime_server import (
+    DWebRuntimeServer,
+    RuntimeRequestHandler,
+    _control_runtime_config,
+)
 
 
 class WebRuntimeServerTests(unittest.TestCase):
+    def test_enhanced_web_runtime_enables_documented_source_smoke_semantics(self) -> None:
+        self.assertTrue(_control_runtime_config({})["web_mode"])
+
     def _write_inputs(self, root: Path) -> tuple[Path, Path]:
         width, height = 8, 5
         cells = []
@@ -236,11 +243,21 @@ class WebRuntimeServerTests(unittest.TestCase):
                 })
                 self.assertEqual(4, initial["initialization"]["person_count"])
                 self.assertEqual("map_import.spawn_area.generate_spawn_mask", initial["initialization"]["spawn_area"]["source"])
+                # The real Enhanced endpoint must opt into C's documented
+                # source/smoke semantics; otherwise smoke-driven information
+                # and, consequently, B's smoke-aware movement are difficult
+                # to observe in the Web Runtime.
+                self.assertTrue(initial["snapshot"]["c_runtime"]["web_smoke_semantics"])
                 positions = {(person["x"], person["y"]) for person in initial["snapshot"]["people"]}
                 self.assertEqual(4, len(positions))
                 self.assertNotIn((0, 0), positions)
                 stepped = post("/api/session/step", {})
                 self.assertEqual(1, stepped["snapshot"]["step"])
+                self.assertTrue(stepped["snapshot"]["c_runtime"]["web_smoke_semantics"])
+                self.assertGreater(
+                    max(max(row) for row in stepped["snapshot"]["fields"]["smoke_field"]),
+                    0.0,
+                )
         finally:
             try:
                 post("/api/session/close", {})

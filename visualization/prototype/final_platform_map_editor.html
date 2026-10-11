@@ -523,8 +523,11 @@
         const rawValue = Number(raw);
         const exposureThreshold = Number(snapshot?.c_runtime?.smoke_exposure_threshold ?? 0.02);
         if(!Number.isFinite(rawValue) || rawValue < exposureThreshold) return;
-        const value = Math.max(0, Math.min(1, rawValue / 10));
-        ctx.fillStyle = `rgba(249,115,22,${0.12 + value * .48})`;
+        // B06 publishes a normalized smoke concentration in [0, 1].
+        // Render that real contract directly: the former /10 mapping made a
+        // true maximum (1.0) nearly transparent in the Enhanced canvas.
+        const value = Math.max(0, Math.min(1, rawValue));
+        ctx.fillStyle = `rgba(249,115,22,${0.16 + value * .64})`;
         ctx.fillRect(ox + x * cell, oy + y * cell, cell, cell);
       });
     });

@@ -64,6 +64,19 @@ class CWebRuntimeBridgeTests(unittest.TestCase):
         self.assertTrue(_bridge._move_allowed[2])
         self.assertGreaterEqual(speed_state["blocked_total"], 1)
 
+    def test_web_mode_is_an_explicit_c_runtime_contract(self) -> None:
+        scene = build_base_scene()
+        scene.parameters = {
+            "d_c_runtime": {
+                "initial_informed_ratio": 0.0,
+                "alarm_enabled": True,
+                "web_mode": True,
+            }
+        }
+        bridge = CWebRuntimeBridge(EvacEngine(scene))
+        self.assertTrue(bridge.web_mode)
+        self.assertTrue(bridge.engine.c_runtime_state["web_smoke_semantics"])
+
 
 if __name__ == "__main__":
     unittest.main()

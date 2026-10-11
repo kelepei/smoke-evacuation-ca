@@ -276,6 +276,28 @@ def build_integrated_scenario(
     control_runtime = {}
     if c_runtime_config:
         for key in (
+            # C Web Runtime semantics and smoke/information thresholds.
+            # Keep this an explicit whitelist: D transports C's declared
+            # configuration but does not invent arbitrary runtime settings.
+            "web_mode",
+            "smoke_local_radius",
+            "smoke_exposure_threshold",
+            "smoke_ramp_steps",
+            "broadcast_smoke_threshold",
+            "smoke_sigma0",
+            "smoke_sigma_grow",
+            "smoke_target_intensity",
+            "force_evacuation_without_hazard",
+            "unknown_behavior",
+            "unknown_speed_factor",
+            "informed_speed_factor",
+            "person_speed_variation",
+            "panic_smoke_peak",
+            "panic_sigma",
+            "panic_threshold",
+            "panic_speed_gain",
+            "toxic_smoke_threshold",
+            "dose_slowdown_scale",
             "control_strategy",
             "control_trigger_step",
             "control_closed_exits",
