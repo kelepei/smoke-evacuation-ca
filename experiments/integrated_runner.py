@@ -215,9 +215,8 @@ def build_integrated_scenario(
     # B keeps one Exit object per traversable exit cell.  D additionally keeps
     # a 4-connected entity topology for records and analysis; the topology
     # must not change B's cell-level movement or exit IDs.
-    exit_entities = extract_exit_entities(grid)
-    entity_by_coordinate = entity_id_by_cell(exit_entities)
     exits = []
+    cell_to_exit_id: dict[tuple[int, int], str] = {}
     used_exit_ids: set[str] = set()
     for index, cell in enumerate(grid.cells):
         if _cell_type_value(cell) != CellType.EXIT.value:
@@ -230,6 +229,33 @@ def build_integrated_scenario(
             suffix += 1
         used_exit_ids.add(exit_id)
         exits.append(Exit(id=exit_id, x=int(cell.x), y=int(cell.y), label=exit_id))
+        cell_to_exit_id[(int(cell.x), int(cell.y))] = exit_id
+
+    exit_entities = []
+    used_entity_ids: set[str] = set()
+    for entity in extract_exit_entities(grid):
+        entity_id = next(
+            (cell_to_exit_id[cell] for cell in entity.member_cells if cell in cell_to_exit_id),
+            entity.exit_entity_id,
+        )
+        base_entity_id = entity_id
+        suffix = 2
+        while entity_id in used_entity_ids:
+            entity_id = f"{base_entity_id}_{suffix}"
+            suffix += 1
+        used_entity_ids.add(entity_id)
+        exit_entities.append(
+            ExitEntity(
+                exit_entity_id=entity_id,
+                member_cells=entity.member_cells,
+                centroid=entity.centroid,
+                cell_count=entity.cell_count,
+                width_m=entity.width_m,
+                width_note=entity.width_note,
+            )
+        )
+    exit_entities = tuple(exit_entities)
+    entity_by_coordinate = entity_id_by_cell(exit_entities)
     exit_entity_by_cell_id = {
         str(exit_obj.id): entity_by_coordinate[(int(exit_obj.x), int(exit_obj.y))]
         for exit_obj in exits
@@ -276,33 +302,12 @@ def build_integrated_scenario(
     control_runtime = {}
     if c_runtime_config:
         for key in (
-            # C Web Runtime semantics and smoke/information thresholds.
-            # Keep this an explicit whitelist: D transports C's declared
-            # configuration but does not invent arbitrary runtime settings.
-            "web_mode",
-            "smoke_local_radius",
-            "smoke_exposure_threshold",
-            "smoke_ramp_steps",
-            "broadcast_smoke_threshold",
-            "smoke_sigma0",
-            "smoke_sigma_grow",
-            "smoke_target_intensity",
-            "force_evacuation_without_hazard",
-            "unknown_behavior",
-            "unknown_speed_factor",
-            "informed_speed_factor",
-            "person_speed_variation",
-            "panic_smoke_peak",
-            "panic_sigma",
-            "panic_threshold",
-            "panic_speed_gain",
-            "toxic_smoke_threshold",
-            "dose_slowdown_scale",
             "control_strategy",
             "control_trigger_step",
             "control_closed_exits",
             "control_lockdown_area",
             "route_shift_ratio",
+            "guide_enabled",
         ):
             if key in c_runtime_config:
                 control_runtime[key] = c_runtime_config[key]
