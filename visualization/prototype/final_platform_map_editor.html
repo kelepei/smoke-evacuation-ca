@@ -141,7 +141,7 @@
         <option value="all">四种全部</option>
       </select>
     </label>
-    <div class="row"><label>触发步<input id="controlTriggerStep" type="number" min="0" step="1" value="10"></label><label>路线改派比例<input id="controlRouteShiftRatio" type="number" min="0" max="1" step="0.05" value="0.2"></label></div>
+    <div class="row"><label>触发步<input id="controlTriggerStep" type="number" min="0" step="1" value="0"></label><label>路线改派比例<input id="controlRouteShiftRatio" type="number" min="0" max="1" step="0.05" value="0.2"></label></div>
     <label>关闭出口（逗号分隔）<input id="controlClosedExits" value="exit_04" placeholder="exit_04,exit_03"></label>
     <label>封锁区域 x1,y1,x2,y2<input id="controlLockdownArea" value="" placeholder="40,30,70,60"></label>
     <div class="hint">none 为对照组；all 会同时启用出口关闭、区域封锁、分区疏散和路线管控。</div>
@@ -171,6 +171,7 @@
   <section class="panel canvas-wrap" id="runtime">
   <div class="toolbar">
       <button id="initBtn" class="good init-control">初始化仿真</button>
+      <button id="guideToggle" class="primary">疏散指导：开</button>
       <select id="speedSelect" aria-label="播放速度" style="width:78px;height:34px;padding:4px 5px">
         <option value="150">快速</option>
         <option value="300" selected>标准</option>
@@ -352,6 +353,7 @@
   let currentMapViewKey = "";
   let snapshot = null;
   let activeSession = false;
+  let guideEnabled = true;
   let timer = null;
   let pending = false;
   let autoPlaying = false;
@@ -523,11 +525,8 @@
         const rawValue = Number(raw);
         const exposureThreshold = Number(snapshot?.c_runtime?.smoke_exposure_threshold ?? 0.02);
         if(!Number.isFinite(rawValue) || rawValue < exposureThreshold) return;
-        // B06 publishes a normalized smoke concentration in [0, 1].
-        // Render that real contract directly: the former /10 mapping made a
-        // true maximum (1.0) nearly transparent in the Enhanced canvas.
-        const value = Math.max(0, Math.min(1, rawValue));
-        ctx.fillStyle = `rgba(249,115,22,${0.16 + value * .64})`;
+        const value = Math.max(0, Math.min(1, rawValue / 10));
+        ctx.fillStyle = `rgba(249,115,22,${0.12 + value * .48})`;
         ctx.fillRect(ox + x * cell, oy + y * cell, cell, cell);
       });
     });
@@ -1419,7 +1418,8 @@
     $("editMapBtn").disabled = false;
     $("autoPositionBtn").disabled = false;
     $("generatePeopleBtn").disabled = false;
-    setStatus(`地图已显示：${currentMapName}\n当前状态：内存 JSON${smokeSources ? `；烟源 ${smokeSources} 个` : "；无烟源"}`, "地图预览");
+    const exitIds = (currentMapData.cells || []).filter(cell => cell && cell.type === "exit").map((cell, index) => cell.exit_id || `exit_${index + 1}`);
+    setStatus(`地图已显示：${currentMapName}\n当前状态：内存 JSON${smokeSources ? `；烟源 ${smokeSources} 个` : "；无烟源"}\n出口ID：${exitIds.join(", ") || "无"}`, "地图预览");
     return result;
   }
 
@@ -1550,7 +1550,7 @@
     if(seedRaw !== "" && !Number.isInteger(randomSeed)) throw new Error("random_seed 必须是整数或留空");
     if(!Number.isFinite(timeStep) || timeStep <= 0 || timeStep > 60) throw new Error("time_step 必须在 0 到 60 秒之间");
     if(!Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 5000) throw new Error("最大步数必须是 1 到 5000 的整数");
-    return {random_seed:randomSeed, time_step_s:timeStep, max_steps:maxSteps, ...controlConfigPayload()};
+    return {random_seed:randomSeed, time_step_s:timeStep, max_steps:maxSteps, guide_enabled:guideEnabled, ...controlConfigPayload()};
   }
 
   function controlConfigPayload(){
@@ -1668,7 +1668,7 @@
       : (observed.smokeSourceCount
         ? `烟雾: ${observed.smokeActive ? "已显示" : "已接入，等待 B 首步更新"}`
         : "烟雾: 当前场景无 smoke_source，烟雾图层已禁用");
-    setStatus(`A+B+C 文件联调已初始化\nB: ${meta.b_runtime_api || "run_one_step(c_step_data)"}\nC 人员: 已接入\nC 配置: ${configSource}\nC 每步行为: ${behaviorStatus}\nC 信息传播: 烟源附近先知情；烟雾达阈值后广播；其余靠口头/关系/引导\nC10: ${((result.snapshot.c_runtime || {}).control_strategy || {}).active_strategies || "none"}\n速度: 未知情 x0.35；知情 x1.15；个体速度差 ±30%；拥堵处继续减速\nB字段: is_panicked、panic_level、speed_multiplier 已随每步行为传入\n颜色: 红色=已知火情，紫色=引导员\n${smokeStatus}\n绘图: ${drawingStatus}`, "真实联调");
+    setStatus(`A+B+C 文件联调已初始化\nB: ${meta.b_runtime_api || "run_one_step(c_step_data)"}\nC 人员: 已接入\nC 配置: ${configSource}\nC 每步行为: ${behaviorStatus}\nC 信息传播: 烟源附近先知情；烟雾达阈值后广播；其余靠口头/关系/引导\nC10: ${((result.snapshot.c_runtime || {}).control_strategy || {}).active_strategies || "none"} 关闭出口=${(((result.snapshot.c_runtime || {}).control_strategy || {}).closed_exits || []).join(",")||"无"}\n烟雾: normalize=${(result.snapshot.c_runtime || {}).smoke_normalize} grow=${(result.snapshot.c_runtime || {}).smoke_sigma_grow} target=${(result.snapshot.c_runtime || {}).smoke_target_intensity} ramp=${(result.snapshot.c_runtime || {}).smoke_ramp_steps} 报警步=${(result.snapshot.c_runtime || {}).alarm_broadcast_step ?? "未触发"}\n速度: 未知情 x0.35；知情 x1.15；个体速度差 ±30%；拥堵处继续减速\nB字段: is_panicked、panic_level、speed_multiplier 已随每步行为传入\n颜色: 红色=已知火情，紫色=引导员\n${smokeStatus}\n绘图: ${drawingStatus}`, "真实联调");
     log("A+B+C 联调初始化成功");
   }
 
@@ -1888,6 +1888,20 @@
       }
     };
   });
+  $("guideToggle").onclick = async () => {
+    guideEnabled = !guideEnabled;
+    $("guideToggle").textContent = guideEnabled ? "疏散指导：开" : "疏散指导：关";
+    if(activeSession){
+      try{
+        await api("/api/session/guide", {enabled:guideEnabled});
+        log(`疏散指导已${guideEnabled ? "开启" : "关闭"}`);
+      }catch(error){
+        guideEnabled = !guideEnabled;
+        $("guideToggle").textContent = guideEnabled ? "疏散指导：开" : "疏散指导：关";
+        setStatus(`疏散指导切换失败：${error.message}`, "切换失败");
+      }
+    }
+  };
   $("initBtn").onclick = () => initSession().catch(error => setStatus(`联调初始化失败：${error.message}`, "初始化失败"));
   $("sampleBtn").onclick = () => loadSample().catch(error => setStatus(`仓库样例失败：${error.message}`, "样例失败"));
   $("startBtn").onclick = startTimer;
