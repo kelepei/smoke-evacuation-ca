@@ -77,6 +77,36 @@ class CWebRuntimeBridgeTests(unittest.TestCase):
         self.assertTrue(bridge.web_mode)
         self.assertTrue(bridge.engine.c_runtime_state["web_smoke_semantics"])
 
+    def test_local_information_mode_uses_real_smoke_progression_without_global_broadcast(self) -> None:
+        scene = build_base_scene()
+        # Person 1 is beside the real source, person 2 is reached by the real
+        # smoke exposure flow on the next step, and person 3 remains remote.
+        scene.persons[0].x, scene.persons[0].y = 4, 3
+        scene.persons[1].x, scene.persons[1].y = 5, 3
+        scene.persons[2].x, scene.persons[2].y = 15, 9
+        scene.parameters = {"d_c_runtime": {
+            "web_mode": True,
+            "information_mode": "local",
+            "alarm_enabled": False,
+            "smoke_local_radius": 1.1,
+            "unknown_behavior": "freeze",
+        }}
+        engine = EvacEngine(scene)
+        bridge = CWebRuntimeBridge(engine)
+        runtime = EvacEngineRuntimeAdapter(engine, behavior_provider=bridge)
+
+        self.assertEqual(1, engine.c_runtime_state["informed_count"])
+        runtime.step()
+
+        # B's detector can still be true, but C must not convert it into an
+        # all-person broadcast in the local-information experiment.
+        self.assertTrue(engine.is_alarm_triggered)
+        state = engine.c_runtime_state
+        self.assertEqual("local", state["information_mode"])
+        self.assertFalse(state["alarm_broadcast_triggered"])
+        self.assertEqual(2, state["informed_count"])
+        self.assertLess(state["informed_count"], state["active_person_count"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -284,6 +284,7 @@ def build_integrated_scenario(
             "smoke_exposure_threshold",
             "smoke_ramp_steps",
             "broadcast_smoke_threshold",
+            "information_mode",
             "smoke_sigma0",
             "smoke_sigma_grow",
             "smoke_target_intensity",

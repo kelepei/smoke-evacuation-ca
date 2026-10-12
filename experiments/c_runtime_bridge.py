@@ -87,7 +87,12 @@ class CWebRuntimeBridge:
         )
         settings = getattr(engine.scene, "parameters", {}).get("d_c_runtime", {})
         self.initial_informed_ratio = float(settings.get("initial_informed_ratio", 0.15))
-        self.alarm_enabled = bool(settings.get("alarm_enabled", True))
+        self.information_mode = str(settings.get("information_mode", "broadcast") or "broadcast").strip().lower()
+        if self.information_mode not in {"broadcast", "local"}:
+            self.information_mode = "broadcast"
+        # Local mode keeps C's smoke perception and social propagation active
+        # while withholding only its global trigger_alarm() broadcast.
+        self.alarm_enabled = bool(settings.get("alarm_enabled", self.information_mode == "broadcast"))
         self.guide_share = float(settings.get("guide_share", 0.30))
         # 网页运行时采用真实烟源语义：烟源附近先知情，浓度达阈值后广播。
         self.web_mode = bool(settings.get("web_mode", "source" in settings))
@@ -726,6 +731,7 @@ class CWebRuntimeBridge:
             ),
             "web_smoke_semantics": self.web_mode,
             "initial_informed_ratio": self.initial_informed_ratio if self.has_hazard else 0.0,
+            "information_mode": self.information_mode,
             "alarm_broadcast_triggered": self._alarm_seen,
             "guide_state": "guiding" if self.guides_model.guidance_active else "patrol",
             "guide_target_exit": self.guides_model.target_exit,

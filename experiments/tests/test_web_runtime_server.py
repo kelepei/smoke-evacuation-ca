@@ -25,6 +25,15 @@ class WebRuntimeServerTests(unittest.TestCase):
     def test_enhanced_web_runtime_enables_documented_source_smoke_semantics(self) -> None:
         self.assertTrue(_control_runtime_config({})["web_mode"])
 
+    def test_information_mode_selects_real_c_alarm_broadcast_policy(self) -> None:
+        broadcast = _control_runtime_config({"information_mode": "broadcast"})
+        local = _control_runtime_config({"information_mode": "local"})
+        self.assertTrue(broadcast["alarm_enabled"])
+        self.assertFalse(local["alarm_enabled"])
+        self.assertEqual("local", local["information_mode"])
+        with self.assertRaisesRegex(Exception, "information_mode"):
+            _control_runtime_config({"information_mode": "invalid"})
+
     def _write_inputs(self, root: Path) -> tuple[Path, Path]:
         width, height = 8, 5
         cells = []

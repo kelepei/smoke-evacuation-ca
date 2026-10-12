@@ -18,8 +18,12 @@ class PlatformLauncherTests(unittest.TestCase):
         self.assertIn('"status", "--porcelain", "--untracked-files=no"', source)
         self.assertIn('branch != "main"', source)
         self.assertIn('"merge", "--ff-only", "origin/main"', source)
+        self.assertIn("timeout=8", source)
+        self.assertIn("git command timed out after 8s", source)
         self.assertIn("HEALTH_URL", source)
         self.assertIn("PAGE_URL", source)
+        self.assertIn("ProxyHandler({})", source)
+        self.assertIn("_LOCAL_HTTP_OPENER.open(HEALTH_URL", source)
         self.assertIn("不会覆盖、暂存或藏起", source)
 
 
