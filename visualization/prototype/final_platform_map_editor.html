@@ -134,17 +134,19 @@
     <label>策略选择
       <select id="controlStrategy">
         <option value="none">不启用</option>
-        <option value="exit_closure">出口关闭</option>
-        <option value="zone_lockdown">区域封锁</option>
-        <option value="zoned_evacuation">分区疏散</option>
-        <option value="route_control">路线管控</option>
-        <option value="all">四种全部</option>
+        <option value="fire_aware">综合管控（出口关闭+区域封锁+分区疏散+路线管控）</option>
+        <option value="vision_astar" selected>地图时间型A*（烟雾调速）</option>
+        <option value="dual_objective_aco">时间—风险双目标管控（杨天鹏）</option>
       </select>
     </label>
     <div class="row"><label>触发步<input id="controlTriggerStep" type="number" min="0" step="1" value="0"></label><label>路线改派比例<input id="controlRouteShiftRatio" type="number" min="0" max="1" step="0.05" value="0.2"></label></div>
     <label>关闭出口（逗号分隔）<input id="controlClosedExits" value="exit_04" placeholder="exit_04,exit_03"></label>
     <label>封锁区域 x1,y1,x2,y2<input id="controlLockdownArea" value="" placeholder="40,30,70,60"></label>
-    <div class="hint">none 为对照组；all 会同时启用出口关闭、区域封锁、分区疏散和路线管控。</div>
+    <div class="row"><label>封锁触发<select id="controlLockdownTrigger"><option value="smoke_threshold">烟雾阈值</option><option value="manual">启用即封锁</option></select></label><label>烟阈值<input id="controlLockdownSmokeThreshold" type="number" min="0" max="1" step="0.05" value="0.5"></label></div>
+    <div class="row"><label>自动解除封锁<select id="controlLockdownAutoUnlock"><option value="true">是</option><option value="false">否</option></select></label><label>分区软偏好/m<input id="controlZoneBiasM" type="number" min="0" step="0.5" value="4"></label></div>
+    <div class="row"><label>A*重规划/s<input id="visionReplanIntervalS" type="number" min="1" step="1" value="30"></label><label>双目标风险权重<input id="dualRiskWeight" type="number" min="0" max="1" step="0.05" value="0.5" title="0=最短时间，1=最低风险"></label></div>
+    <div class="row"><label>双目标重规划/s<input id="dualReplanIntervalS" type="number" min="1" step="1" value="30"></label></div>
+    <div class="hint">fire_aware 是四合一综合策略：出口关闭、区域封锁、分区疏散、火灾感知路线管控同时生效；none 为对照组。vision_astar 只使用所选 A 地图，区域速度随烟雾浓度折减。dual_objective_aco 依据杨天鹏论文的时间—风险双目标模型，比较所有可达出口的完整路径，风险权重 0=最短时间、1=最低风险；两种路线型策略的路径都显示在“规划路线”图层。</div>
     <div class="title" style="margin-top:12px">C 配置文件 <span class="pill">部分字段生效</span></div>
     <div class="row">
       <button id="yamlBtn">导入 YAML</button>
@@ -163,7 +165,7 @@
 
     <details class="diagnostics">
       <summary>烟雾输入</summary>
-      <div class="hint" id="smokeInputHint">烟源只来自地图 cell.type = smoke_source；导入已有烟源时由用户选择保留或清除，烟场只绘制 B 返回的 smoke_matrix。</div>
+      <div class="hint" id="smokeInputHint">B06 publishes a normalized smoke concentration in [0, 1]. 烟源只来自地图 cell.type = smoke_source；导入已有烟源时由用户选择保留或清除，烟场只绘制 B 返回的 smoke_matrix。</div>
     </details>
 
   </aside>
@@ -183,6 +185,8 @@
         <label><input id="layerSmoke" type="checkbox" disabled>烟雾</label>
         <label><input id="layerOccupancy" type="checkbox" disabled>累计占用</label>
         <label><input id="layerTrajectories" type="checkbox" disabled>轨迹</label>
+        <label><input id="layerPath" type="checkbox" disabled checked>疏散路径</label>
+        <label><input id="layerVisionRoutes" type="checkbox" disabled checked>规划路线</label>
       </div>
       <div class="spacer"></div>
       <button id="mapExpandBtn" class="figure-expand map-expand" type="button" aria-label="放大查看主地图" title="放大查看地图">⛶</button>
@@ -352,10 +356,12 @@
   const expandedMapView = {scale:1, panX:0, panY:0};
   let currentMapViewKey = "";
   let snapshot = null;
+  let liveHistory = [];
   let activeSession = false;
   let guideEnabled = true;
   let timer = null;
   let pending = false;
+  let generatingPeople = false;
   let autoPlaying = false;
   let autoDelayMs = 300;
   let lastOutputDir = "";
@@ -525,7 +531,7 @@
         const rawValue = Number(raw);
         const exposureThreshold = Number(snapshot?.c_runtime?.smoke_exposure_threshold ?? 0.02);
         if(!Number.isFinite(rawValue) || rawValue < exposureThreshold) return;
-        const value = Math.max(0, Math.min(1, rawValue / 10));
+        const value = Math.max(0, Math.min(1, rawValue));
         ctx.fillStyle = `rgba(249,115,22,${0.12 + value * .48})`;
         ctx.fillRect(ox + x * cell, oy + y * cell, cell, cell);
       });
@@ -563,6 +569,58 @@
       ctx.fillStyle = `rgba(220,38,38,${0.08 + ratio * 0.48})`;
       ctx.fillRect(ox + x * cell, oy + y * cell, cell, cell);
     }));
+  }
+
+  function drawLivePaths(grid, ox, oy, cell){
+    if(!layerEnabled("layerPath") || liveHistory.length < 2) return;
+    const recent = liveHistory.slice(-20);
+    const current = snapshot && Array.isArray(snapshot.people) ? snapshot.people : [];
+    const ids = current.filter(person => person && !person.evacuated).slice(0, 28)
+      .map(person => String(person.person_id ?? person.id));
+    ids.forEach((id, index) => {
+      const points = recent.map(snap => (snap.people || []).find(person => String(person.person_id ?? person.id) === id))
+        .filter(person => person && !person.evacuated);
+      if(points.length < 2) return;
+      const hash = [...id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+      ctx.beginPath();
+      ctx.strokeStyle = `hsla(${hash * 47 % 360},72%,42%,.62)`;
+      ctx.lineWidth = Math.max(1.2, Math.min(2.8, cell * .10));
+      ctx.setLineDash([4, 3]);
+      points.forEach((person, pointIndex) => {
+        const x = Number(person.x), y = Number(person.y);
+        if(!Number.isFinite(x) || !Number.isFinite(y)) return;
+        const px = ox + (x + .5) * cell, py = oy + (y + .5) * cell;
+        if(pointIndex === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+    });
+  }
+
+  function drawVisionRoutes(routes, grid, ox, oy, cell){
+    if(!layerEnabled("layerVisionRoutes") || !Array.isArray(routes) || routes.length === 0) return;
+    const palette = ["#dc2626", "#ea580c", "#7c3aed", "#0891b2", "#be123c", "#4d7c0f"];
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = Math.max(1.2, Math.min(3.2, cell * .16));
+    routes.forEach((route, index) => {
+      const path = route && route.path;
+      if(!Array.isArray(path) || path.length < 2) return;
+      ctx.strokeStyle = palette[index % palette.length];
+      ctx.globalAlpha = .78;
+      ctx.beginPath();
+      path.forEach((cellPoint, pointIndex) => {
+        const x = Number(cellPoint && cellPoint[0]);
+        const y = Number(cellPoint && cellPoint[1]);
+        if(!Number.isFinite(x) || !Number.isFinite(y)) return;
+        const px = ox + (x + .5) * cell;
+        const py = oy + (y + .5) * cell;
+        if(pointIndex === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+    });
+    ctx.restore();
   }
 
   function drawTrajectories(grid, ox, oy, cell){
@@ -726,6 +784,12 @@
       drawSmokeSources(snapshot.fields && snapshot.fields.smoke_sources, grid, ox, oy, cell);
     }
     drawTrajectories(grid, ox, oy, cell);
+    drawLivePaths(grid, ox, oy, cell);
+    const plannedRoutes = [].concat(
+      (snapshot.c_runtime && snapshot.c_runtime.vision_routes) || [],
+      (snapshot.c_runtime && snapshot.c_runtime.dual_routes) || []
+    );
+    drawVisionRoutes(plannedRoutes, grid, ox, oy, cell);
     if(layerEnabled("layerPeople")) drawPeople(snapshot.people, grid, ox, oy, cell);
     drawGuides(snapshot.guides, ox, oy, cell);
     drawGuidanceOverlay(grid, ox, oy, cell);
@@ -1019,12 +1083,20 @@
     setLayerAvailability("layerSmoke", Boolean(grid && observed.smokeSourceCount > 0), true);
     setLayerAvailability("layerOccupancy", activeSession, false);
     setLayerAvailability("layerTrajectories", activeSession, false);
+    setLayerAvailability("layerPath", activeSession && liveHistory.length >= 2, true);
+    const routeCount = ((snapshot && snapshot.c_runtime && snapshot.c_runtime.vision_routes) || []).length
+      + ((snapshot && snapshot.c_runtime && snapshot.c_runtime.dual_routes) || []).length;
+    setLayerAvailability("layerVisionRoutes", activeSession && routeCount > 0, true);
+    if(routeCount > 0){
+      $("layerVisionRoutes").checked = true;
+    }
     const notices = [];
     if(!grid) notices.push("图层等待真实地图与运行数据");
     else if(observed.smokeSourceCount === 0) notices.push("当前场景无烟源；不生成视觉烟雾");
     else if(grid && !observed.smokeActive) notices.push("烟雾图层等待真实 smoke_matrix 非零值");
     if(layerEnabled("layerOccupancy") && !logLayers) notices.push("累计占用等待 people_log 分析");
     if(layerEnabled("layerTrajectories") && !logLayers) notices.push("轨迹等待 people_log 分析");
+    if(layerEnabled("layerVisionRoutes") && routeCount === 0) notices.push("规划路线等待路线型管控策略运行数据");
     if(!activeSession && grid) notices.push("人员、轨迹与累计占用需初始化后启用");
     const noticeDetail = notices.join("；") || "当前图层均来自真实快照与 people_log";
     const noticeText = !grid
@@ -1062,8 +1134,13 @@
     }
     if(extra.resetHistory){
       logLayers = null;
+      liveHistory = [];
       liveExitUtilizationRepresentation = Array.isArray(next && next.exit_entities) && next.exit_entities.length > 0
         ? "entity" : "legacy_cell";
+    }
+    if(next && next.grid && Array.isArray(next.people)){
+      liveHistory.push(next);
+      if(liveHistory.length > 600) liveHistory.shift();
     }
     snapshot = next;
     startPersonTransition(previousSnapshot, next);
@@ -1419,7 +1496,10 @@
     $("autoPositionBtn").disabled = false;
     $("generatePeopleBtn").disabled = false;
     const exitIds = (currentMapData.cells || []).filter(cell => cell && cell.type === "exit").map((cell, index) => cell.exit_id || `exit_${index + 1}`);
-    setStatus(`地图已显示：${currentMapName}\n当前状态：内存 JSON${smokeSources ? `；烟源 ${smokeSources} 个` : "；无烟源"}\n出口ID：${exitIds.join(", ") || "无"}`, "地图预览");
+    if(!exitIds.length){
+      $("mapEditorHint").textContent = "当前地图没有出口。请点击“编辑地图”添加至少一个 exit 元胞，否则无法生成可疏散人员。";
+    }
+    setStatus(`地图已显示：${currentMapName}\n当前状态：内存 JSON${smokeSources ? `；烟源 ${smokeSources} 个` : "；无烟源"}\n出口ID：${exitIds.join(", ") || "无"}${exitIds.length ? "" : "\n缺少出口：请先编辑地图添加 exit 后再生成人员"}`, "地图预览");
     return result;
   }
 
@@ -1449,9 +1529,9 @@
     await previewCurrentMap();
     const strategy = String($("controlStrategy").value || "none");
     const lockdownNote = Array.isArray(editorLockdown) && editorLockdown.length === 4
-      ? (strategy === "zone_lockdown" || strategy === "all"
+      ? (strategy === "fire_aware" || strategy === "integrated"
         ? `；封锁区域已写入并会在当前策略下生效：${editorLockdown.join(",")}`
-        : `；封锁区域已写入 ${editorLockdown.join(",")}，当前策略为 ${strategy}，只有选择 zone_lockdown 或 all 才生效`)
+        : `；封锁区域已写入 ${editorLockdown.join(",")}，当前策略为 ${strategy}，只有选择综合管控才生效`)
       : "";
     $("mapEditorHint").textContent = `地图已编辑：${currentMapName}；确认后的同一份地图将进入自动分配和 runtime${lockdownNote}`;
     log("地图编辑已确认，currentMapData 已替换" + lockdownNote);
@@ -1503,10 +1583,24 @@
     currentMapName = mapFile.name;
     $("editMapBtn").disabled = true;
     $("autoPositionBtn").disabled = true;
-    $("mapEditorHint").textContent = "PNG / CSV 保留原导入运行方式；在线编辑当前仅支持 JSON 地图。";
+    $("generatePeopleBtn").disabled = true;
+    $("mapEditorHint").textContent = "PNG / CSV 保留原导入运行方式；在线编辑与直接生成人员当前仅支持 JSON 地图。";
     const result = await api("/api/map/preview", {map_file:mapFile, source_name:mapFile.name});
+    currentMapData = result.map_data || null;
+    currentMapName = mapFile.name;
     selectedTemplate = null;
     $("templateHint").textContent = "当前使用手动上传地图；模板选择已取消。";
+    $("editMapBtn").disabled = !currentMapData;
+    $("autoPositionBtn").disabled = !currentMapData;
+    $("generatePeopleBtn").disabled = !currentMapData;
+    const convertedExitCount = currentMapData
+      ? (currentMapData.cells || []).filter(cell => cell && String(cell.type || "").toLowerCase() === "exit").length
+      : 0;
+    $("mapEditorHint").textContent = currentMapData
+      ? (convertedExitCount
+        ? "当前地图已转换为可编辑栅格 JSON；可直接生成人员、分配位置或在线编辑。"
+        : "当前地图已转换为可编辑栅格 JSON，但没有 exit 元胞；请先编辑地图添加出口，再生成人员。")
+      : "该地图未能转换为可编辑栅格 JSON；请改用 JSON 地图。";
     activeSession = false;
     sessionFinished = false;
     stopTimer();
@@ -1514,7 +1608,7 @@
     applySnapshot(result.snapshot, {resetHistory:true});
     const meta = result.map_meta || {};
     const smokeSources = Number((meta.cell_counts || {}).smoke_source || 0);
-    setStatus(`地图已显示。\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\n烟源: ${smokeSources}${smokeSources ? " 个；启动联调后显示 B 烟雾" : " 个；当前地图无 smoke_source，因此不会产生烟雾"}\ncell_type: ${JSON.stringify(meta.cell_counts || {})}`, "地图预览");
+    setStatus(`地图已显示。\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\n烟源: ${smokeSources}${smokeSources ? " 个；启动联调后显示 B 烟雾" : " 个；当前地图无 smoke_source，因此不会产生烟雾"}\ncell_type: ${JSON.stringify(meta.cell_counts || {})}${currentMapData ? "\n下一步：可直接生成人员" : ""}`, "地图预览");
     log(`地图预览成功：${mapFile.name}`);
   }
 
@@ -1524,11 +1618,14 @@
       return;
     }
     const result = await api("/api/template/preview", {template_id:templateId});
-    currentMapData = null;
-    currentMapName = "";
-    $("editMapBtn").disabled = true;
-    $("autoPositionBtn").disabled = true;
-    $("mapEditorHint").textContent = "标准模板保留原有流程；在线编辑与自动位置分配当前仅支持上传 JSON 地图。";
+    currentMapData = result.map_data || null;
+    currentMapName = `${templateId}.json`;
+    $("editMapBtn").disabled = !currentMapData;
+    $("autoPositionBtn").disabled = !currentMapData;
+    $("generatePeopleBtn").disabled = !currentMapData;
+    $("mapEditorHint").textContent = currentMapData
+      ? `当前标准模板：${templateId}；可直接生成人员，也可在线编辑后运行。`
+      : "标准模板缺少可编辑 JSON；请改用上传 JSON 地图。";
     selectedTemplate = templateId;
     activeSession = false;
     sessionFinished = false;
@@ -1537,8 +1634,10 @@
     applySnapshot(result.snapshot, {resetHistory:true});
     const meta = result.map_meta || {};
     const smokeSources = Number((meta.cell_counts || {}).smoke_source || 0);
-    $("templateHint").textContent = `已选择 ${templateId} 模板。启动联调时请上传 C 生成人员后、经 A 按该模板分配坐标的人员文件。`;
-    setStatus(`A 标准模板已显示：${templateId}\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\n地图烟源: ${smokeSources} 个\n下一步：上传 C 生成人员、经 A 按该模板分配坐标后的文件，再启动联调。`, "模板预览");
+    $("templateHint").textContent = currentMapData
+      ? `已选择 ${templateId} 模板；可直接点击“生成 / 初始化人员”，也可上传已有人员文件后启动联调。`
+      : `已选择 ${templateId} 模板，但未返回可编辑地图 JSON。`;
+    setStatus(`A 标准模板已显示：${templateId}\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\n地图烟源: ${smokeSources} 个\n下一步：点击“生成 / 初始化人员”，或上传 C 人员文件后启动联调。`, "模板预览");
     log(`A 标准模板预览成功：${templateId}`);
   }
 
@@ -1560,13 +1659,23 @@
     if(!Number.isInteger(triggerStep) || triggerStep < 0) throw new Error("C10 触发步必须是非负整数");
     if(!Number.isFinite(routeShiftRatio) || routeShiftRatio < 0 || routeShiftRatio > 1) throw new Error("C10 路线改派比例必须在 0 到 1 之间");
     const closed = String($("controlClosedExits").value || "").split(",").map(item => item.trim()).filter(Boolean);
+    const lockdownTrigger = String($("controlLockdownTrigger").value || "smoke_threshold");
+    const lockdownSmokeThreshold = Number($("controlLockdownSmokeThreshold").value);
+    const lockdownAutoUnlock = String($("controlLockdownAutoUnlock").value || "true") === "true";
+    const zoneBiasM = Number($("controlZoneBiasM").value);
+    const dualRiskWeight = Number($("dualRiskWeight").value);
+    const dualReplanIntervalS = Number($("dualReplanIntervalS").value);
+    if(!Number.isFinite(lockdownSmokeThreshold) || lockdownSmokeThreshold < 0 || lockdownSmokeThreshold > 1) throw new Error("封锁烟雾阈值必须在 0 到 1 之间");
+    if(!Number.isFinite(dualRiskWeight) || dualRiskWeight < 0 || dualRiskWeight > 1) throw new Error("双目标风险权重必须在 0 到 1 之间");
+    if(!Number.isFinite(dualReplanIntervalS) || dualReplanIntervalS <= 0) throw new Error("双目标重规划间隔必须大于 0 秒");
+    if(!Number.isFinite(zoneBiasM) || zoneBiasM < 0) throw new Error("分区软偏好必须是非负数");
     const areaText = String($("controlLockdownArea").value || "").trim();
     let area = null;
     if(areaText){
       area = areaText.split(",").map(item => Number(item.trim()));
       if(area.length !== 4 || area.some(value => !Number.isInteger(value))) throw new Error("封锁区域必须是 x1,y1,x2,y2 四个整数");
     }
-    return {control_strategy:strategy, control_trigger_step:triggerStep, control_closed_exits:closed, control_lockdown_area:area, route_shift_ratio:routeShiftRatio};
+    return {control_strategy:strategy, control_trigger_step:triggerStep, control_closed_exits:closed, control_lockdown_area:area, route_shift_ratio:routeShiftRatio, control_lockdown_trigger:lockdownTrigger, control_lockdown_smoke_threshold:lockdownSmokeThreshold, control_lockdown_auto_unlock:lockdownAutoUnlock, zone_bias_m:zoneBiasM, vision_replan_interval_s:Number($("visionReplanIntervalS").value||30), dual_risk_weight:dualRiskWeight, dual_replan_interval_s:dualReplanIntervalS};
   }
 
   function sceneConfigPayload(){
@@ -1600,8 +1709,19 @@
   }
 
   async function generatePeopleSession(){
+    if(generatingPeople){ log("人员正在生成，请稍候。"); return; }
     if(pending){ log("当前运行正在计算，请稍候。"); return; }
     if(!currentMapData){ setStatus("请先导入并确认 JSON 地图，再生成人员。", "缺少地图"); return; }
+    const exitCount = (currentMapData.cells || []).filter(cell => cell && String(cell.type || "").toLowerCase() === "exit").length;
+    if(!exitCount){
+      setStatus("当前地图没有出口，无法生成可疏散人员。\n请先点击“编辑地图”，在边界或安全区域添加至少一个 exit 元胞，再重新生成。", "缺少出口");
+      return;
+    }
+    const generateButton = $("generatePeopleBtn");
+    generatingPeople = true;
+    generateButton.disabled = true;
+    generateButton.textContent = "生成中...";
+    setStatus("正在由 C 生成人员/关系，并由 A 分配初始位置，请稍候...", "生成中");
     try{
       const sceneConfig = sceneConfigPayload();
       const uploadedYaml = await readFilePayload($("yamlFile"));
@@ -1619,6 +1739,10 @@
         setStatus(error.message || String(error), "初始化失败");
         log("人员初始化失败：" + (error.message || error));
       }
+    }finally{
+      generatingPeople = false;
+      generateButton.textContent = "生成 / 初始化人员";
+      generateButton.disabled = !currentMapData;
     }
   }
 
@@ -1713,7 +1837,8 @@
     currentMapName = "";
     $("editMapBtn").disabled = true;
     $("autoPositionBtn").disabled = true;
-    $("mapEditorHint").textContent = "仓库样例保留原有流程；在线编辑与自动位置分配当前仅支持上传 JSON 地图。";
+    $("generatePeopleBtn").disabled = true;
+    $("mapEditorHint").textContent = "仓库样例已包含人员；在线编辑与自动位置分配请上传 JSON 地图。";
     activeSession = true;
     sessionFinished = false;
     pauseRequested = false;
@@ -1880,7 +2005,7 @@
     );
   };
   $("clearYaml").onclick = () => { $("yamlFile").value = ""; setConfigState("未选择 YAML。", ""); };
-  ["layerPeople", "layerExits", "layerSmoke", "layerOccupancy", "layerTrajectories"].forEach(id => {
+  ["layerPeople", "layerExits", "layerSmoke", "layerOccupancy", "layerTrajectories", "layerPath", "layerVisionRoutes"].forEach(id => {
     $(id).onchange = () => {
       draw(); refreshStats();
       if(activeSession && (id === "layerOccupancy" || id === "layerTrajectories") && $(id).checked && !logLayers){
