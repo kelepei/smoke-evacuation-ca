@@ -129,9 +129,72 @@ def _control_runtime_config(payload: Mapping[str, Any]) -> dict[str, Any]:
             config["control_lockdown_area"] = [int(item) for item in area]
         except (TypeError, ValueError):
             pass
+    for key in ("control_lockdown_trigger", "control_lockdown_auto_unlock"):
+        if key in payload and payload.get(key) is not None:
+            config[key] = payload[key]
+    if "control_lockdown_smoke_threshold" in payload and payload.get("control_lockdown_smoke_threshold") is not None:
+        try:
+            config["control_lockdown_smoke_threshold"] = float(payload["control_lockdown_smoke_threshold"])
+        except (TypeError, ValueError):
+            pass
     if "route_shift_ratio" in payload:
         config["route_shift_ratio"] = float(payload.get("route_shift_ratio") or 0.2)
+    if payload.get("vision_replan_interval_s") is not None:
+        try:
+            config["vision_replan_interval_s"] = float(payload.get("vision_replan_interval_s"))
+        except (TypeError, ValueError):
+            pass
+    if payload.get("dual_risk_weight") is not None:
+        try:
+            config["dual_risk_weight"] = float(payload.get("dual_risk_weight"))
+        except (TypeError, ValueError):
+            pass
+    if payload.get("dual_replan_interval_s") is not None:
+        try:
+            config["dual_replan_interval_s"] = float(payload.get("dual_replan_interval_s"))
+        except (TypeError, ValueError):
+            pass
+    if "control_route_mode" in payload:
+        config["control_route_mode"] = str(payload.get("control_route_mode") or "load_balance")
+    for key in (
+        "density_threshold", "pheromone_radius_m", "replan_interval_s",
+        "avoid_probability", "avoid_threshold", "smoke_proxy_weight",
+        "zone_bias_m",
+    ):
+        if key in payload and payload.get(key) is not None:
+            try:
+                config[key] = float(payload[key])
+            except (TypeError, ValueError):
+                pass
     return config
+
+
+def _snapshot_to_map_data(snapshot: Mapping[str, Any], source_name: str) -> dict[str, Any]:
+    """Convert an A-loaded grid snapshot into the editable JSON used by C/A.
+
+    PNG/CSV maps are still loaded by A's existing loaders.  C's population
+    generator and A's position allocator need a JSON grid, so the preview
+    bridge materializes exactly the grid A produced instead of inventing cells.
+    """
+    grid = snapshot.get("grid") if isinstance(snapshot, Mapping) else None
+    if not isinstance(grid, Mapping):
+        raise WebRuntimeError("map preview did not return a grid")
+    width = int(grid.get("width") or 0)
+    height = int(grid.get("height") or 0)
+    rows = grid.get("cell_type") or []
+    cells = []
+    for y, row in enumerate(rows):
+        for x, cell_type in enumerate(row):
+            cells.append({"x": int(x), "y": int(y), "type": str(cell_type)})
+    if width <= 0 or height <= 0 or len(cells) != width * height:
+        raise WebRuntimeError("map preview grid is incomplete")
+    return {
+        "name": Path(str(source_name or "map")).stem or "map",
+        "width": width,
+        "height": height,
+        "cell_size": float(grid.get("cell_size", 0.5) or 0.5),
+        "cells": cells,
+    }
 
 
 def _uploaded_file(payload: Mapping[str, Any], field: str, allowed: set[str], root: Path) -> Path | None:
@@ -491,11 +554,15 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 for cell_type in row:
                     key = str(cell_type)
                     counts[key] = counts.get(key, 0) + 1
+            source_name = str(payload.get("source_name") or map_path.name)
             return {
                 "ok": True,
                 "snapshot": snapshot,
+                # JSON/CSV/PNG all become the exact A grid that C and A's
+                # allocator can use; PNG/CSV no longer dead-end at preview.
+                "map_data": _snapshot_to_map_data(snapshot, source_name),
                 "map_meta": {
-                    "source": str(payload.get("source_name") or map_path.name),
+                    "source": source_name,
                     "width": snapshot["grid"]["width"],
                     "height": snapshot["grid"]["height"],
                     "cell_counts": counts,
@@ -531,9 +598,13 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             for cell_type in row:
                 key = str(cell_type)
                 counts[key] = counts.get(key, 0) + 1
+        map_data = json.loads(map_path.read_text(encoding="utf-8"))
         return {
             "ok": True,
             "snapshot": snapshot,
+            # The browser needs the actual A JSON to generate C people and
+            # edit the same template; the preview snapshot alone is not enough.
+            "map_data": map_data,
             "map_meta": {
                 "source": str(map_path.relative_to(self.server.root)),
                 "template_id": template_id,
@@ -608,7 +679,10 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 )
             except Exception as exc:
                 message = str(exc)
-                if "A-assigned position" in message and "outside the map" in message:
+                if "A-assigned position" in message and any(
+                    marker in message
+                    for marker in ("outside the map", "not a passable initial cell", "overlaps another A-assigned position")
+                ):
                     template_id = str(payload.get("template_id") or "").strip().lower()
                     raise WebRuntimeError(
                         f"人员文件与 A 模板 {template_id} 的尺寸不匹配；"
@@ -634,6 +708,9 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
     ) -> dict[str, Any]:
         run_id = _new_run_id()
         output_root = self.server.root / "outputs" / "experiments"
+        c_runtime_config = dict(c_runtime_config or {})
+        c_runtime_config["map_path"] = str(map_path)
+        c_runtime_config["output_dir"] = str(output_root / run_id)
         _force_headless_matplotlib()
         runner = create_integrated_runner(
             map_path=map_path,
