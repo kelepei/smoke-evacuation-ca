@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 import random
+from pathlib import Path
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -153,8 +154,12 @@ class CWebRuntimeBridge:
             int(engine.grid.width),
             int(engine.grid.height),
             {eid: (x, y) for eid, x, y in self._exits()},
+            grid=engine.grid,
         )
         self.control_route_shift_ratio = 0.2
+        self._dual_route_output_dir: Path | None = None
+        self._dual_route_map_stem: str | None = None
+        self._dual_initial_refreshed = True
         self._configure_control_strategy(settings)
         self._apply_individual_speed_variation()
         self._configure_web_smoke_semantics(settings)
@@ -363,14 +368,113 @@ class CWebRuntimeBridge:
     def _configure_control_strategy(self, settings: Mapping[str, Any]) -> None:
         raw_value = str(settings.get("control_strategy", "none") or "none").strip().lower()
         strategy_names = [item.strip() for item in raw_value.split(",") if item.strip()]
-        if "all" in strategy_names:
-            strategy_names = [item.value for item in ControlStrategyType]
+        vision_aliases = {"vision_astar", "vision_mapped_astar", "monitoring_astar", "monitor_astar", "mitm_astar"}
+        if any(name in vision_aliases for name in strategy_names):
+            strategy_names = ["vision_astar"]
+        dual_aliases = {"dual_objective_aco", "dual_objective", "dual", "time_risk", "time_risk_aco"}
+        if any(name in dual_aliases for name in strategy_names):
+            strategy_names = ["dual_objective_aco"]
+        integrated_aliases = {"integrated", "integrated_control", "fire_aware", "fire_aware_adaptive", "comprehensive", "all"}
+        if any(name in integrated_aliases for name in strategy_names):
+            strategy_names = ["fire_aware"]
         self.control_route_shift_ratio = max(
             0.0, min(1.0, float(settings.get("route_shift_ratio", 0.2)))
         )
         exits = self._exits()
         exit_ids = [eid for eid, _x, _y in exits]
+        fire_cfg = {
+            "density_threshold": float(settings.get("density_threshold", 0.375)),
+            "pheromone_radius_m": float(settings.get("pheromone_radius_m", 3.2)),
+            "replan_interval_s": float(settings.get("replan_interval_s", 200.0)),
+            "avoid_probability": float(settings.get("avoid_probability", 0.5)),
+            "avoid_threshold": float(settings.get("avoid_threshold", 0.6)),
+            "smoke_proxy_weight": float(settings.get("smoke_proxy_weight", 3.0)),
+            "zone_bias_m": float(settings.get("zone_bias_m", 4.0)),
+        }
         if not exits:
+            return
+        if "dual_objective_aco" in strategy_names:
+            map_path = settings.get("map_path")
+            if not map_path:
+                return
+            smoke_sources = (
+                getattr(self.engine, "smoke_sources", None)
+                or getattr(getattr(self.engine, "scene", None), "smoke_sources", None)
+                or []
+            )
+            self.control.configure_dual_objective(
+                all_persons=self._people(),
+                map_path=str(map_path),
+                exit_ids=exit_ids,
+                risk_weight=float(settings.get("dual_risk_weight", 0.5)),
+                replan_interval_s=float(settings.get("dual_replan_interval_s", 30.0)),
+                smoke_sources=list(smoke_sources),
+            )
+            out_dir = settings.get("output_dir")
+            if out_dir:
+                stem = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in Path(str(map_path)).stem)
+                self._dual_route_output_dir = Path(str(out_dir))
+                self._dual_route_map_stem = stem
+                png = self._dual_route_output_dir / f"dual_objective_routes_{stem}_initial.png"
+                self.control.export_dual_route_map(str(png))
+                # Refresh once after B publishes its first real smoke matrix.
+                self._dual_initial_refreshed = False
+                print(f"[C10] dual_objective_aco route map: {png}")
+            return
+        if "vision_astar" in strategy_names:
+            map_path = settings.get("map_path")
+            if not map_path:
+                return
+            smoke_sources = (
+                getattr(self.engine, "smoke_sources", None)
+                or getattr(getattr(self.engine, "scene", None), "smoke_sources", None)
+                or []
+            )
+            self.control.configure_vision_astar(
+                all_persons=self._people(),
+                map_path=str(map_path),
+                exit_ids=exit_ids,
+                replan_interval_s=float(settings.get("vision_replan_interval_s", 30.0)),
+                smoke_sources=list(smoke_sources),
+            )
+            out_dir = settings.get("output_dir")
+            if out_dir:
+                stem = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in Path(str(map_path)).stem)
+                png = Path(str(out_dir)) / f"evacuation_routes_{stem}_initial.png"
+                self.control.export_vision_route_map(str(png))
+                print(f"[C10] vision_astar route map: {png}")
+            return
+        if "fire_aware" in strategy_names:
+            closed = [
+                str(item).strip() for item in (settings.get("control_closed_exits") or [])
+                if str(item).strip()
+            ]
+            if not closed:
+                closed = [exit_ids[-1]]
+            area = settings.get("control_lockdown_area")
+            if not isinstance(area, (list, tuple)) or len(area) != 4:
+                area = [
+                    int(self.engine.grid.width // 3),
+                    int(self.engine.grid.height // 3),
+                    int(self.engine.grid.width * 2 // 3),
+                    int(self.engine.grid.height * 2 // 3),
+                ]
+            self.control.configure_integrated_control(
+                all_persons=self._people(),
+                exit_ids=exit_ids,
+                closed_exits=closed,
+                exit_trigger_time=int(settings.get("control_trigger_step", 0)),
+                lockdown_zones=[[int(value) for value in area]],
+                lockdown_trigger=str(settings.get("control_lockdown_trigger", "smoke_threshold")),
+                lockdown_smoke_threshold=float(settings.get("control_lockdown_smoke_threshold", 0.5)),
+                auto_unlock=bool(settings.get("control_lockdown_auto_unlock", True)),
+                smoke_sources=(
+                    getattr(self.engine, "smoke_sources", None)
+                    or getattr(getattr(self.engine, "scene", None), "smoke_sources", None)
+                    or []
+                ),
+                **fire_cfg,
+            )
             return
         if "exit_closure" in strategy_names:
             closed = [
@@ -400,20 +504,24 @@ class CWebRuntimeBridge:
             self.control.enable_strategy(ControlStrategyType.ZONED_EVACUATION, {})
             self.control.assign_zones_by_positions(self._people(), exit_ids)
         if "route_control" in strategy_names:
-            self.control.enable_strategy(ControlStrategyType.ROUTE_CONTROL, {"controlled_routes": []})
+            route_mode = str(settings.get("control_route_mode", "load_balance")).strip().lower()
+            self.control.enable_strategy(
+                ControlStrategyType.ROUTE_CONTROL,
+                {"controlled_routes": [], "mode": route_mode, **fire_cfg},
+            )
 
     def _apply_lockdown_walls(self) -> None:
         if self.control is None:
             return
         grid = self.engine.grid
         blocked: set[tuple[int, int]] = set()
-        if ControlStrategyType.ZONE_LOCKDOWN in self.control.active_strategies:
+        if self.control.lockdown_status:
             blocked.update(
                 (int(x), int(y))
                 for (x, y), locked in self.control.lockdown_status.items()
                 if locked
             )
-        if ControlStrategyType.EXIT_CLOSURE in self.control.active_strategies:
+        if self.control._get_closed_exits():
             blocked.update(
                 (int(exit_obj.x), int(exit_obj.y))
                 for exit_obj in self.engine.exits
@@ -604,6 +712,7 @@ class CWebRuntimeBridge:
             if density >= 4:
                 congestion_factor = min(congestion_factor, max(0.3, 4.0 / float(density)))
                 self._speed_stats["congested_total"] += 1
+            route_next_cell = self.control.get_route_next_cell(person_id, (person.x, person.y)) if self.control is not None else None
             panic_state = self._panic_cache.get(person_id, {})
             panic_speed = float(panic_state.get("speed_multiplier", 1.0) or 1.0)
             credit = self._move_credit.get(int(person.id), 0.0)
@@ -647,13 +756,17 @@ class CWebRuntimeBridge:
         control_original_targets = None
         if self.control is not None:
             self._apply_lockdown_walls()
-            if ControlStrategyType.EXIT_CLOSURE in self.control.active_strategies:
+            if self.control.exit_closure_params.get("closed_exits"):
                 control_original_targets = {
                     int(person.id): getattr(person, "target_exit", None) for person in people
                 }
-            self.control.update_all(people, step, getattr(engine, "smoke_matrix", None))
+            self.control.update_all(
+                people, step, getattr(engine, "smoke_matrix", None),
+                dt=float(getattr(engine, "time_step_s", 0.5) or 0.5),
+            )
             self._ensure_open_exit_targets(people, control_original_targets)
-            if ControlStrategyType.ROUTE_CONTROL in self.control.active_strategies:
+            if (ControlStrategyType.ROUTE_CONTROL in self.control.active_strategies
+                    and not self.control.is_fire_aware):
                 self.control.update_route_balance(
                     people,
                     [eid for eid, _x, _y in self._exits()],
@@ -688,7 +801,7 @@ class CWebRuntimeBridge:
                 person.is_waiting = False
                 person.follow_target = None
             person_target_exit = target_exit or getattr(person, "target_exit", "") or ""
-            if self.control is not None and ControlStrategyType.EXIT_CLOSURE in self.control.active_strategies:
+            if self.control is not None and self.control.exit_closure_params.get("closed_exits"):
                 if person_target_exit and not self.control.is_exit_open(person_target_exit):
                     self.control._reassign_exit(person)
                     person_target_exit = getattr(person, "target_exit", "") or person_target_exit
@@ -706,6 +819,10 @@ class CWebRuntimeBridge:
             person.is_panicked = bool(panic_state.get("is_panicked", False))
             person.panic_level = float(panic_state.get("panic_level", 0.0) or 0.0)
             person.speed_multiplier = float(panic_state.get("speed_multiplier", 1.0) or 1.0)
+            route_next_cell = (
+                self.control.get_route_next_cell(person_id, (person.x, person.y))
+                if self.control is not None else None
+            )
             result[person_id] = {
                 "target_exit": person_target_exit,
                 "exit_preference": exit_preference,
@@ -722,9 +839,28 @@ class CWebRuntimeBridge:
                 "speed_multiplier": person.speed_multiplier,
                 "waiting_for": group.get("waiting_for"),
                 "group_id": getattr(person, "group_id", ""),
+                "route_next_cell": route_next_cell,
+                "strict_route": bool(self.control is not None and (
+                    ControlStrategyType.VISION_MAPPED_ASTAR in self.control.active_strategies
+                    or ControlStrategyType.DUAL_OBJECTIVE_ACO in self.control.active_strategies)),
             }
         self._sync_person_information()
         self._publish_state()
+        if (
+            not self._dual_initial_refreshed
+            and self.control is not None
+            and ControlStrategyType.DUAL_OBJECTIVE_ACO in self.control.active_strategies
+            and self._dual_route_output_dir is not None
+            and self._dual_route_map_stem
+        ):
+            try:
+                png = self._dual_route_output_dir / (
+                    f"dual_objective_routes_{self._dual_route_map_stem}_initial.png"
+                )
+                self.control.export_dual_route_map(str(png))
+                print(f"[C10] dual_objective_aco route map refreshed: {png}")
+            finally:
+                self._dual_initial_refreshed = True
         return result
 
     def _walkable(self, x: int, y: int) -> bool:
@@ -922,4 +1058,6 @@ class CWebRuntimeBridge:
             },
             "guide_colors": dict(GUIDE_COLORS),
             "control_strategy": self.control.get_strategy_status(),
+            "vision_routes": self.control.vision_routes_payload() if self.control is not None else [],
+            "dual_routes": self.control.dual_routes_payload() if self.control is not None else [],
         }
