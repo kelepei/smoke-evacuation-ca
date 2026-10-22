@@ -187,8 +187,10 @@ def build_integrated_scenario(
     positions = _require_a_assigned_positions(population.persons, grid)
     placement_mode = "A-assigned positions preserved by D"
 
+    if len(population.persons) != len(positions):
+        raise IntegratedRuntimeError("C population and A positions have different lengths")
     persons: list[Person] = []
-    for source, (x, y) in zip(population.persons, positions, strict=True):
+    for source, (x, y) in zip(population.persons, positions):
         person = Person(id=int(source["person_id"]), x=x, y=y)
         _copy_c_attributes(person, source)
         persons.append(person)
@@ -306,7 +308,16 @@ def build_integrated_scenario(
             "control_trigger_step",
             "control_closed_exits",
             "control_lockdown_area",
+            "control_lockdown_trigger",
+            "control_lockdown_smoke_threshold",
+            "control_lockdown_auto_unlock",
             "route_shift_ratio",
+            "zone_bias_m",
+            "vision_replan_interval_s",
+            "dual_risk_weight",
+            "dual_replan_interval_s",
+            "map_path",
+            "output_dir",
             "guide_enabled",
         ):
             if key in c_runtime_config:
