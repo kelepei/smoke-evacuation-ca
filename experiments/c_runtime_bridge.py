@@ -145,6 +145,10 @@ class CWebRuntimeBridge:
         self._blocked_signature: frozenset[tuple[int, int]] | None = None
         if self.unknown_behavior not in ("walk", "freeze", "evacuate"):
             self.unknown_behavior = "walk"
+        # 未获知人员行走已收进 B 的移动策略；把 C 的配置交给 B，保持单一来源
+        if hasattr(engine, "unknown_behavior"):
+            engine.unknown_behavior = self.unknown_behavior
+            engine.unknown_speed_factor = self.unknown_speed_factor
         self._walk_credit: dict[int, float] = {}
         self._walk_dir: dict[int, tuple[int, int]] = {}
         self._walk_stats = {"walk_total": 0, "frozen_total": 0}
@@ -195,6 +199,13 @@ class CWebRuntimeBridge:
         return list(getattr(scene, "smoke_sources", None) or [])
 
     def _panic_state(self, person: Any) -> dict[str, float | bool]:
+        # B 的移动规则启用后，恐慌值由 B 统一计算（阈值+传染），C 只读取，避免"双重恐慌"。
+        if bool(getattr(self.engine, "handles_movement_speed", False)):
+            return {
+                "is_panicked": bool(getattr(person, "is_panicked", False)),
+                "panic_level": float(getattr(person, "panic_level", 0.0) or 0.0),
+                "speed_multiplier": float(getattr(person, "speed_multiplier", 1.0) or 1.0),
+            }
         smoke = 0.0
         smoke_matrix = getattr(self.engine, "smoke_matrix", None)
         if smoke_matrix is not None:
@@ -678,6 +689,13 @@ class CWebRuntimeBridge:
         self._move_allowed = {}
         if not people:
             return
+        # B 的加速/多速度模型启用后，B 才是移动门控的权威来源；C 这里只做状态镜像。
+        if bool(getattr(self.engine, "handles_movement_speed", False)):
+            for person in people:
+                self._move_allowed[int(person.id)] = bool(getattr(person, "can_move", True))
+            stats = getattr(self.engine, "movement_stats", {}) or {}
+            self._speed_stats["blocked_total"] = int(stats.get("blocked_total", 0))
+            return
         speeds = [float(getattr(person, "speed", 1.0) or 1.0) for person in people]
         cell_counts: dict[tuple[int, int], int] = {}
         for person in people:
@@ -943,26 +961,31 @@ class CWebRuntimeBridge:
         alarm_was_seen = self._alarm_seen
         self.has_hazard = self.has_hazard or self._detect_hazard()
         self._maybe_activate_alarm()
-        if self._alarm_seen and not alarm_was_seen:
+        b_authoritative = bool(getattr(self.engine, "handles_movement_speed", False))
+        if b_authoritative:
+            # B 已按速度/加速/危险感知执行过移动，这里同步 can_move 供快照与测试读取
+            self._speed_gate(self._people())
+        elif self._alarm_seen and not alarm_was_seen:
             self._speed_gate(self._people())
         self._restore_smoke_intensity()
         self._advance_smoke_ramp()
-        for person in self.engine.person_map.values():
-            if getattr(person, "is_dead", False):
-                continue
-            if self._move_allowed.get(int(person.id), True):
-                continue
-            prev_x = getattr(person, "prev_x", person.x)
-            prev_y = getattr(person, "prev_y", person.y)
-            # 未获知人员被 B 判定“走到出口撤离”时撤销该状态
-            if getattr(person, "evacuated", False):
-                person.evacuated = False
-                if hasattr(person, "evac_step"):
-                    person.evac_step = -1
-                if hasattr(person, "actual_exit"):
-                    person.actual_exit = None
-            person.x = prev_x
-            person.y = prev_y
+        if not b_authoritative:
+            for person in self.engine.person_map.values():
+                if getattr(person, "is_dead", False):
+                    continue
+                if self._move_allowed.get(int(person.id), True):
+                    continue
+                prev_x = getattr(person, "prev_x", person.x)
+                prev_y = getattr(person, "prev_y", person.y)
+                # 未获知人员被 B 判定“走到出口撤离”时撤销该状态
+                if getattr(person, "evacuated", False):
+                    person.evacuated = False
+                    if hasattr(person, "evac_step"):
+                        person.evac_step = -1
+                    if hasattr(person, "actual_exit"):
+                        person.actual_exit = None
+                person.x = prev_x
+                person.y = prev_y
         if self.control is not None and ControlStrategyType.EXIT_CLOSURE in self.control.active_strategies:
             closed_exits = set(self.control.closure_status)
             for person in self.engine.person_map.values():
@@ -977,7 +1000,8 @@ class CWebRuntimeBridge:
                     person.y = getattr(person, "prev_y", person.y)
         if hasattr(self.engine, "get_evacuated_count"):
             self.engine.evacuated_count = self.engine.get_evacuated_count()
-        if self.unknown_behavior == "walk":
+        # B 接管移动后，未获知人员的日常行走也由 B 执行，C 不再重复移动
+        if self.unknown_behavior == "walk" and not b_authoritative:
             self._daily_walk()
         if self.control is not None:
             for person in self.engine.person_map.values():
@@ -1003,16 +1027,30 @@ class CWebRuntimeBridge:
 
     def _publish_state(self) -> None:
         active = self._people()
+        b_stats = getattr(self.engine, "movement_stats", {}) or {}
+        b_authoritative = bool(getattr(self.engine, "handles_movement_speed", False))
         informed = sum(1 for person in active if self.info_state.get_state_value(int(person.id)) != "UNKNOWN")
         panic_levels = [
             float(self._panic_cache.get(int(person.id), {}).get("panic_level", 0.0) or 0.0)
             for person in active
         ]
+        # 恐慌阈值以 B 的移动配置为唯一标准；旧路径才用 C 自己的 panic_threshold。
+        if b_authoritative:
+            panic_cfg = getattr(getattr(self.engine, "movement", None), "panic", None)
+            panic_threshold = float(getattr(panic_cfg, "threshold", self.panic_threshold))
+            panic_count = sum(1 for person in active if getattr(person, "is_panicked", False))
+        else:
+            panic_threshold = self.panic_threshold
+            panic_count = sum(1 for value in panic_levels if value >= panic_threshold)
         self.engine.c_runtime_state = {
             "informed_count": informed,
-            "panic_count": sum(1 for value in panic_levels if value >= self.panic_threshold),
+            "panic_count": panic_count,
+            "panic_threshold": panic_threshold,
             "mean_panic_level": (sum(panic_levels) / len(panic_levels)) if panic_levels else 0.0,
             "max_panic_level": max(panic_levels) if panic_levels else 0.0,
+            "mean_impatience": float(b_stats.get("mean_impatience", 0.0)) if b_authoritative else 0.0,
+            "max_impatience": float(b_stats.get("max_impatience", 0.0)) if b_authoritative else 0.0,
+            "urgent_count": int(b_stats.get("urgent_count", 0)) if b_authoritative else 0,
             "active_person_count": len(active),
             "has_hazard": self.has_hazard,
             "evacuation_authorized": self.has_hazard,
@@ -1044,17 +1082,33 @@ class CWebRuntimeBridge:
             "guides": self.guides,
             "speed_model": {
                 "enabled": True,
+                "source": "B.movement" if b_authoritative else "C.speed_gate",
                 "unknown_speed_factor": self.unknown_speed_factor,
                 "informed_speed_factor": self.informed_speed_factor,
                 "person_speed_variation": self.person_speed_variation,
-                "blocked_total": self._speed_stats["blocked_total"],
-                "congested_total": self._speed_stats["congested_total"],
-                "same_cell_congested_total": self._speed_stats["same_cell_congested_total"],
+                "blocked_total": int(b_stats.get("blocked_total", self._speed_stats["blocked_total"]))
+                if b_authoritative
+                else self._speed_stats["blocked_total"],
+                "congested_total": int(b_stats.get("congested_total", self._speed_stats["congested_total"]))
+                if b_authoritative
+                else self._speed_stats["congested_total"],
+                "same_cell_congested_total": int(
+                    b_stats.get("same_cell_congested_total", self._speed_stats["same_cell_congested_total"])
+                )
+                if b_authoritative
+                else self._speed_stats["same_cell_congested_total"],
+                "switch_total": int(b_stats.get("switch_total", 0)) if b_authoritative else 0,
+                "mean_speed": float(b_stats.get("mean_speed", 0.0)) if b_authoritative else 0.0,
+                "max_speed": float(b_stats.get("max_speed", 0.0)) if b_authoritative else 0.0,
             },
             "unknown_behavior": self.unknown_behavior,
             "daily_walk": {
-                "walk_total": self._walk_stats["walk_total"],
-                "frozen_total": self._walk_stats["frozen_total"],
+                "walk_total": int(b_stats.get("walk_total", self._walk_stats["walk_total"]))
+                if b_authoritative
+                else self._walk_stats["walk_total"],
+                "frozen_total": int(b_stats.get("frozen_total", self._walk_stats["frozen_total"]))
+                if b_authoritative
+                else self._walk_stats["frozen_total"],
             },
             "guide_colors": dict(GUIDE_COLORS),
             "control_strategy": self.control.get_strategy_status(),

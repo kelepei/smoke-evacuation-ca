@@ -57,12 +57,19 @@ class CWebRuntimeBridgeTests(unittest.TestCase):
         engine, _bridge, runtime = self._runtime(ratio=0.0)
         engine.person_map[1].speed = 0.4
         engine.person_map[2].speed = 1.6
+        starts = {pid: (p.x, p.y) for pid, p in engine.person_map.items()}
+        # 第 1 步警报在 B 内部触发、C 在步末才同步知情状态，第 2 步起体现速度门控。
+        runtime.step()
         runtime.step()
         speed_state = engine.c_runtime_state["speed_model"]
         self.assertTrue(speed_state["enabled"])
-        self.assertFalse(_bridge._move_allowed[1])
-        self.assertTrue(_bridge._move_allowed[2])
         self.assertGreaterEqual(speed_state["blocked_total"], 1)
+        # 慢的人（0.4 m/s）累计位移应少于快的人（1.6 m/s），而不是"一步都不许走"。
+        def travelled(pid: int) -> int:
+            person = engine.person_map[pid]
+            sx, sy = starts[pid]
+            return abs(int(person.x) - sx) + abs(int(person.y) - sy)
+        self.assertGreater(travelled(2), travelled(1))
 
     def test_web_mode_is_an_explicit_c_runtime_contract(self) -> None:
         scene = build_base_scene()
