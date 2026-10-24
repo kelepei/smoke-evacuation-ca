@@ -76,6 +76,23 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
         self.assertIn("function getMapData()", self.editor)
         self.assertIn("JSON.parse(JSON.stringify(gridData))", self.editor)
 
+    def test_integrated_editor_has_view_only_zoom_and_pan(self) -> None:
+        for marker in (
+            'id="zoomOutBtn"',
+            'id="zoomInBtn"',
+            'id="fitViewBtn"',
+            'id="mapStage"',
+            "function zoomAt(factor,clientX,clientY)",
+            "center.addEventListener(\"wheel\"",
+            'if(event.button!==1) return',
+            "window.fitMapView=fitMapView",
+            "canvas.width/rect.width",
+            "canvas.height/rect.height",
+        ):
+            self.assertIn(marker, self.editor)
+        self.assertIn('requestAnimationFrame(() => frame.contentWindow.fitMapView())', self.page)
+        self.assertNotIn("viewScale", self.stable)
+
     def test_enhanced_map_has_view_only_zoom_controls_without_touching_stable_page(self) -> None:
         for marker in (
             'id="mapExpandBtn"',

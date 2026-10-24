@@ -1540,6 +1540,7 @@
     }
     frame.contentWindow.loadMapData(structuredClone(currentMapData));
     $("editorModal").classList.add("open");
+    requestAnimationFrame(() => frame.contentWindow.fitMapView());
   }
 
   async function confirmMapEdit(){
