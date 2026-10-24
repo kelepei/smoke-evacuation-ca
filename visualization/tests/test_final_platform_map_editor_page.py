@@ -114,7 +114,7 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
             "information_mode:mode",
             'id="alarmState"',
             "已报警 · 局部传播",
-            "const knowsFire = [\"ALERTED\", \"CONFIRMED\", \"GUIDED\", \"INFORMED\"].includes(infoState);",
+            "const knowsFire = inSmoke || [\"ALERTED\", \"CONFIRMED\", \"GUIDED\", \"INFORMED\"].includes(infoState);",
             "烟雾暴露外环",
             'id="panicCount"',
             'id="panicMean"',
