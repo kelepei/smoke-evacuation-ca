@@ -163,15 +163,11 @@ class SpeedModel:
             # constant 模式：个体固定加速度（兼容旧配置/对照实验）
             accel = float(getattr(person, "accel_current", cfg.accel) or cfg.accel)
             if blocked:
-                velocity = max(0.0, velocity - cfg.decel * dt)
-                if cfg.stop_on_block:
-                    velocity = 0.0
-            if blocked or too_close:
+                velocity = 0.0 if cfg.stop_on_block else max(0.0, velocity - cfg.decel * dt)
+            elif too_close or velocity > effective_target:
                 velocity = max(effective_target, velocity - cfg.decel * dt)
             elif velocity < effective_target:
                 velocity = min(effective_target, velocity + accel * dt)
-            else:
-                velocity = max(effective_target, velocity - cfg.decel * dt)
 
         velocity = min(cfg.max_speed, max(0.0, velocity))
         credit = self._credit.get(pid, 0.0) + velocity * dt / self.cell_size
