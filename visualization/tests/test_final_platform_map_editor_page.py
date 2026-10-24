@@ -105,6 +105,27 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
         self.assertNotIn("Math.max(0, Math.min(1, rawValue / 10))", self.page)
         self.assertNotIn("B06 publishes a normalized smoke concentration", self.stable)
 
+    def test_enhanced_page_exposes_real_information_modes_and_state_colors(self) -> None:
+        for marker in (
+            'id="informationMode"',
+            'value="broadcast"',
+            'value="local"',
+            "function informationModePayload()",
+            "information_mode:mode",
+            'id="alarmState"',
+            "已报警 · 局部传播",
+            "const knowsFire = [\"ALERTED\", \"CONFIRMED\", \"GUIDED\", \"INFORMED\"].includes(infoState);",
+            "烟雾暴露外环",
+            'id="panicCount"',
+            'id="panicMean"',
+            'id="urgentCount"',
+            'id="impatienceMean"',
+            'id="speedMean"',
+            'id="exitSwitchTotal"',
+        ):
+            self.assertIn(marker, self.page)
+        self.assertNotIn('id="informationMode"', self.stable)
+
 
 if __name__ == "__main__":
     unittest.main()

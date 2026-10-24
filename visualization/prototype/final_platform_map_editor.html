@@ -224,6 +224,12 @@
     <div class="kv"><span>已撤离</span><b id="evacCount">0</b></div>
     <div class="kv"><span>撤离率</span><b id="evacRate">NA</b></div>
     <div class="kv"><span>滞留人数</span><b id="remainingCount">NA</b></div>
+    <div class="kv"><span>恐慌人数</span><b id="panicCount">NA</b></div>
+    <div class="kv"><span>平均恐慌值</span><b id="panicMean">NA</b></div>
+    <div class="kv"><span>紧急人数</span><b id="urgentCount">NA</b></div>
+    <div class="kv"><span>平均不耐烦</span><b id="impatienceMean">NA</b></div>
+    <div class="kv"><span>平均当前速度</span><b id="speedMean">NA</b></div>
+    <div class="kv"><span>出口切换次数</span><b id="exitSwitchTotal">NA</b></div>
     <div class="kv"><span>总疏散时间</span><b id="totalEvacTime">NA</b></div>
     <div class="kv"><span>平均疏散时间</span><b id="meanEvacTime">NA</b></div>
     <div class="kv"><span>T90</span><b id="t90Time">NA</b></div>
@@ -1059,6 +1065,13 @@
     $("evacCount").textContent = observed.evacuated;
     $("evacRate").textContent = hasPeople ? `${(observed.evacuated / observed.people.length * 100).toFixed(1)}%` : "NA";
     $("remainingCount").textContent = hasPeople ? String(observed.people.length - observed.evacuated) : "NA";
+    const movement = cRuntime || {};
+    $("panicCount").textContent = cRuntime ? String(movement.panic_count ?? "NA") : "NA";
+    $("panicMean").textContent = cRuntime ? textValue(Number(movement.mean_panic_level)) : "NA";
+    $("urgentCount").textContent = cRuntime ? String(movement.urgent_count ?? "NA") : "NA";
+    $("impatienceMean").textContent = cRuntime ? textValue(Number(movement.mean_impatience)) : "NA";
+    $("speedMean").textContent = cRuntime ? textValue(Number(movement.mean_speed)) : "NA";
+    $("exitSwitchTotal").textContent = cRuntime ? String(movement.switch_total ?? "NA") : "NA";
     $("smokeSourceCount").textContent = grid ? observed.smokeSourceCount : "NA";
     $("smokeMax").textContent = observed.maxSmoke === null ? "NA" : observed.maxSmoke.toFixed(3);
     $("smokeContract").textContent = observed.maxSmoke === null

@@ -166,6 +166,10 @@ def _control_runtime_config(payload: Mapping[str, Any]) -> dict[str, Any]:
                 config[key] = float(payload[key])
             except (TypeError, ValueError):
                 pass
+    movement = payload.get("movement")
+    if isinstance(movement, Mapping):
+        # B owns validation and defaults; D only forwards the documented mapping.
+        config["movement"] = dict(movement)
     return config
 
 
