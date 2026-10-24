@@ -130,6 +130,9 @@
     <button id="generatePeopleBtn" class="primary" disabled>生成 / 初始化人员</button>
     <div class="row"><label>time_step / s<input id="timeStep" type="number" min="0.01" max="60" step="0.01" value="0.5"></label><label>最大步数<input id="maxSteps" type="number" min="1" max="5000" value="500"></label></div>
     <div class="hint">time_step 真实决定模拟时间与日志时间轴；最大步数真实决定 runtime 停止上限。</div>
+    <label>信息传播情形
+      <select id="informationMode"><option value="broadcast">全员报警广播</option><option value="local">局部感知与社会传播</option></select>
+    </label>
     <div class="title" style="margin-top:12px">C10 管控策略 <span class="pill">真实接入</span></div>
     <label>策略选择
       <select id="controlStrategy">
@@ -219,6 +222,7 @@
     <div class="kv"><span>当前模拟时间</span><b id="simTime">0.0 s</b></div>
     <div class="kv"><span>人员总数</span><b id="peopleCount">NA</b></div>
     <div class="kv"><span>知情人数</span><b id="informedCount">NA</b></div>
+    <div class="kv"><span>报警状态</span><b id="alarmState">NA</b></div>
     <div class="kv"><span>引导员状态</span><b id="guideState">NA</b></div>
     <div class="kv"><span>死亡人数</span><b id="deadCount">NA</b></div>
     <div class="kv"><span>已撤离</span><b id="evacCount">0</b></div>
@@ -1059,6 +1063,9 @@
     $("peopleCount").textContent = hasPeople ? observed.people.length : "NA";
     const cRuntime = snapshot && snapshot.c_runtime && typeof snapshot.c_runtime === "object" ? snapshot.c_runtime : null;
     $("informedCount").textContent = cRuntime ? `${cRuntime.informed_count ?? "NA"} / ${cRuntime.active_person_count ?? "NA"}` : "NA";
+    const alarm = snapshot && snapshot.fields ? snapshot.fields.alarm_triggered : null;
+    const broadcast = cRuntime && cRuntime.alarm_broadcast_triggered;
+    $("alarmState").textContent = alarm === true ? (broadcast ? "已报警 · 已广播" : "已报警 · 局部传播") : (alarm === false ? "未报警" : "NA");
     $("guideState").textContent = cRuntime ? (cRuntime.guide_state || "NA") : "NA";
     $("deadCount").textContent = hasPeople ? String(observed.people.filter(person => person && person.is_dead).length) : "NA";
     if(hasPeople) $("totalPersons").value = String(observed.people.length);
@@ -1662,7 +1669,13 @@
     if(seedRaw !== "" && !Number.isInteger(randomSeed)) throw new Error("random_seed 必须是整数或留空");
     if(!Number.isFinite(timeStep) || timeStep <= 0 || timeStep > 60) throw new Error("time_step 必须在 0 到 60 秒之间");
     if(!Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 5000) throw new Error("最大步数必须是 1 到 5000 的整数");
-    return {random_seed:randomSeed, time_step_s:timeStep, max_steps:maxSteps, guide_enabled:guideEnabled, ...controlConfigPayload()};
+    return {random_seed:randomSeed, time_step_s:timeStep, max_steps:maxSteps, guide_enabled:guideEnabled, ...informationModePayload(), ...controlConfigPayload()};
+  }
+
+  function informationModePayload(){
+    const mode = String($("informationMode").value || "broadcast").trim().toLowerCase();
+    if(!["broadcast", "local"].includes(mode)) throw new Error("信息传播情形必须为全员报警广播或局部感知与社会传播");
+    return {information_mode:mode};
   }
 
   function controlConfigPayload(){

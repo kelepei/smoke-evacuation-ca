@@ -111,6 +111,11 @@ def _control_runtime_config(payload: Mapping[str, Any]) -> dict[str, Any]:
     # D only makes the runtime mode explicit instead of relying on an absent
     # optional payload key.
     config: dict[str, Any] = {"web_mode": True}
+    information_mode = str(payload.get("information_mode", "broadcast") or "broadcast").strip().lower()
+    if information_mode not in {"broadcast", "local"}:
+        raise WebRuntimeError("information_mode must be 'broadcast' or 'local'")
+    config["information_mode"] = information_mode
+    config["alarm_enabled"] = information_mode == "broadcast"
     strategy = str(payload.get("control_strategy", "none") or "none").strip().lower()
     if strategy:
         config["control_strategy"] = strategy

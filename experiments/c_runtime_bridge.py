@@ -90,7 +90,10 @@ class CWebRuntimeBridge:
         )
         settings = getattr(engine.scene, "parameters", {}).get("d_c_runtime", {})
         self.initial_informed_ratio = float(settings.get("initial_informed_ratio", 0.15))
-        self.alarm_enabled = bool(settings.get("alarm_enabled", True))
+        self.information_mode = str(settings.get("information_mode", "broadcast") or "broadcast").strip().lower()
+        if self.information_mode not in {"broadcast", "local"}:
+            self.information_mode = "broadcast"
+        self.alarm_enabled = bool(settings.get("alarm_enabled", self.information_mode == "broadcast"))
         self.guide_enabled = bool(settings.get("guide_enabled", True))
         self.guide_share = float(settings.get("guide_share", 0.30))
         # 网页运行时采用真实烟源语义：烟源附近先知情，浓度达阈值后广播。
