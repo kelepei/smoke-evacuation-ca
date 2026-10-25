@@ -13,9 +13,10 @@ A 模块：Spawn Area 自动识别
     2. 最外墙之外的 FREE 元胞禁止生成人员；
     3. 最外墙之内的 FREE 元胞允许生成人员；
     4. WALL / OBSTACLE / EXIT / SMOKE_SOURCE 等均不能生成人员；
-    5. 不针对任何具体地图写死坐标；
-    6. 适配不同大小、不同形状的地图；
-    7. 同时支持：
+    5. 四周被围死、与任何 EXIT 都不相连的封闭区域禁止生成人员；
+    6. 不针对任何具体地图写死坐标；
+    7. 适配不同大小、不同形状的地图；
+    8. 同时支持：
            - core.grid.Grid
            - 网页传入的 JSON dict
 
@@ -387,8 +388,12 @@ def _build_type_masks(
         free_mask
         wall_mask
         blocked_mask
+        exit_mask
 
     blocked_mask 用于判断外部区域。
+
+    exit_mask 用于判断“四周被围死”的封闭区域：
+    内部 FREE 只有与 EXIT 相连（房间有门）才允许生成人员。
 
     注意：
 
@@ -413,6 +418,11 @@ def _build_type_masks(
     )
 
     blocked_mask = np.zeros(
+        (height, width),
+        dtype=bool
+    )
+
+    exit_mask = np.zeros(
         (height, width),
         dtype=bool
     )
@@ -467,10 +477,16 @@ def _build_type_masks(
                         x
                     ] = True
 
+                    exit_mask[
+                        y,
+                        x
+                    ] = True
+
     return (
         free_mask,
         wall_mask,
-        blocked_mask
+        blocked_mask,
+        exit_mask
     )
 
 
@@ -1196,6 +1212,178 @@ def _select_wall_closing(
 
 
 # ============================================================
+# 删除“四周被围死”的封闭区域
+# ============================================================
+
+def _exclude_sealed_regions(
+    spawn: np.ndarray,
+    exit_mask: np.ndarray
+):
+    """
+    删除“四周被围死”的封闭房间。
+
+    输入：
+
+        spawn
+            内部 FREE 区域（已经排除外部）
+
+        exit_mask
+            EXIT 元胞
+
+    规则：
+
+        把内部 FREE 按 4 邻域分成若干连通分量。
+
+        只有与 EXIT 相邻的分量（房间有门、能到达出口）
+        才允许生成人员。
+
+        完全被墙围死、与任何 EXIT 都不相邻的分量，
+        人员无法进出，因此禁止生成。
+
+    保护：
+
+        如果整张地图没有任何分量与 EXIT 相邻
+        （例如地图根本没画出口），
+        则退回原来的行为，避免把全部内部清空。
+
+    返回：
+
+        (
+            删除封闭区域后的 spawn,
+            被删除的元胞数量
+        )
+    """
+
+    height, width = spawn.shape
+
+    result = spawn.copy()
+
+    visited = np.zeros(
+        (height, width),
+        dtype=bool
+    )
+
+    directions = (
+        (1, 0),
+        (-1, 0),
+        (0, 1),
+        (0, -1)
+    )
+
+    any_component_touches_exit = False
+
+    removed_count = 0
+
+    for y in range(height):
+
+        for x in range(width):
+
+            if not spawn[
+                y,
+                x
+            ]:
+                continue
+
+            if visited[
+                y,
+                x
+            ]:
+                continue
+
+            component = []
+
+            queue = deque()
+
+            queue.append(
+                (x, y)
+            )
+
+            visited[
+                y,
+                x
+            ] = True
+
+            touches_exit = False
+
+            while queue:
+
+                cx, cy = queue.popleft()
+
+                component.append(
+                    (cx, cy)
+                )
+
+                for dx, dy in directions:
+
+                    nx = cx + dx
+                    ny = cy + dy
+
+                    if (
+                        nx < 0
+                        or nx >= width
+                        or ny < 0
+                        or ny >= height
+                    ):
+                        continue
+
+                    if exit_mask[
+                        ny,
+                        nx
+                    ]:
+                        touches_exit = True
+
+                    if (
+                        spawn[
+                            ny,
+                            nx
+                        ]
+                        and
+                        not visited[
+                            ny,
+                            nx
+                        ]
+                    ):
+
+                        visited[
+                            ny,
+                            nx
+                        ] = True
+
+                        queue.append(
+                            (nx, ny)
+                        )
+
+            if touches_exit:
+
+                any_component_touches_exit = True
+
+            else:
+
+                for cx, cy in component:
+
+                    result[
+                        cy,
+                        cx
+                    ] = False
+
+                removed_count += len(
+                    component
+                )
+
+    if not any_component_touches_exit:
+
+        return (
+            spawn.copy(),
+            0
+        )
+
+    return (
+        result,
+        removed_count
+    )
+
+
+# ============================================================
 # 生成 Spawn Mask
 # ============================================================
 
@@ -1251,7 +1439,8 @@ def generate_spawn_mask(
     (
         free_mask,
         wall_mask,
-        blocked_mask
+        blocked_mask,
+        exit_mask
     ) = _build_type_masks(
         map_view
     )
@@ -1268,6 +1457,18 @@ def generate_spawn_mask(
         wall_mask,
         free_mask,
         blocked_mask
+    )
+
+    # ========================================================
+    # 3.5 删除四周被围死的封闭区域
+    # ========================================================
+
+    (
+        spawn_array,
+        sealed_removed
+    ) = _exclude_sealed_regions(
+        spawn_array,
+        exit_mask
     )
 
     # ========================================================
