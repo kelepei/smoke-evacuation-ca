@@ -1075,6 +1075,7 @@ class CWebRuntimeBridge:
             ),
             "web_smoke_semantics": self.web_mode,
             "initial_informed_ratio": self.initial_informed_ratio if self.has_hazard else 0.0,
+            "information_mode": self.information_mode,
             "alarm_broadcast_triggered": self._alarm_seen,
             "guide_state": (
                 "guiding" if self.guide_enabled and self.guides_model.guidance_active
