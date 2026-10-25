@@ -105,6 +105,13 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
         self.assertNotIn("Math.max(0, Math.min(1, rawValue / 10))", self.page)
         self.assertNotIn("B06 publishes a normalized smoke concentration", self.stable)
 
+    def test_large_map_extrema_do_not_spread_full_fields_into_math_functions(self) -> None:
+        for page in (self.stable, self.page, self.editor):
+            self.assertNotIn("Math.max(...values)", page)
+        self.assertNotIn("Math.max(...points.map", self.page)
+        self.assertIn("large map can contain 100k+ cells", self.page)
+        self.assertIn("Avoid spreading 100k+ large-map cells", self.stable)
+
     def test_enhanced_page_exposes_real_information_modes_and_state_colors(self) -> None:
         for marker in (
             'id="informationMode"',

@@ -564,8 +564,13 @@
     if(!layerEnabled("layerOccupancy") || !logLayers) return;
     const field = logLayers.cumulative_occupancy;
     if(!Array.isArray(field)) return;
-    const values = field.flat().map(Number).filter(value => Number.isFinite(value) && value > 0);
-    const maximum = values.length ? Math.max(...values) : 0;
+    // A large map can contain 100k+ cells. Do not spread the entire matrix
+    // into Math.max(), which exceeds the browser call-stack argument limit.
+    let maximum = 0;
+    field.forEach(row => Array.isArray(row) && row.forEach(raw => {
+      const value = Number(raw);
+      if(Number.isFinite(value) && value > maximum) maximum = value;
+    }));
     if(maximum <= 0) return;
     field.forEach((row, y) => Array.isArray(row) && row.forEach((raw, x) => {
       const value = Number(raw);
@@ -830,10 +835,10 @@
     const evacuated = people.filter(p => p.evacuated).length;
     const smoke = snapshot && snapshot.fields && snapshot.fields.smoke_field;
     let maxSmoke = null;
-    if(Array.isArray(smoke)){
-      const values = smoke.flat().map(Number).filter(Number.isFinite);
-      if(values.length) maxSmoke = Math.max(...values);
-    }
+    if(Array.isArray(smoke)) smoke.forEach(row => Array.isArray(row) && row.forEach(raw => {
+      const value = Number(raw);
+      if(Number.isFinite(value) && (maxSmoke === null || value > maxSmoke)) maxSmoke = value;
+    }));
     const occupied = new Map();
     people.filter(p => !p.evacuated).forEach(person => {
       const key = `${person.x},${person.y}`;
@@ -1370,7 +1375,11 @@
     const keys={density:"density_persons_m2",cl:"cl_m_inv",cn:"cn",crowd_danger:"crowd_danger_persons_m3"};
     const points=(academic.records||[]).map(r=>({x:Number(r.analysis_x),y:Number(r.analysis_y),v:Number(r[keys[kind]])})).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.v));
     if(!points.length){setAnalysisFigure("heatmapFigure","","该指标没有有效真实样本；不会生成伪热图。");return;}
-    const minX=Math.min(...points.map(p=>p.x)),minY=Math.min(...points.map(p=>p.y)),maxX=Math.max(...points.map(p=>p.x)),maxY=Math.max(...points.map(p=>p.y)),max=Math.max(...points.map(p=>p.v)),cell=26;
+    // Records may cover every cell of a large map. Compute extrema linearly
+    // instead of using spread arguments, which overflow for 100k+ samples.
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity,max=-Infinity;
+    points.forEach(point=>{minX=Math.min(minX,point.x);minY=Math.min(minY,point.y);maxX=Math.max(maxX,point.x);maxY=Math.max(maxY,point.y);max=Math.max(max,point.v);});
+    const cell=26;
     const cells=points.map(p=>{const q=max>0?p.v/max:0;return `<rect x="${40+(p.x-minX)*cell}" y="${50+(p.y-minY)*cell}" width="${cell}" height="${cell}" fill="hsl(${220-q*200},72%,${92-q*42}%)"/>`;}).join("");
     const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="520" height="360"><rect width="100%" height="100%" fill="#fff"/><text x="40" y="25" font-size="16">${labels[kind][0]}（真实 artifact）</text>${cells}</svg>`;
     setAnalysisFigure("heatmapFigure",svg,"不会生成伪热图。");

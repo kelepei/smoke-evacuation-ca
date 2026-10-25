@@ -345,10 +345,10 @@
     const evacuated = people.filter(p => p.evacuated).length;
     const smoke = snapshot && snapshot.fields && snapshot.fields.smoke_field;
     let maxSmoke = null;
-    if(Array.isArray(smoke)){
-      const values = smoke.flat().map(Number).filter(Number.isFinite);
-      if(values.length) maxSmoke = Math.max(...values);
-    }
+    if(Array.isArray(smoke)) smoke.forEach(row => Array.isArray(row) && row.forEach(raw => {
+      const value = Number(raw);
+      if(Number.isFinite(value) && (maxSmoke === null || value > maxSmoke)) maxSmoke = value;
+    }));
     const occupied = new Map();
     people.filter(p => !p.evacuated).forEach(person => {
       const key = `${person.x},${person.y}`;
