@@ -122,7 +122,7 @@ def _map_alarm_cells(map_path: Path) -> list[dict[str, int]]:
 
 
 def load_map_grid(path: str | Path) -> Any:
-    """Load and validate a JSON, CSV, or PNG map through A's public loader."""
+    """Load and validate a JSON, CSV, or A-supported raster map."""
 
     map_path = Path(path)
     if not map_path.is_file():
@@ -133,7 +133,7 @@ def load_map_grid(path: str | Path) -> Any:
             from map_import.map_loader_grid import load_grid
         elif suffix == ".csv":
             from map_import.csv_loader_grid import load_csv_grid as load_grid
-        elif suffix == ".png":
+        elif suffix in {".png", ".jpg", ".jpeg", ".bmp"}:
             from map_import.binary_to_grid import binary_to_grid
             from map_import.map_loader_image import load_image
 
@@ -141,7 +141,7 @@ def load_map_grid(path: str | Path) -> Any:
             grid = binary_to_grid(image_map.binary)
             return validate_grid(grid)
         else:
-            raise SceneInputError("D map input supports only .json, .csv, and .png")
+            raise SceneInputError("D map input supports JSON, CSV, PNG, JPG, JPEG, and BMP")
         grid = load_grid(str(map_path))
     except SceneInputError:
         raise

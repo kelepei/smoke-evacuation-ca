@@ -40,7 +40,7 @@ def load_grid_via_a(path: str | Path) -> Any:
             from map_import.map_loader_grid import load_grid
         elif suffix == ".csv":
             from map_import.csv_loader_grid import load_csv_grid as load_grid
-        elif suffix == ".png":
+        elif suffix in {".png", ".jpg", ".jpeg", ".bmp"}:
             from map_import.binary_to_grid import binary_to_grid
             from map_import.map_loader_image import load_image
 
@@ -49,7 +49,7 @@ def load_grid_via_a(path: str | Path) -> Any:
             validate_grid_shape(grid)
             return grid
         else:
-            raise DMapAdapterError("supported map formats: .json, .csv, .png")
+            raise DMapAdapterError("supported map formats: .json, .csv, .png, .jpg, .jpeg, .bmp")
         grid = load_grid(str(map_path))
     except (ImportError, AttributeError) as exc:
         raise DMapAdapterError(

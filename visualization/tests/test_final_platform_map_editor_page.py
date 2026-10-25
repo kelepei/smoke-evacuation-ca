@@ -27,6 +27,7 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
         ):
             self.assertIn(marker, self.page)
         self.assertIn("PNG / CSV 保留原导入运行方式", self.page)
+        self.assertIn(".jpg,.jpeg,.bmp", self.page)
 
     def test_ui_polish_keeps_dynamic_controls_stable_and_figures_readable(self) -> None:
         self.assertIn('id="autoPositionBtn" disabled>自动分配人员</button>', self.page)

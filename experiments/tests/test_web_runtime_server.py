@@ -424,6 +424,37 @@ class WebRuntimeServerTests(unittest.TestCase):
             server.server_close()
             worker.join(timeout=5)
 
+    def test_jpeg_preview_accepts_a_supported_image_format(self) -> None:
+        server = DWebRuntimeServer(("127.0.0.1", 0), RuntimeRequestHandler, root=Path.cwd())
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        base_url = f"http://127.0.0.1:{server.server_port}"
+        try:
+            with tempfile.TemporaryDirectory() as raw:
+                image_path = Path(raw) / "教室地图.jpg"
+                image = Image.new("L", (200, 200), color=0)
+                ImageDraw.Draw(image).rectangle((0, 0, 199, 199), outline=255, width=10)
+                image.save(image_path, quality=95)
+                request = Request(
+                    base_url + "/api/map/preview",
+                    data=json.dumps({
+                        "map_file": {
+                            "name": image_path.name,
+                            "base64": base64.b64encode(image_path.read_bytes()).decode("ascii"),
+                        }
+                    }).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                )
+                with urlopen(request, timeout=10) as response:
+                    preview = json.loads(response.read().decode("utf-8"))
+                self.assertEqual((20, 20), (preview["map_meta"]["width"], preview["map_meta"]["height"]))
+                counts = preview["map_meta"]["cell_counts"]
+                self.assertEqual(400, sum(counts.values()))
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join(timeout=5)
+
 
 if __name__ == "__main__":
     unittest.main()

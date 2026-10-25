@@ -46,7 +46,9 @@ from visualization.scene_input_adapter import grid_to_static_snapshot, load_map_
 # A maps are sent through the local browser bridge as JSON. Keep a bounded
 # limit while accepting the supplied 25.7 MB large-map JSON.
 MAX_REQUEST_BYTES = 64 * 1024 * 1024
-ALLOWED_MAP_SUFFIXES = {".json", ".csv", ".png"}
+# A's public image loader accepts these raster formats.  D transports them
+# unchanged to that loader rather than interpreting image content itself.
+ALLOWED_MAP_SUFFIXES = {".json", ".csv", ".png", ".jpg", ".jpeg", ".bmp"}
 ALLOWED_YAML_SUFFIXES = {".yaml", ".yml"}
 STANDARD_TEMPLATE_IDS = ("classroom", "mall", "canteen", "dormitory")
 

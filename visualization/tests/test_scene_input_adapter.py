@@ -7,6 +7,8 @@ import textwrap
 import unittest
 from pathlib import Path
 
+from PIL import Image, ImageDraw
+
 from visualization.scene_input_adapter import (
     SceneInputError,
     grid_to_static_snapshot,
@@ -53,6 +55,17 @@ class SceneInputAdapterTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(SceneInputError, r"6.*5"):
                 load_map_grid(sparse)
+
+    def test_a_raster_loader_accepts_jpeg_bmp_and_unicode_names(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            image = Image.new("L", (40, 30), color=255)
+            ImageDraw.Draw(image).rectangle((1, 1, 38, 28), outline=0, width=3)
+            for suffix in (".jpg", ".bmp"):
+                path = root / f"教室地图{suffix}"
+                image.save(path)
+                grid = load_map_grid(path)
+                self.assertEqual((grid.width, grid.height), (4, 3))
 
     def test_alarm_markers_are_preserved_but_non_free_alarm_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
