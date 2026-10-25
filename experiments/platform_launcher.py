@@ -14,12 +14,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 HEALTH_URL = "http://127.0.0.1:8765/api/health"
 PAGE_URL = "http://127.0.0.1:8765/visualization/prototype/final_platform_map_editor.html"
+# The local health check must not be routed through a system HTTP proxy.
+_LOCAL_HTTP_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def _run_git(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", *args], cwd=ROOT, text=True, capture_output=True, check=False
-    )
+    try:
+        return subprocess.run(
+            ["git", *args], cwd=ROOT, text=True, capture_output=True,
+            check=False, timeout=8,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return subprocess.CompletedProcess(
+            ["git", *args], 124, "", f"git command timed out after 8s: {exc}"
+        )
 
 
 def _git_output(result: subprocess.CompletedProcess[str]) -> str:
@@ -58,7 +66,7 @@ def check_and_update_repository() -> None:
 
 def health_available() -> bool:
     try:
-        with urllib.request.urlopen(HEALTH_URL, timeout=0.8) as response:
+        with _LOCAL_HTTP_OPENER.open(HEALTH_URL, timeout=0.8) as response:
             return response.status == 200
     except (urllib.error.URLError, TimeoutError, OSError):
         return False
