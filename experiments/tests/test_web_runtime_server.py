@@ -18,10 +18,18 @@ from experiments.web_runtime_server import (
     DWebRuntimeServer,
     RuntimeRequestHandler,
     _control_runtime_config,
+    _optional_physical_cell_size,
 )
 
 
 class WebRuntimeServerTests(unittest.TestCase):
+    def test_optional_physical_cell_size_is_explicit_and_validated(self) -> None:
+        self.assertIsNone(_optional_physical_cell_size(None))
+        self.assertIsNone(_optional_physical_cell_size(""))
+        self.assertEqual(0.5, _optional_physical_cell_size(0.5))
+        with self.assertRaisesRegex(Exception, "greater than 0"):
+            _optional_physical_cell_size(0)
+
     def test_enhanced_web_runtime_enables_documented_source_smoke_semantics(self) -> None:
         self.assertTrue(_control_runtime_config({})["web_mode"])
 
@@ -104,12 +112,23 @@ class WebRuntimeServerTests(unittest.TestCase):
                         "max_steps": 8,
                         "random_seed": 17,
                         "time_step_s": 0.25,
+                        "physical_cell_size_m": 0.5,
                     },
                 )
                 initial = initial_response["snapshot"]
                 self.assertEqual(
-                    {"random_seed": 17, "time_step_s": 0.25, "max_steps": 8},
+                    {
+                        "random_seed": 17,
+                        "time_step_s": 0.25,
+                        "max_steps": 8,
+                        "physical_cell_size_m": 0.5,
+                        "physical_scale_kind": "assumption_demo",
+                    },
                     initial_response["runtime_parameters"],
+                )
+                self.assertEqual(
+                    0.5,
+                    initial["analysis_contract"]["physical_scale"]["value"],
                 )
                 self.assertEqual(17, initial["random_seed"])
                 self.assertEqual(0.25, initial["time_step"])
