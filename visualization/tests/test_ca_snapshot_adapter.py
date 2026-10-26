@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from core.schema import Relation
+from core.schema import CellType, Relation
 from experiments.b_runtime_adapter import EvacEngineRuntimeAdapter
 from scenarios.mock_data import build_base_scene
 from simulation.evac_simulation import EvacEngine
@@ -89,6 +89,17 @@ class CaSnapshotAdapterTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(SnapshotAdapterError, "dense row-major order"):
             self.adapter.capture(self.simulation)
+
+    def test_new_adapter_rebuilds_static_grid_for_a_new_runtime_map(self) -> None:
+        first = self.adapter.capture(self.simulation)
+        self.assertEqual("wall", first["grid"]["cell_type"][0][0])
+
+        # A map import starts a new D runtime and therefore a new adapter.
+        # Its cache must be instance-local rather than a cross-map global.
+        self.simulation.grid.cells[0].cell_type = CellType.FREE
+        reimported_adapter = CaSnapshotAdapter(run_id="reimported", time_step_s=0.5)
+        second = reimported_adapter.capture(self.simulation)
+        self.assertEqual("free", second["grid"]["cell_type"][0][0])
 
     def test_accepts_zero_based_person_id_and_rejects_negative_id(self) -> None:
         person = self.simulation.persons.pop(1)
