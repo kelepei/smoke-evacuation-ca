@@ -154,6 +154,11 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
         self.assertIn("extra.diagnostics.payload_bytes", self.page)
         self.assertIn("data.diagnostics.analysis_compute_ms", self.page)
 
+    def test_enhanced_page_records_synchronous_render_timing_without_promising_a_long_step(self) -> None:
+        self.assertIn("appendFrontendRenderTiming", self.page)
+        self.assertIn("前端同步绘制", self.page)
+        self.assertNotIn("烟雾模型可能需要十几秒", self.page)
+
 
 if __name__ == "__main__":
     unittest.main()

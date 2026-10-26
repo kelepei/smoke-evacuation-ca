@@ -1115,6 +1115,13 @@
     return observed;
   }
 
+  function appendFrontendRenderTiming(renderMs){
+    if(!Number.isFinite(renderMs)) return;
+    const latency = $("stepLatency");
+    const previousTitle = latency.title || "";
+    latency.title = `${previousTitle}${previousTitle ? "；" : ""}前端同步绘制: ${renderMs.toFixed(1)} ms`;
+  }
+
   function finiteMean(values){
     const numeric = values
       .filter(value => value !== null && value !== undefined && value !== "")
@@ -1804,11 +1811,13 @@
     pending = true;
     setRunControlsBusy(true);
     $("stepLatency").textContent = "计算中";
-    setStatus(`B 正在计算 step ${Number(snapshot && snapshot.step || 0) + 1}。\n最新版烟雾模型可能需要十几秒，请勿重置或重复点击。`, "计算中");
+    setStatus(`B 正在计算 step ${Number(snapshot && snapshot.step || 0) + 1}。\n请勿重复点击，完成后会恢复操作控件。`, "计算中");
     try{
       const result = await api("/api/session/step", {});
       sessionFinished = Boolean(result.finished);
+      const renderStarted = performance.now();
       const observed = applySnapshot(result.snapshot, {output_dir:result.output_dir, diagnostics:result.diagnostics});
+      appendFrontendRenderTiming(performance.now() - renderStarted);
       refreshCoreMetrics().catch(error => log(`本步指标未刷新：${error.message}`));
       if(layerEnabled("layerOccupancy") || layerEnabled("layerTrajectories")){
         refreshLogLayers().catch(error => log(`日志图层未刷新：${error.message}`));
