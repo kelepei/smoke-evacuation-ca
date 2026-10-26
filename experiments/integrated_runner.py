@@ -328,6 +328,11 @@ def build_integrated_scenario(
         },
     }
 
+    movement_settings = (c_runtime_config or {}).get("movement")
+    if isinstance(movement_settings, Mapping):
+        # MovementConfig.from_scene consumes this B-owned schema.
+        runtime_config.parameters["movement"] = dict(movement_settings)
+
     return IntegratedScenario(
         config=runtime_config,
         map_path=Path(map_path),
