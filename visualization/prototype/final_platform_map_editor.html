@@ -128,6 +128,9 @@
     <label>initial_informed_ratio（网页由烟源邻近感知替代） <input id="initialInformedRatio" type="number" min="0" max="1" step="0.01" value="0.0"></label>
     <label>物理元胞尺寸（m/格，假设尺度／演示用途，可留空） <input id="physicalCellSizeM" type="number" min="0.0001" step="0.01" placeholder="留空则保持 NA"></label>
     <div class="hint">仅用于本次学术热力图分析；不会覆盖地图原有 cell_size。没有真实标定依据时请明确视为演示假设。</div>
+    <div class="row"><label>分析网格尺寸（m，学术参数，可留空）<input id="analysisMeshSizeM" type="number" min="0.0001" step="0.1" placeholder="需显式配置"></label><label>采样时间窗（s，可留空）<input id="samplingWindowS" type="number" min="0.0001" step="0.1" placeholder="需显式配置"></label></div>
+    <label>ROI 半径（m，学术参数，可留空）<input id="roiRadiusM" type="number" min="0.0001" step="0.1" placeholder="需显式配置"></label>
+    <div class="hint">三项参数只定义 academic 分析的统计网格、时间窗和 ROI，不等同于地图元胞尺寸；留空时保持准确的不可用/NA 状态。</div>
     <label>信息传播情形
       <select id="informationMode">
         <option value="broadcast">全员报警广播</option>
@@ -1589,11 +1592,20 @@
     const maxSteps = Number($("maxSteps").value);
     const physicalRaw = $("physicalCellSizeM").value.trim();
     const physicalCellSizeM = physicalRaw === "" ? null : Number(physicalRaw);
+    const meshRaw = $("analysisMeshSizeM").value.trim();
+    const samplingRaw = $("samplingWindowS").value.trim();
+    const roiRaw = $("roiRadiusM").value.trim();
+    const analysisMeshSizeM = meshRaw === "" ? null : Number(meshRaw);
+    const samplingWindowS = samplingRaw === "" ? null : Number(samplingRaw);
+    const roiRadiusM = roiRaw === "" ? null : Number(roiRaw);
     if(seedRaw !== "" && !Number.isInteger(randomSeed)) throw new Error("random_seed 必须是整数或留空");
     if(!Number.isFinite(timeStep) || timeStep <= 0 || timeStep > 60) throw new Error("time_step 必须在 0 到 60 秒之间");
     if(!Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 5000) throw new Error("最大步数必须是 1 到 5000 的整数");
     if(physicalRaw !== "" && (!Number.isFinite(physicalCellSizeM) || physicalCellSizeM <= 0)) throw new Error("物理元胞尺寸必须是大于 0 的数值，或留空");
-    return {random_seed:randomSeed, time_step_s:timeStep, max_steps:maxSteps, physical_cell_size_m:physicalCellSizeM, ...informationModePayload(), ...controlConfigPayload()};
+    if(meshRaw !== "" && (!Number.isFinite(analysisMeshSizeM) || analysisMeshSizeM <= 0)) throw new Error("分析网格尺寸必须是大于 0 的数值，或留空");
+    if(samplingRaw !== "" && (!Number.isFinite(samplingWindowS) || samplingWindowS <= 0)) throw new Error("采样时间窗必须是大于 0 的数值，或留空");
+    if(roiRaw !== "" && (!Number.isFinite(roiRadiusM) || roiRadiusM <= 0)) throw new Error("ROI 半径必须是大于 0 的数值，或留空");
+    return {random_seed:randomSeed, time_step_s:timeStep, max_steps:maxSteps, physical_cell_size_m:physicalCellSizeM, analysis_mesh_size_m:analysisMeshSizeM, sampling_window_s:samplingWindowS, roi_radius_m:roiRadiusM, ...informationModePayload(), ...controlConfigPayload()};
   }
 
   function informationModePayload(){

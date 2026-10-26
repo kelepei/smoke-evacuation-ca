@@ -133,6 +133,12 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
         self.assertIn("假设尺度／演示用途", self.page)
         self.assertIn("physical_cell_size_m:physicalCellSizeM", self.page)
         self.assertIn("不会覆盖地图原有 cell_size", self.page)
+        for marker in ('id="analysisMeshSizeM"', 'id="samplingWindowS"', 'id="roiRadiusM"'):
+            self.assertIn(marker, self.page)
+        self.assertIn("analysis_mesh_size_m:analysisMeshSizeM", self.page)
+        self.assertIn("sampling_window_s:samplingWindowS", self.page)
+        self.assertIn("roi_radius_m:roiRadiusM", self.page)
+        self.assertIn("不等同于地图元胞尺寸", self.page)
 
     def test_academic_heatmaps_fit_real_analysis_extent_inside_svg_viewport(self) -> None:
         for label in ("累计占用", "Density", "CL", "CN", "Crowd Danger"):

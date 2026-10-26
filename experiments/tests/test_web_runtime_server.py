@@ -113,6 +113,9 @@ class WebRuntimeServerTests(unittest.TestCase):
                         "random_seed": 17,
                         "time_step_s": 0.25,
                         "physical_cell_size_m": 0.5,
+                        "analysis_mesh_size_m": 2.0,
+                        "sampling_window_s": 2.5,
+                        "roi_radius_m": 4.0,
                     },
                 )
                 initial = initial_response["snapshot"]
@@ -130,6 +133,12 @@ class WebRuntimeServerTests(unittest.TestCase):
                     0.5,
                     initial["analysis_contract"]["physical_scale"]["value"],
                 )
+                self.assertEqual(
+                    2.0,
+                    initial["analysis_contract"]["congestion_level"]["analysis_mesh_size_m"]["value"],
+                )
+                self.assertEqual(2.5, initial["analysis_contract"]["sampling_window_s"]["value"])
+                self.assertEqual(4.0, initial["analysis_contract"]["congestion_level"]["roi"]["radius_m"]["value"])
                 self.assertEqual(17, initial["random_seed"])
                 self.assertEqual(0.25, initial["time_step"])
                 self.assertEqual(2, len(initial["people"]))
@@ -154,6 +163,12 @@ class WebRuntimeServerTests(unittest.TestCase):
                 self.assertIn("evacuation_curve_svg", analysis)
                 self.assertIn("occupancy_heatmap_svg", analysis)
                 self.assertIn("累计占用热力图", analysis["occupancy_heatmap_svg"])
+                academic = analysis["academic_crowd_fields"]
+                self.assertEqual("available", academic["status"])
+                self.assertIn("density_persons_m2", academic["records"][0])
+                self.assertIn("cl_m_inv", academic["records"][0])
+                self.assertIn("cn", academic["records"][0])
+                self.assertIn("crowd_danger_persons_m3", academic["records"][0])
                 self.assertEqual("NA", analysis["week6_metrics"]["total_evacuation_time_s"])
                 self.assertEqual("NA", analysis["week6_metrics"]["exit_distribution"])
                 with urlopen(base_url + "/api/experiments", timeout=10) as response:

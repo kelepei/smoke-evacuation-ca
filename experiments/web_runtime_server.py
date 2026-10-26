@@ -244,6 +244,17 @@ def _optional_physical_cell_size(value: Any) -> float | None:
     return normalized
 
 
+def _optional_positive_analysis_value(value: Any, field: str) -> float | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise WebRuntimeError(f"{field} must be numeric or empty")
+    normalized = float(value)
+    if not math.isfinite(normalized) or normalized <= 0:
+        raise WebRuntimeError(f"{field} must be greater than 0")
+    return normalized
+
+
 class RuntimeRequestHandler(SimpleHTTPRequestHandler):
     """Serve the D HTML and a minimal JSON API from one localhost origin."""
 
@@ -389,6 +400,9 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 random_seed=_optional_seed(payload.get("random_seed")),
                 time_step_s=_positive_time_step(payload.get("time_step_s")),
                 physical_cell_size_m=_optional_physical_cell_size(payload.get("physical_cell_size_m")),
+                sampling_window_s=_optional_positive_analysis_value(payload.get("sampling_window_s"), "sampling_window_s"),
+                analysis_mesh_size_m=_optional_positive_analysis_value(payload.get("analysis_mesh_size_m"), "analysis_mesh_size_m"),
+                roi_radius_m=_optional_positive_analysis_value(payload.get("roi_radius_m"), "roi_radius_m"),
                 c_runtime_config=control_config,
             )
         except Exception:
@@ -431,6 +445,9 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 random_seed=canonical["random_seed"],
                 time_step_s=_positive_time_step(payload.get("time_step_s")),
                 physical_cell_size_m=_optional_physical_cell_size(payload.get("physical_cell_size_m")),
+                sampling_window_s=_optional_positive_analysis_value(payload.get("sampling_window_s"), "sampling_window_s"),
+                analysis_mesh_size_m=_optional_positive_analysis_value(payload.get("analysis_mesh_size_m"), "analysis_mesh_size_m"),
+                roi_radius_m=_optional_positive_analysis_value(payload.get("roi_radius_m"), "roi_radius_m"),
                 c_runtime_config=runtime_config,
             )
             result["initialization"] = {
@@ -485,6 +502,9 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 random_seed=random_seed,
                 time_step_s=_positive_time_step(payload.get("time_step_s")),
                 physical_cell_size_m=_optional_physical_cell_size(payload.get("physical_cell_size_m")),
+                sampling_window_s=_optional_positive_analysis_value(payload.get("sampling_window_s"), "sampling_window_s"),
+                analysis_mesh_size_m=_optional_positive_analysis_value(payload.get("analysis_mesh_size_m"), "analysis_mesh_size_m"),
+                roi_radius_m=_optional_positive_analysis_value(payload.get("roi_radius_m"), "roi_radius_m"),
                 c_runtime_config=control_config,
             )
             result["auto_positioning"] = allocation
@@ -599,6 +619,9 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 random_seed=_optional_seed(payload.get("random_seed")),
                 time_step_s=_positive_time_step(payload.get("time_step_s")),
                 physical_cell_size_m=_optional_physical_cell_size(payload.get("physical_cell_size_m")),
+                sampling_window_s=_optional_positive_analysis_value(payload.get("sampling_window_s"), "sampling_window_s"),
+                analysis_mesh_size_m=_optional_positive_analysis_value(payload.get("analysis_mesh_size_m"), "analysis_mesh_size_m"),
+                roi_radius_m=_optional_positive_analysis_value(payload.get("roi_radius_m"), "roi_radius_m"),
                 c_runtime_config=_control_runtime_config(payload),
             )
         except Exception:
@@ -629,6 +652,9 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                     random_seed=_optional_seed(payload.get("random_seed")),
                     time_step_s=_positive_time_step(payload.get("time_step_s")),
                     physical_cell_size_m=_optional_physical_cell_size(payload.get("physical_cell_size_m")),
+                    sampling_window_s=_optional_positive_analysis_value(payload.get("sampling_window_s"), "sampling_window_s"),
+                    analysis_mesh_size_m=_optional_positive_analysis_value(payload.get("analysis_mesh_size_m"), "analysis_mesh_size_m"),
+                    roi_radius_m=_optional_positive_analysis_value(payload.get("roi_radius_m"), "roi_radius_m"),
                     c_runtime_config=_control_runtime_config(payload),
                 )
             except Exception as exc:
@@ -656,6 +682,9 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         random_seed: int | None = None,
         time_step_s: float = 0.5,
         physical_cell_size_m: float | None = None,
+        sampling_window_s: float | None = None,
+        analysis_mesh_size_m: float | None = None,
+        roi_radius_m: float | None = None,
         c_runtime_config: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         run_id = _new_run_id()
@@ -672,6 +701,9 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             time_step_s=time_step_s,
             max_steps=max_steps,
             physical_cell_size_m=physical_cell_size_m,
+            sampling_window_s=sampling_window_s,
+            analysis_mesh_size_m=analysis_mesh_size_m,
+            roi_radius_m=roi_radius_m,
             c_runtime_config=c_runtime_config,
         )
         try:
