@@ -228,6 +228,10 @@ class CaSnapshotAdapter:
         self.time_step_s = float(time_step_s)
         self.schema_version = schema_version
         self.random_seed = random_seed
+        # A/B's dense grid topology is immutable for the lifetime of one
+        # runner.  Keeping its already-validated browser representation avoids
+        # rebuilding 100k+ static cell types on every D snapshot.
+        self._static_grid: dict[str, Any] | None = None
 
     def capture(self, simulation: Any) -> dict[str, Any]:
         """Capture one immutable-by-convention D snapshot.
@@ -251,18 +255,39 @@ class CaSnapshotAdapter:
                 f"grid.cells must contain exactly {width * height} cells"
             )
 
-        cell_type: list[list[Any]] = []
-        for y in range(height):
-            row: list[Any] = []
-            for x in range(width):
-                cell = cells[y * width + x]
-                if int(getattr(cell, "x")) != x or int(getattr(cell, "y")) != y:
-                    raise SnapshotAdapterError(
-                        "grid.cells must use dense row-major order: "
-                        "grid.cells[y * width + x]"
-                    )
-                row.append(_enum_storage_value(getattr(cell, "cell_type")))
-            cell_type.append(row)
+        if self._static_grid is None:
+            cell_type: list[list[Any]] = []
+            for y in range(height):
+                row: list[Any] = []
+                for x in range(width):
+                    cell = cells[y * width + x]
+                    if int(getattr(cell, "x")) != x or int(getattr(cell, "y")) != y:
+                        raise SnapshotAdapterError(
+                            "grid.cells must use dense row-major order: "
+                            "grid.cells[y * width + x]"
+                        )
+                    row.append(_enum_storage_value(getattr(cell, "cell_type")))
+                cell_type.append(row)
+
+            raw_cell_size = _optional_attr(grid, "cell_size")
+            if raw_cell_size is None or float(raw_cell_size) <= 0:
+                raise SnapshotAdapterError("grid.cell_size must be greater than zero")
+            raw_alarm_cells = _optional_attr(grid, "d_alarm_cells") or []
+            if not isinstance(raw_alarm_cells, list):
+                raise SnapshotAdapterError("D map alarm markers must be a list")
+            alarm_cells: list[dict[str, int]] = []
+            for marker in raw_alarm_cells:
+                x, y = _optional_attr(marker, "x"), _optional_attr(marker, "y")
+                if not isinstance(x, Integral) or not isinstance(y, Integral) or not (0 <= x < width and 0 <= y < height):
+                    raise SnapshotAdapterError("D map alarm marker is outside the grid")
+                alarm_cells.append({"x": int(x), "y": int(y)})
+            self._static_grid = {
+                "width": width,
+                "height": height,
+                "cell_size": float(raw_cell_size),
+                "cell_type": cell_type,
+                "alarm_cells": alarm_cells,
+            }
 
         step = int(getattr(simulation, "current_step", 0))
         if step < 0:
@@ -472,19 +497,6 @@ class CaSnapshotAdapter:
                 )
             relations.append(normalized_relation)
 
-        raw_cell_size = _optional_attr(grid, "cell_size")
-        if raw_cell_size is None or float(raw_cell_size) <= 0:
-            raise SnapshotAdapterError("grid.cell_size must be greater than zero")
-        raw_alarm_cells = _optional_attr(grid, "d_alarm_cells") or []
-        if not isinstance(raw_alarm_cells, list):
-            raise SnapshotAdapterError("D map alarm markers must be a list")
-        alarm_cells: list[dict[str, int]] = []
-        for marker in raw_alarm_cells:
-            x, y = _optional_attr(marker, "x"), _optional_attr(marker, "y")
-            if not isinstance(x, Integral) or not isinstance(y, Integral) or not (0 <= x < width and 0 <= y < height):
-                raise SnapshotAdapterError("D map alarm marker is outside the grid")
-            alarm_cells.append({"x": int(x), "y": int(y)})
-
         adapter_meta = {
             "simulation_module": simulation.__class__.__module__,
             "grid_layout_assumption": (
@@ -514,7 +526,7 @@ class CaSnapshotAdapter:
         if isinstance(extra_meta, Mapping):
             adapter_meta.update(dict(extra_meta))
 
-        payload = _json_compatible({
+        payload = {
             "schema_version": self.schema_version,
             "run_id": self.run_id,
             "scenario_id": scenario_id,
@@ -523,14 +535,8 @@ class CaSnapshotAdapter:
             "time_step": self.time_step_s,
             "time_s": step * self.time_step_s,
             "analysis_contract": analysis_contract,
-            "grid": {
-                "width": width,
-                "height": height,
-                "cell_size": float(raw_cell_size),
-                "cell_type": cell_type,
-                "alarm_cells": alarm_cells,
-            },
-            "alarm_cells": alarm_cells,
+            "grid": self._static_grid,
+            "alarm_cells": self._static_grid["alarm_cells"],
             "people": people,
             "exits": exits,
             "exit_entities": list(_optional_attr(simulation, "exit_entities") or []),
@@ -554,7 +560,7 @@ class CaSnapshotAdapter:
             "events": [],
             "strategy_state": {},
             "adapter_meta": adapter_meta,
-        })
+        }
         # Guidance is generated from this exact normalized snapshot.  It is a
         # read-only D-side annotation, never an input to B's movement layer.
         from experiments.guidance_interface import GuidanceError, generate_guidance, unavailable_guidance
@@ -563,4 +569,13 @@ class CaSnapshotAdapter:
             payload["guidance"] = generate_guidance(payload)
         except GuidanceError as exc:
             payload["guidance"] = unavailable_guidance(payload, str(exc))
-        return _json_compatible(payload)
+        # ``smoke_field`` has already been checked and normalized to Python
+        # floats by ``_matrix_to_lists``.  The static grid is likewise
+        # validated on first capture.  Avoid a second full recursive walk of
+        # both 100k+ cell matrices for every subsequent frame.
+        static_grid = payload.pop("grid")
+        smoke_field = payload["fields"].pop("smoke_field")
+        normalized = _json_compatible(payload)
+        normalized["grid"] = static_grid
+        normalized["fields"]["smoke_field"] = smoke_field
+        return normalized

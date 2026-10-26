@@ -225,6 +225,17 @@ class CWebRuntimeBridge:
         smoke = getattr(self.engine, "smoke_matrix", None)
         if smoke is None:
             return 0.0
+        # B publishes a NumPy matrix.  Its vectorized maximum preserves the
+        # previous non-negative finite result without repeatedly walking every
+        # cell in Python on large maps; keep the iterable fallback for older
+        # compatible runtimes.
+        matrix_max = getattr(smoke, "max", None)
+        if callable(matrix_max):
+            try:
+                value = float(matrix_max())
+                return value if math.isfinite(value) and value > 0.0 else 0.0
+            except (TypeError, ValueError):
+                pass
         peak = 0.0
         try:
             for row in smoke:
