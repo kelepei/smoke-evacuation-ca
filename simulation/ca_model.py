@@ -45,6 +45,36 @@ def _target_exit_id(person, exit_chooser) -> str | None:
     return None
 
 
+def _adjacent_exit_step(px, py, grid, cell_index, occupied_positions, smoke_matrix):
+    """返回一个相邻且未被占用的 EXIT 格；没有则返回 None。
+
+    只要走到任意一个出口就算撤离，不要求它等于 target_exit。
+    该检查放在普通效用选择之前，避免"到了非目标出口却不出去"。
+    优先选烟雾更低的出口，其次选正交方向，最后按坐标稳定排序。
+    """
+    best = None
+    for dx, dy in DIRS:
+        tx, ty = px + dx, py + dy
+        if not (0 <= tx < grid.width and 0 <= ty < grid.height):
+            continue
+        if (tx, ty) in occupied_positions:
+            continue
+        cell = cell_index.get((tx, ty))
+        if cell is None or _cell_type_value(cell) != "exit":
+            continue
+        smoke = 0.0
+        if (smoke_matrix is not None
+                and 0 <= ty < len(smoke_matrix)
+                and 0 <= tx < len(smoke_matrix[0])):
+            smoke = float(smoke_matrix[ty][tx])
+        key = (smoke, abs(dx) + abs(dy), ty, tx)
+        if best is None or key < best[0]:
+            best = (key, tx, ty)
+    if best is None:
+        return None
+    return best[1], best[2]
+
+
 def _extend_path(px, py, dx, dy, steps, grid, cell_index, occupied_positions,
                  smoke_matrix, max_x, max_y):
     """沿 (dx,dy) 方向最多走 steps 格，遇墙/占用/高浓度烟雾就停。"""
@@ -119,6 +149,13 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
         if forced:
             target_exit = str(forced)
             person.target_exit_id = target_exit
+
+    # 任意相邻 EXIT 都优先撤离：避免路过非目标出口、或被烟雾/跟随拉走
+    exit_step = _adjacent_exit_step(
+        px, py, grid, cell_index, occupied_positions, smoke_matrix
+    )
+    if exit_step is not None:
+        return exit_step
 
     # 拥堵等待：危险感知高的人会"硬挤"，不再因为拥堵原地等
     danger_pressure = float(getattr(person, "danger_pressure", 0.0) or 0.0)

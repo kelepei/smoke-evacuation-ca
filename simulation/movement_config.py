@@ -141,10 +141,12 @@ class ExitChoiceConfig:
     capacity_mode: str = "half_disc"  # half_disc=半圆区域；rect=R×2R 矩形
     capacity_scale: float = 1.0  # 容量折算系数
     distance_mode: str = "bfs"   # bfs=可绕墙的静态场；euclidean=原文欧氏距离
-    # 原文每个时间步都比较一次；这里保留步长配置
-    reevaluate_interval: int = 1
-    # 原文没有冷却；0 表示不限制
-    switch_cooldown: int = 0
+    # 原文每个时间步都比较一次；项目默认每 3 步重算，减少出口抖动
+    reevaluate_interval: int = 3
+    # 原文没有冷却；项目默认 5 步冷却，减少来回切换
+    switch_cooldown: int = 5
+    # 距当前目标出口 commit_radius_cells 格以内不再换出口（防到门口又掉头）
+    commit_radius_cells: float = 3.0
     # ---- 项目扩展（默认不改变原文行为） ----
     smoke_weight: float = 0.15   # 出口区域烟雾权重；0=完全按原文（原文无烟雾）
     smoke_ref: float = 1.0

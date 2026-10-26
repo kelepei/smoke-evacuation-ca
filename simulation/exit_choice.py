@@ -182,6 +182,12 @@ class ExitChooser:
             self._prev_best[pid] = best_prob
             cooldown = int(self.cfg.switch_cooldown)
             can_switch = cooldown <= 0 or (step - self._last_switch.get(pid, -10**9)) >= cooldown
+            # 距当前目标出口足够近时锁定出口，避免"到门口又掉头跟别人跑"
+            commit_radius = max(0.0, float(getattr(self.cfg, "commit_radius_cells", 0.0)))
+            if can_switch and commit_radius > 0.0 and current is not None:
+                current_distance = self._distance(str(current), int(person.x), int(person.y))
+                if math.isfinite(current_distance) and current_distance <= commit_radius:
+                    can_switch = False
             if can_switch and best_exit != current and delta >= float(self.cfg.sigma):
                 danger = min(1.0, max(0.0, float(getattr(person, "danger_pressure", 0.0) or 0.0)))
                 # 原文：以 Pm 概率保持原出口，以 1-Pm 概率换出口
