@@ -1379,9 +1379,12 @@
     // instead of using spread arguments, which overflow for 100k+ samples.
     let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity,max=-Infinity;
     points.forEach(point=>{minX=Math.min(minX,point.x);minY=Math.min(minY,point.y);maxX=Math.max(maxX,point.x);maxY=Math.max(maxY,point.y);max=Math.max(max,point.v);});
-    const cell=26;
-    const cells=points.map(p=>{const q=max>0?p.v/max:0;return `<rect x="${40+(p.x-minX)*cell}" y="${50+(p.y-minY)*cell}" width="${cell}" height="${cell}" fill="hsl(${220-q*200},72%,${92-q*42}%)"/>`;}).join("");
-    const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="520" height="360"><rect width="100%" height="100%" fill="#fff"/><text x="40" y="25" font-size="16">${labels[kind][0]}（真实 artifact）</text>${cells}</svg>`;
+    const plotWidth=476, plotHeight=292, plotX=22, plotY=48;
+    const columns=Math.max(1,maxX-minX+1), rows=Math.max(1,maxY-minY+1);
+    const cell=Math.max(2,Math.min(plotWidth/columns,plotHeight/rows));
+    const offsetX=plotX+(plotWidth-columns*cell)/2, offsetY=plotY+(plotHeight-rows*cell)/2;
+    const cells=points.map(p=>{const q=max>0?p.v/max:0;return `<rect x="${offsetX+(p.x-minX)*cell}" y="${offsetY+(p.y-minY)*cell}" width="${cell}" height="${cell}" fill="hsl(${220-q*200},72%,${92-q*42}%)"/>`;}).join("");
+    const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="520" height="360" viewBox="0 0 520 360" preserveAspectRatio="xMidYMid meet"><rect width="100%" height="100%" fill="#fff"/><text x="22" y="25" font-size="16">${labels[kind][0]}（真实 artifact）</text>${cells}</svg>`;
     setAnalysisFigure("heatmapFigure",svg,"不会生成伪热图。");
   }
 

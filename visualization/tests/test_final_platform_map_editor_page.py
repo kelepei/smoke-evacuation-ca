@@ -128,6 +128,14 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
             self.assertIn(marker, self.page)
         self.assertNotIn('id="informationMode"', self.stable)
 
+    def test_academic_heatmaps_fit_real_analysis_extent_inside_svg_viewport(self) -> None:
+        for label in ("累计占用", "Density", "CL", "CN", "Crowd Danger"):
+            self.assertIn(label, self.page)
+        self.assertIn("viewBox=\"0 0 520 360\"", self.page)
+        self.assertIn("preserveAspectRatio=\"xMidYMid meet\"", self.page)
+        self.assertIn("const columns=Math.max(1,maxX-minX+1), rows=Math.max(1,maxY-minY+1)", self.page)
+        self.assertIn("const cell=Math.max(2,Math.min(plotWidth/columns,plotHeight/rows))", self.page)
+
 
 if __name__ == "__main__":
     unittest.main()
