@@ -3,6 +3,7 @@ import argparse
 import json
 import math
 import random
+import shutil
 import sys
 import time
 
@@ -97,6 +98,37 @@ def _nearest_free_cell(grid, x, y):
                 if 0 <= nx < width and 0 <= ny < height and is_free(nx, ny):
                     return nx, ny
     return cx, cy
+
+
+def _load_optional_grid(path):
+    """Load an optional FDS slice used by the paper-based fire hazard field.
+
+    Accepted formats: ``.npy`` or comma-separated ``.csv``/``.txt``.  The
+    array must be shaped ``(grid_height, grid_width)`` or time-series
+    ``(T, grid_height, grid_width)``.  When these files are not supplied,
+    the control layer uses the platform smoke proxy instead;
+    it never fabricates temperature/CO values.
+    """
+    if not path:
+        return None
+    from pathlib import Path
+    p = Path(str(path))
+    if p.suffix.lower() == ".npy":
+        arr = np.load(p)
+    else:
+        arr = np.loadtxt(p, delimiter=",")
+    return np.asarray(arr, dtype=float)
+
+
+def _grid_frame(arr, frame: int):
+    """Return a 2-D slice from a static (H,W) or time-series (T,H,W) array."""
+    if arr is None:
+        return None
+    if arr.ndim == 2:
+        return arr
+    if arr.ndim == 3:
+        return arr[min(max(0, int(frame)), arr.shape[0] - 1)]
+    raise ValueError(f"grid array must be 2-D or 3-D, got shape {arr.shape}")
 
 
 def _deploy_point(grid, exits, exit_id, step=2):
@@ -361,16 +393,38 @@ def main(options=None):
 
     # C10 管控策略选项
     strategy_keys = [s.strip().lower() for s in str(options.get("strategy", "none")).split(",") if s.strip()]
-    if "all" in strategy_keys:
-        strategy_keys = [s.value for s in ControlStrategyType]
     if "none" in strategy_keys:
         strategy_keys = []
+    integrated_aliases = {"integrated", "integrated_control", "fire_aware", "fire_aware_adaptive", "comprehensive", "all"}
+    if any(k in integrated_aliases for k in strategy_keys):
+        # One user-facing strategy: all four controls are orchestrated inside it.
+        strategy_keys = ["fire_aware"]
+    vision_aliases = {"vision_astar", "vision_mapped_astar", "monitoring_astar", "mitm_astar", "monitor_astar"}
+    if any(k in vision_aliases for k in strategy_keys):
+        strategy_keys = ["vision_astar"]
+    dual_aliases = {"dual_objective_aco", "dual_objective", "dual", "time_risk", "time_risk_aco"}
+    if any(k in dual_aliases for k in strategy_keys):
+        strategy_keys = ["dual_objective_aco"]
     closed_exits_opt = str(options.get("closed_exits") or "").strip()
     strategy_trigger = int(options.get("strategy_trigger_step", 10))
     lockdown_area_opt = str(options.get("lockdown_area") or "").strip()
     route_shift_ratio = float(options.get("route_shift_ratio", 0.2))
+    route_mode = str(options.get("route_mode", "load_balance")).strip().lower()
+    fire_control_config = {
+        "density_threshold": float(options.get("density_threshold", 0.375)),
+        "pheromone_radius_m": float(options.get("pheromone_radius_m", 3.2)),
+        "replan_interval_s": float(options.get("replan_interval_s", 200.0)),
+        "avoid_probability": float(options.get("avoid_probability", 0.5)),
+        "avoid_threshold": float(options.get("avoid_threshold", 0.6)),
+        "smoke_proxy_weight": float(options.get("smoke_proxy_weight", 3.0)),
+        "zone_bias_m": float(options.get("zone_bias_m", 4.0)),
+    }
 
     print("===== C 行为实验开关 =====")
+    if any(k in ("fire_aware", "fire_aware_adaptive") for k in strategy_keys) or route_mode == "fire_aware":
+        print("  C10 火灾感知参数：密度分水岭={density_threshold:.3f} 人/m2，".format(**fire_control_config) +
+              "信息素半径={pheromone_radius_m:.1f} m，重规划间隔={replan_interval_s:.0f} s，".format(**fire_control_config) +
+              "避让概率={avoid_probability:.2f}，避让阈值={avoid_threshold:.2f}".format(**fire_control_config))
     print(f"  social={social_on} info={info_on} misinfo={misinfo_on} "
           f"signage={signage_on} guide={guide_key} max_frames={max_frame} run_id={unique_run_id}")
     print(f"  初始知情比例={initial_informed_ratio} 警报={alarm_on}(阈值{alarm_threshold}) "
@@ -380,6 +434,13 @@ def main(options=None):
     else:
         print(f"  烟源强度={smoke_intensity}（不爬升，立即满强度）")
     print(f"  报警来源={alarm_source}（b=B报警器 / threshold=C阈值 / both=任一）")
+    if strategy_keys == ["fire_aware"]:
+        print("  C10 综合管控包含：出口关闭 + 区域封锁 + 分区疏散 + 火灾感知路线管控")
+    if strategy_keys == ["vision_astar"]:
+        print("  C10 地图时间型A*：所选A地图→烟雾浓度调速→时间型A*")
+    if strategy_keys == ["dual_objective_aco"]:
+        print("  C10 时间—风险双目标：所选A地图→烟雾浓度调速→"+
+              "风险加权Pareto路径（风险权重={:.2f}）".format(float(options.get("dual_risk_weight", 0.5))))
     print(f"  C10 管控策略={strategy_keys or ['none']}（触发步={strategy_trigger}）")
     _unknown_desc = {"walk": "正常速度随机行走（获知后才疏散）",
                      "freeze": "原地不动",
@@ -391,6 +452,16 @@ def main(options=None):
     ca_scene = load_A_scene(map_path, smoke_intensity=smoke_intensity)
     grid_w = ca_scene.grid.width
     grid_h = ca_scene.grid.height
+    temperature_grid = _load_optional_grid(options.get("temperature_grid"))
+    co_grid = _load_optional_grid(options.get("co_grid"))
+    visibility_grid = _load_optional_grid(options.get("visibility_grid"))
+    for _name, _arr in (("temperature", temperature_grid), ("CO", co_grid), ("visibility", visibility_grid)):
+        if _arr is None:
+            continue
+        if _arr.ndim not in (2, 3) or _arr.shape[-2:] != (grid_h, grid_w):
+            raise SystemExit(
+                f"[ERROR] {_name} grid shape {_arr.shape} does not match (H,W)=({grid_h}, {grid_w})"
+            )
     max_valid_x = grid_w - 1
     max_valid_y = grid_h - 1
     map_center_x = max_valid_x / 2
@@ -606,7 +677,8 @@ def main(options=None):
         else:
             exit_pos_dict = {eid: (ex, ey) for eid, ex, ey in exit_check_list}
             control_engine = ControlStrategyEngine(
-                builder, info_state_engine, grid_w, grid_h, exit_pos_dict
+                builder, info_state_engine, grid_w, grid_h, exit_pos_dict,
+                grid=ca_scene.grid,
             )
             for key in strategy_keys:
                 if key == "exit_closure":
@@ -643,9 +715,57 @@ def main(options=None):
                     print(f"🚧 C10 分区疏散：按位置均衡分配 {len(assigned)} 人到 {len(zone_exits)} 个出口")
                 elif key == "route_control":
                     control_engine.enable_strategy(
-                        ControlStrategyType.ROUTE_CONTROL, {"controlled_routes": []}
+                        ControlStrategyType.ROUTE_CONTROL,
+                        {"controlled_routes": [], "mode": route_mode, **fire_control_config},
                     )
-                    print(f"🚧 C10 路线管控：按出口负载均衡改派（比例 {route_shift_ratio}）")
+                    if route_mode == "fire_aware":
+                        print("🚧 C10 路线管控：火灾感知等效距离 + 密度自适应 + 避让")
+                    else:
+                        print(f"🚧 C10 路线管控：按出口负载均衡改派（比例 {route_shift_ratio}）")
+                elif key in ("fire_aware", "fire_aware_adaptive"):
+                    closed = [e.strip() for e in closed_exits_opt.split(",") if e.strip()]
+                    if not closed:
+                        closed = [exit_check_list[-1][0]]
+                    if lockdown_area_opt:
+                        try:
+                            x1, y1, x2, y2 = [int(v) for v in lockdown_area_opt.split(",")]
+                        except ValueError:
+                            raise SystemExit("[ERROR] --lockdown-area 格式应为 x1,y1,x2,y2")
+                    else:
+                        x1, y1 = grid_w // 3, grid_h // 3
+                        x2, y2 = grid_w * 2 // 3, grid_h * 2 // 3
+                    control_engine.configure_integrated_control(
+                        all_persons=list(sim.person_map.values()),
+                        exit_ids=[eid for eid, _, _ in exit_check_list],
+                        closed_exits=closed,
+                        exit_trigger_time=strategy_trigger,
+                        lockdown_zones=[[x1, y1, x2, y2]],
+                        lockdown_trigger=str(options.get("lockdown_trigger", "smoke_threshold")),
+                        lockdown_smoke_threshold=float(options.get("lockdown_smoke_threshold", 0.5)),
+                        auto_unlock=bool(options.get("lockdown_auto_unlock", True)),
+                        smoke_sources=scene_smoke_sources,
+                        **fire_control_config,
+                    )
+                    print("🚧 C10 综合管控已启用（四合一）：出口关闭 + 区域封锁 + 分区疏散 + 火灾感知路线管控")
+                elif key == "vision_astar":
+                    control_engine.configure_vision_astar(
+                        all_persons=list(sim.person_map.values()),
+                        map_path=str(map_path),
+                        exit_ids=[eid for eid, _, _ in exit_check_list],
+                        replan_interval_s=float(options.get("vision_replan_interval_s", 30.0)),
+                        smoke_sources=scene_smoke_sources,
+                    )
+                    print("🚧 C10 地图时间型A* 已启用：按所选A地图、烟雾浓度与烟源位置生成路径，路径图将在运行目录输出")
+                elif key == "dual_objective_aco":
+                    control_engine.configure_dual_objective(
+                        all_persons=list(sim.person_map.values()),
+                        map_path=str(map_path),
+                        exit_ids=[eid for eid, _, _ in exit_check_list],
+                        risk_weight=float(options.get("dual_risk_weight", 0.5)),
+                        replan_interval_s=float(options.get("dual_replan_interval_s", 30.0)),
+                        smoke_sources=scene_smoke_sources,
+                    )
+                    print("🚧 C10 时间—风险双目标已启用：所选A地图生成时间/风险Pareto路径，并严格引导人员沿路线移动")
                 else:
                     print(f"[WARN] 未知策略 '{key}'，已忽略")
 
@@ -677,6 +797,36 @@ def main(options=None):
         run_id=unique_run_id,
         time_step_s=0.5,
     )
+    def _export_route_artifacts(control, run_root, run_id, source_map_path, suffix=""):
+        if control is None:
+            return None
+        is_dual = bool(getattr(control, "has_dual_routes", False))
+        is_vision = bool(getattr(control, "has_vision_routes", False))
+        if not (is_dual or is_vision):
+            return None
+        out_dir = Path(run_root) / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        safe_stem = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in Path(source_map_path).stem)
+        prefix = "dual_objective_routes" if is_dual else "evacuation_routes"
+        png = out_dir / f"{prefix}_{safe_stem}{suffix}.png"
+        js = out_dir / f"{prefix}_{safe_stem}{suffix}.json"
+        if is_dual:
+            control.export_dual_route_map(str(png), smoke_sources=scene_smoke_sources)
+            control.export_dual_routes_json(str(js))
+        else:
+            control.export_vision_route_map(str(png), smoke_sources=scene_smoke_sources)
+            control.export_vision_routes_json(str(js))
+        try:
+            outer_figures = project_root.parent / "outputs" / "figures"
+            figures_dir = outer_figures if outer_figures.parent.is_dir() else project_root / "outputs" / "figures"
+            figures_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(png, figures_dir / png.name)
+        except Exception:
+            pass
+        label = "时间—风险双目标" if is_dual else "地图时间型A*"
+        print(f"🗺️ {label} 路径图：{png}")
+        return png
+
     try:
         d_view.start()
         print("✅ D CSV 日志已启动")
@@ -708,8 +858,30 @@ def main(options=None):
             if social_on:
                 # C10 管控策略每步更新（出口关闭改派 / 区域封锁 / 分区疏散 / 路线均衡）
                 if control_engine is not None:
-                    control_engine.update_all(ped_list, frame, smoke_data)
-                    if ControlStrategyType.ROUTE_CONTROL in control_engine.active_strategies:
+                    control_engine.update_all(
+                        ped_list, frame, smoke_data,
+                        dt=getattr(sim, "time_step_s", 0.5),
+                        temperature_grid=_grid_frame(temperature_grid, frame),
+                        co_grid=_grid_frame(co_grid, frame),
+                        visibility_grid=_grid_frame(visibility_grid, frame),
+                    )
+                    if frame == 1:
+                        # The first B step has now produced the real smoke matrix,
+                        # so the "initial" route image includes the actual smoke
+                        # speed field instead of a pre-fire placeholder.
+                        if getattr(control_engine, "has_dual_routes", False):
+                            control_engine.plan_dual_routes(
+                                ped_list, frame, force=True, smoke_grid=smoke_data
+                            )
+                        elif getattr(control_engine, "has_vision_routes", False):
+                            control_engine.plan_vision_routes(
+                                ped_list, frame, force=True, smoke_grid=smoke_data
+                            )
+                        _export_route_artifacts(
+                            control_engine, _exp_root, unique_run_id, map_path, "_initial"
+                        )
+                    if (ControlStrategyType.ROUTE_CONTROL in control_engine.active_strategies
+                            and not control_engine.is_fire_aware):
                         control_engine.update_route_balance(
                             ped_list, [eid for eid, _, _ in exit_check_list], route_shift_ratio
                         )
@@ -749,6 +921,12 @@ def main(options=None):
                 else:
                     guide_result = {}
 
+                panic_cache = {
+                    int(person.id): _panic_state_for_person(
+                        person, sim.smoke_matrix, getattr(sim, "dose_recorder", None)
+                    )
+                    for person in ped_list
+                }
                 for pid, person in ped_dict.items():
                     # 死亡人员：不参与 C 行为与信息统计，仅在日志中标记 DEAD
                     if getattr(person, "is_dead", False):
@@ -781,6 +959,12 @@ def main(options=None):
                                 exit_pref.get(assigned_exit, 0.0), 1.2
                             )
 
+                    route_next_cell = None
+                    if control_engine is not None and (
+                            getattr(control_engine, "has_fire_routes", False)
+                            or getattr(control_engine, "has_dual_routes", False)
+                            or getattr(control_engine, "has_vision_routes", False)):
+                        route_next_cell = control_engine.get_route_next_cell(pid, (person.x, person.y))
                     c_step_data[pid] = {
                         "target_exit": target_exit,
                         "exit_preference": exit_pref,
@@ -794,6 +978,10 @@ def main(options=None):
                         "is_waiting": group_beh.get("is_waiting", False),
                         "waiting_for": group_beh.get("waiting_for"),
                         "group_id": getattr(person, "group_id", ""),
+                        "route_next_cell": route_next_cell,
+                        "strict_route": bool(control_engine is not None and (
+                            ControlStrategyType.VISION_MAPPED_ASTAR in control_engine.active_strategies
+                            or ControlStrategyType.DUAL_OBJECTIVE_ACO in control_engine.active_strategies)),
                         "is_panicked": bool(panic_cache.get(pid, {}).get("is_panicked", False)),
                         "panic_level": float(panic_cache.get(pid, {}).get("panic_level", 0.0) or 0.0),
                         "speed_multiplier": float(panic_cache.get(pid, {}).get("speed_multiplier", 1.0) or 1.0),
@@ -812,10 +1000,6 @@ def main(options=None):
                     person.panic_level = float(panic_cache.get(pid, {}).get("panic_level", 0.0) or 0.0)
                     person.speed_multiplier = float(panic_cache.get(pid, {}).get("speed_multiplier", 1.0) or 1.0)
             # 移动门控：① 未获知险情者原地不动 ② 速度差异 ③ 拥堵减速 ④ 恐慌/毒性耦合
-            panic_cache = {
-                int(person.id): _panic_state_for_person(person, sim.smoke_matrix, getattr(sim, "dose_recorder", None))
-                for person in ped_list
-            }
             move_allowed = None
             if ped_list and (speed_model_on or (unknown_behavior != "evacuate" and social_on)):
                 move_allowed = {}
@@ -1001,6 +1185,24 @@ def main(options=None):
         else:
             print(f"\n⏱ 达到最大仿真帧数 {max_frame}，仿真结束")
     finally:
+        try:
+            if control_engine is not None and getattr(control_engine, "has_dual_routes", False):
+                control_engine.plan_dual_routes(
+                    list(sim.person_map.values()),
+                    int(getattr(sim, "current_step", 0)),
+                    force=True,
+                    smoke_grid=getattr(sim, "smoke_matrix", None),
+                )
+            elif control_engine is not None and getattr(control_engine, "has_vision_routes", False):
+                control_engine.plan_vision_routes(
+                    list(sim.person_map.values()),
+                    int(getattr(sim, "current_step", 0)),
+                    force=True,
+                    smoke_grid=getattr(sim, "smoke_matrix", None),
+                )
+            _export_route_artifacts(control_engine, _exp_root, unique_run_id, map_path, "_final")
+        except Exception as _route_export_exc:
+            print(f"[WARN] 规划路径图导出失败：{_route_export_exc}")
         visualizer.close() # 关闭可视化窗口
         d_view.close()
         print(f"D 日志已关闭，结果输出至 outputs/experiments/{unique_run_id}")
@@ -1128,21 +1330,55 @@ if __name__ == "__main__":
     parser.add_argument("--informed-speed-factor", type=float, default=1.15,
                         help="知情人员疏散速度倍率（默认 1.40）")
     parser.add_argument("--speed-variation", type=float, default=0.30,
-                        help="个体速度随机差异幅度（默认 ±18%）")
+                        help="个体速度随机差异幅度（默认 ±18%%）")
     parser.add_argument("--congestion-radius", type=int, default=2,
                         help="拥堵密度统计半径（元胞）")
     parser.add_argument("--congestion-threshold", type=int, default=4,
                         help="达到该人数视为拥堵并开始减速")
-    parser.add_argument("--strategy", default="none",
-                        help="C10 管控策略：none / exit_closure / zone_lockdown / zoned_evacuation / route_control / all（可逗号组合）")
+    parser.add_argument("--strategy", default="fire_aware",
+                        help="C10 管控策略：vision_astar=地图时间型A*（烟雾调速）；fire_aware/integrated=四合一综合管控（默认）；none=对照组；旧版单独策略仍保留兼容")
     parser.add_argument("--closed-exits", default=None,
                         help="出口关闭策略关闭哪些出口，逗号分隔（默认关闭最后一个出口）")
     parser.add_argument("--strategy-trigger-step", type=int, default=10,
                         help="出口关闭的触发步（默认第10步）")
     parser.add_argument("--lockdown-area", default=None,
                         help="区域封锁范围 x1,y1,x2,y2（默认地图中央三分之一区域）")
+    parser.add_argument("--lockdown-trigger", choices=["smoke_threshold", "manual"], default="smoke_threshold",
+                        help="综合管控的区域封锁触发方式：smoke_threshold=烟雾超阈值；manual=启用即封锁")
+    parser.add_argument("--lockdown-smoke-threshold", type=float, default=0.5,
+                        help="综合管控区域封锁的烟雾阈值（0~1，默认 0.5）")
+    parser.add_argument("--lockdown-auto-unlock", choices=["on", "off"], default="on",
+                        help="烟雾降到阈值以下时是否自动解除封锁")
+    parser.add_argument("--zone-bias-m", type=float, default=4.0,
+                        help="分区疏散目标出口的软偏好距离（m）；火灾路由优势超过该值才改派")
+    parser.add_argument("--vision-replan-interval-s", type=float, default=30.0,
+                        help="地图时间型A* 的重规划间隔（秒）")
+    parser.add_argument("--risk-weight", type=float, default=0.5,
+                        help="时间—风险双目标风险权重：0=最短时间，1=最低风险，默认0.5")
+    parser.add_argument("--dual-replan-interval-s", type=float, default=30.0,
+                        help="时间—风险双目标路线重规划间隔（秒）")
     parser.add_argument("--route-shift-ratio", type=float, default=0.2,
                         help="路线管控每次从最拥挤出口改派到最空闲出口的人员比例")
+    parser.add_argument("--route-mode", choices=["load_balance", "fire_aware"], default="load_balance",
+                        help="route_control 的实现方式：load_balance=原负载均衡；fire_aware=火灾等效距离路由")
+    parser.add_argument("--density-threshold", type=float, default=0.375,
+                        help="人员密度分水岭（人/m2，刘彬文论文取 0.375）")
+    parser.add_argument("--pheromone-radius-m", type=float, default=3.2,
+                        help="信息素扩散半径（m，刘彬文论文第4-5章取 3.2）")
+    parser.add_argument("--replan-interval-s", type=float, default=200.0,
+                        help="火灾感知路径重规划间隔（s，江华龙论文按 200 s 分阶段）")
+    parser.add_argument("--avoid-probability", type=float, default=0.5,
+                        help="强势人员避让弱势人员的概率（刘彬文论文最优值 0.5）")
+    parser.add_argument("--avoid-threshold", type=float, default=0.6,
+                        help="触发避让的竞争力差阈值（论文范围 0.4-0.8；默认 0.6=老年人竞争力）")
+    parser.add_argument("--smoke-proxy-weight", type=float, default=3.0,
+                        help="仅有烟雾场时的等效距离惩罚权重（平台代理参数，非 FDS 温度/CO 数值）")
+    parser.add_argument("--temperature-grid", default=None,
+                        help="可选：FDS 温度切片 .npy/.csv，形状必须为 (grid_height, grid_width)，单位 ℃")
+    parser.add_argument("--co-grid", default=None,
+                        help="可选：FDS CO 切片 .npy/.csv，形状必须与地图一致；单位采用论文式(7)的 ρ")
+    parser.add_argument("--visibility-grid", default=None,
+                        help="可选：FDS 能见度切片 .npy/.csv，形状必须与地图一致，单位 m")
     parser.add_argument("--visual", choices=["on", "off"], default="on",
                         help="【新增】开启/关闭matplotlib实时可视化窗口，批量实验建议off")
     parser.add_argument("--report", choices=["on", "off"], default="on",
@@ -1181,7 +1417,24 @@ if __name__ == "__main__":
         "closed_exits": args.closed_exits,
         "strategy_trigger_step": args.strategy_trigger_step,
         "lockdown_area": args.lockdown_area,
+        "lockdown_trigger": args.lockdown_trigger,
+        "lockdown_smoke_threshold": args.lockdown_smoke_threshold,
+        "lockdown_auto_unlock": args.lockdown_auto_unlock == "on",
+        "zone_bias_m": args.zone_bias_m,
+        "vision_replan_interval_s": args.vision_replan_interval_s,
+        "dual_risk_weight": args.risk_weight,
+        "dual_replan_interval_s": args.dual_replan_interval_s,
         "route_shift_ratio": args.route_shift_ratio,
+        "route_mode": args.route_mode,
+        "density_threshold": args.density_threshold,
+        "pheromone_radius_m": args.pheromone_radius_m,
+        "replan_interval_s": args.replan_interval_s,
+        "avoid_probability": args.avoid_probability,
+        "avoid_threshold": args.avoid_threshold,
+        "smoke_proxy_weight": args.smoke_proxy_weight,
+        "temperature_grid": args.temperature_grid,
+        "co_grid": args.co_grid,
+        "visibility_grid": args.visibility_grid,
         "visual": args.visual == "on",
         "report": args.report == "on",
         "report_dir": args.report_dir,

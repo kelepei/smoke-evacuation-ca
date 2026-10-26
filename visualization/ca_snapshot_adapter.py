@@ -421,6 +421,10 @@ class CaSnapshotAdapter:
                     "speed": _optional_attr(person, "speed"),
                     "is_panicked": bool(_optional_attr(person, "is_panicked") or False),
                     "panic_level": _optional_attr(person, "panic_level"),
+                    "speed_current": _optional_attr(person, "speed_current"),
+                    "danger_pressure": _optional_attr(person, "danger_pressure"),
+                    "danger_urgent": bool(_optional_attr(person, "danger_urgent") or False),
+                    "impatience": _optional_attr(person, "impatience"),
                     "speed_multiplier": _optional_attr(person, "speed_multiplier"),
                 }
             )

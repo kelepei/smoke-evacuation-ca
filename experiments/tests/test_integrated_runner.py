@@ -9,6 +9,7 @@ from experiments.integrated_runner import (
     IntegratedRuntimeError,
     build_integrated_scenario,
     create_integrated_runner,
+    integrated_simulation_factory,
 )
 
 
@@ -92,6 +93,45 @@ class IntegratedRuntimeTests(unittest.TestCase):
                     map_path=map_path,
                     population_path=people_path,
                 )
+
+    def test_movement_override_reaches_b_engine_and_default_remains_b_owned(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            map_path, people_path = self._write_inputs(Path(raw))
+            default = build_integrated_scenario(
+                map_path=map_path,
+                population_path=people_path,
+                random_seed=42,
+            )
+            custom = build_integrated_scenario(
+                map_path=map_path,
+                population_path=people_path,
+                random_seed=42,
+                c_runtime_config={"movement": {"panic": {"threshold": 0.33}}},
+            )
+            self.assertNotIn("movement", default.config.parameters)
+            self.assertEqual(0.33, custom.config.parameters["movement"]["panic"]["threshold"])
+            default_engine = integrated_simulation_factory(default)()._engine
+            custom_engine = integrated_simulation_factory(custom)()._engine
+            self.assertEqual(0.50, default_engine.movement.panic.threshold)
+            self.assertEqual(0.33, custom_engine.movement.panic.threshold)
+
+    def test_c_runtime_mode_and_smoke_settings_reach_the_bridge(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            map_path, people_path = self._write_inputs(Path(raw))
+            scenario = build_integrated_scenario(
+                map_path=map_path,
+                population_path=people_path,
+                c_runtime_config={
+                    "information_mode": "local",
+                    "alarm_enabled": False,
+                    "smoke_exposure_threshold": 0.12,
+                },
+            )
+            bridge = integrated_simulation_factory(scenario)()._behavior_provider
+            self.assertEqual("local", bridge.information_mode)
+            self.assertFalse(bridge.alarm_enabled)
+            self.assertEqual(0.12, bridge.smoke_exposure_threshold)
+            self.assertEqual("local", bridge.engine.c_runtime_state["information_mode"])
 
     def test_contiguous_exit_cells_keep_b_cells_and_share_one_d_entity(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

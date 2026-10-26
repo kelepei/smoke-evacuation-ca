@@ -152,6 +152,7 @@
         <label><input id="layerSmoke" type="checkbox" disabled>烟雾</label>
         <label><input id="layerOccupancy" type="checkbox" disabled>累计占用</label>
         <label><input id="layerTrajectories" type="checkbox" disabled>轨迹</label>
+        <label><input id="layerPath" type="checkbox" disabled checked>疏散路径</label>
       </div>
       <div class="spacer"></div>
       <span id="timeText">step 0 / 0.0s</span>
@@ -253,6 +254,7 @@
   const canvas = $("view");
   const ctx = canvas.getContext("2d");
   let snapshot = null;
+  let liveHistory = [];
   let activeSession = false;
   let timer = null;
   let pending = false;
@@ -430,6 +432,63 @@
     }));
   }
 
+  function drawLivePaths(grid, ox, oy, cell){
+    if(!layerEnabled("layerPath") || liveHistory.length < 2) return;
+    const recent = liveHistory.slice(-20);
+    const current = snapshot && Array.isArray(snapshot.people) ? snapshot.people : [];
+    const ids = current.filter(person => person && !person.evacuated).slice(0, 28)
+      .map(person => String(person.person_id ?? person.id));
+    ids.forEach(id => {
+      const points = recent.map(snap => (snap.people || []).find(person => String(person.person_id ?? person.id) === id))
+        .filter(person => person && !person.evacuated);
+      if(points.length < 2) return;
+      const hash = [...id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+      ctx.beginPath();
+      ctx.strokeStyle = `hsla(${hash * 47 % 360},72%,42%,.62)`;
+      ctx.lineWidth = Math.max(1.2, Math.min(2.8, cell * .10));
+      ctx.setLineDash([4, 3]);
+      points.forEach((person, pointIndex) => {
+        const x = Number(person.x), y = Number(person.y);
+        if(!Number.isFinite(x) || !Number.isFinite(y)) return;
+        const px = ox + (x + .5) * cell, py = oy + (y + .5) * cell;
+        if(pointIndex === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+    });
+  }
+
+  function drawPlannedRoutes(grid, ox, oy, cell){
+    if(!layerEnabled("layerPath") || !snapshot || !snapshot.c_runtime) return;
+    const routes = [].concat(
+      snapshot.c_runtime.vision_routes || [],
+      snapshot.c_runtime.dual_routes || []
+    );
+    if(!routes.length) return;
+    const palette = ["#d97706", "#7c3aed", "#0891b2", "#be123c"];
+    ctx.save();
+    ctx.lineWidth = Math.max(1.1, Math.min(2.6, cell * .13));
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.globalAlpha = .72;
+    routes.forEach((route, index) => {
+      const path = route && route.path;
+      if(!Array.isArray(path) || path.length < 2) return;
+      ctx.strokeStyle = palette[index % palette.length];
+      ctx.beginPath();
+      path.forEach((point, pointIndex) => {
+        const x = Number(point && point[0]);
+        const y = Number(point && point[1]);
+        if(!Number.isFinite(x) || !Number.isFinite(y)) return;
+        const px = ox + (x + .5) * cell;
+        const py = oy + (y + .5) * cell;
+        if(pointIndex === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
   function drawTrajectories(grid, ox, oy, cell){
     if(!layerEnabled("layerTrajectories") || !logLayers || !logLayers.trajectories) return;
     Object.entries(logLayers.trajectories).forEach(([personId, points]) => {
@@ -535,6 +594,8 @@
       drawSmokeSources(snapshot.fields && snapshot.fields.smoke_sources, grid, ox, oy, cell);
     }
     drawTrajectories(grid, ox, oy, cell);
+    drawLivePaths(grid, ox, oy, cell);
+    drawPlannedRoutes(grid, ox, oy, cell);
     if(layerEnabled("layerPeople")) drawPeople(snapshot.people, grid, ox, oy, cell);
     ctx.strokeStyle = "#0f172a";
     ctx.lineWidth = 2;
@@ -612,6 +673,7 @@
     setLayerAvailability("layerSmoke", Boolean(grid && observed.smokeSourceCount > 0), true);
     setLayerAvailability("layerOccupancy", activeSession, false);
     setLayerAvailability("layerTrajectories", activeSession, false);
+    setLayerAvailability("layerPath", activeSession && liveHistory.length >= 2, true);
     const notices = [];
     if(!grid) notices.push("图层等待真实地图与运行数据");
     else if(observed.smokeSourceCount === 0) notices.push("当前场景无烟源；不生成视觉烟雾");
@@ -628,7 +690,11 @@
 
   function applySnapshot(next, extra = {}){
     const previousSnapshot = snapshot;
-    if(extra.resetHistory) logLayers = null;
+    if(extra.resetHistory){ logLayers = null; liveHistory = []; }
+    if(next && next.grid && Array.isArray(next.people)){
+      liveHistory.push(next);
+      if(liveHistory.length > 600) liveHistory.shift();
+    }
     snapshot = next;
     startPersonTransition(previousSnapshot, next);
     const observed = refreshStats(extra);
@@ -1113,7 +1179,7 @@
     );
   };
   $("clearYaml").onclick = () => { $("yamlFile").value = ""; setConfigState("未选择 YAML。", ""); };
-  ["layerPeople", "layerExits", "layerSmoke", "layerOccupancy", "layerTrajectories"].forEach(id => {
+  ["layerPeople", "layerExits", "layerSmoke", "layerOccupancy", "layerTrajectories", "layerPath"].forEach(id => {
     $(id).onchange = () => {
       draw(); refreshStats();
       if(activeSession && (id === "layerOccupancy" || id === "layerTrajectories") && $(id).checked && !logLayers){

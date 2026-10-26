@@ -80,6 +80,14 @@ class Person:
     evacuated: bool = False  # 是否已经完成疏散
     dose: float = 0.0  # 烟雾暴露剂量， B模块计算
     is_dead: bool = False  # ✅新增：烟雾致死标记，死亡后原地占用元胞，不移动
+    # ---- 移动规则状态（B模块每步维护，C/D 只读） ----
+    panic: float = 0.0  # 恐慌值 0~1
+    panic_level: float = 0.0  # 与 panic 同步，兼容可视化字段
+    is_panicked: bool = False  # 是否越过恐慌阈值
+    speed_current: float = 0.0  # 当前实际速度 m/s（加速机制的输出）
+    danger_pressure: float = 0.0  # 危险感知压力 0~1（替代"不耐烦"值）
+    danger_urgent: bool = False  # 危险压力是否超过阈值
+    can_move: bool = True  # 本步是否实际移动（C桥/统计读取）
 
 # 8. Relation 社会关系对象
 @dataclass

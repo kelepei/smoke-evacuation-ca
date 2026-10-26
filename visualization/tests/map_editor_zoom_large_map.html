@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>地图编辑器大图手动验收</title>
+<style>
+  body{margin:0;font-family:sans-serif}
+  header{padding:8px;background:#eef4ff}
+  iframe{display:block;width:100%;height:calc(100vh - 70px);border:0}
+</style>
+<header>
+  <span id="report">正在加载 135×116 地图…</span>
+  <button id="inspect" type="button">检查编辑结果</button>
+  <button id="benchmark" type="button">测量 20 次重绘</button>
+  <button id="roundtrip" type="button">验证导出并重导入</button>
+</header>
+<iframe id="editor" src="/visualization/prototype/map_editor_integrated.html"></iframe>
+<script>
+  const frame=document.getElementById("editor");
+  let original=null;
+  frame.addEventListener("load",async()=>{
+    original=await (await fetch("/maps/edited_map.json")).json();
+    frame.contentWindow.loadMapData(structuredClone(original));
+    document.getElementById("report").textContent=`已加载 ${original.width}×${original.height} 地图`;
+  });
+  document.getElementById("inspect").addEventListener("click",()=>{
+    const edited=frame.contentWindow.getMapData();
+    const changed=edited.cells.filter((cell,index)=>cell.type!==original.cells[index].type);
+    document.getElementById("report").textContent=`${changed.length} 个类型变化：${changed.slice(0,8).map(cell=>`(${cell.x},${cell.y})=${cell.type}`).join("、")}`;
+  });
+  document.getElementById("benchmark").addEventListener("click",()=>{
+    const samples=[];
+    for(let index=0;index<20;index++){
+      const start=performance.now();
+      frame.contentWindow.draw();
+      samples.push(performance.now()-start);
+    }
+    document.getElementById("report").textContent=`${original.width}×${original.height} 重绘 20 次：平均 ${(samples.reduce((a,b)=>a+b,0)/samples.length).toFixed(1)} ms，最慢 ${Math.max(...samples).toFixed(1)} ms`;
+  });
+  document.getElementById("roundtrip").addEventListener("click",async()=>{
+    const win=frame.contentWindow;
+    const before=win.getMapData();
+    const changed=before.cells.filter((cell,index)=>cell.type!==original.cells[index].type);
+    if(!changed.length){
+      document.getElementById("report").textContent="请先在编辑器中修改至少一个元胞再验证";
+      return;
+    }
+    const realCreate=win.URL.createObjectURL;
+    const realClick=win.HTMLAnchorElement.prototype.click;
+    let exportedBlob=null;
+    let exportName="";
+    try{
+      win.URL.createObjectURL=blob=>{exportedBlob=blob;return "blob:roundtrip-test"};
+      win.HTMLAnchorElement.prototype.click=function(){exportName=this.download};
+      win.document.getElementById("saveBtn").click();
+    }finally{
+      win.URL.createObjectURL=realCreate;
+      win.HTMLAnchorElement.prototype.click=realClick;
+    }
+    if(!exportedBlob || !exportName) throw new Error("保存按钮未生成 JSON 下载内容");
+    const exported=JSON.parse(await exportedBlob.text());
+    win.loadMapData(exported);
+    const restored=win.getMapData();
+    const same=JSON.stringify(before)===JSON.stringify(restored);
+    document.getElementById("report").textContent=`导出 ${exportName} → 重导入：${same?"通过":"失败"}；编辑元胞 ${changed.length} 个；尺寸 ${restored.width}×${restored.height}`;
+    if(!same) throw new Error("导出重导入后的地图数据与编辑结果不一致");
+  });
+</script>
+</html>

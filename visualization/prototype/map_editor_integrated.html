@@ -6,7 +6,7 @@
 <title>CA Map Editor</title>
 <style>
 *{box-sizing:border-box}
-body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:#f5f5f5;color:#222}
+body{margin:0;height:100vh;display:flex;flex-direction:column;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:#f5f5f5;color:#222}
 .toolbar{min-height:64px;padding:10px 14px;background:#fff;border-bottom:1px solid #ddd;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .toolbar-group{display:flex;align-items:center;gap:5px;padding-right:10px;margin-right:4px;border-right:1px solid #ddd}
 .toolbar-group:last-child{border-right:none}
@@ -16,15 +16,18 @@ button.active{background:#333;color:#fff;border-color:#333}
 .file-label{display:inline-flex;align-items:center}
 #fileInput{display:none}
 .status{margin-left:auto;font-size:13px;color:#555;white-space:nowrap}
-.main{height:calc(100vh - 64px);display:flex;overflow:hidden}
+.main{flex:1;min-height:0;display:flex;overflow:hidden}
 .side{width:230px;background:#fff;border-right:1px solid #ddd;padding:14px;overflow-y:auto}
 .side.right{border-right:none;border-left:1px solid #ddd;width:250px}
 .panel-title{font-weight:700;margin:4px 0 12px}
 .hint{font-size:13px;line-height:1.65;color:#666}
 .shortcut{display:grid;grid-template-columns:42px 1fr;gap:6px;margin-bottom:7px;font-size:13px}
 kbd{display:inline-block;padding:2px 6px;border:1px solid #bbb;border-radius:4px;background:#fafafa;text-align:center}
-.center{flex:1;min-width:0;position:relative;background:#e9e9e9;display:flex;justify-content:center;align-items:center;overflow:auto}
-#mapCanvas{background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15);cursor:crosshair;image-rendering:pixelated}
+.center{flex:1;min-width:0;position:relative;background:#e9e9e9;overflow:auto;scrollbar-gutter:stable}
+.center.panning,.center.panning #mapCanvas{cursor:grabbing}
+#mapStage{position:relative;min-width:100%;min-height:100%}
+#mapCanvas{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15);cursor:crosshair;image-rendering:pixelated}
+.zoom-level{min-width:48px;text-align:center;font-size:13px;color:#555}
 .info-row{margin:7px 0;font-size:13px;word-break:break-all}
 .legend{display:grid;grid-template-columns:18px 1fr;gap:7px;align-items:center;font-size:13px;margin:7px 0}
 .legend-color{width:18px;height:18px;border:1px solid #999}
@@ -39,6 +42,7 @@ kbd{display:inline-block;padding:2px 6px;border:1px solid #bbb;border-radius:4px
     <button data-type="wall">2 墙</button>
     <button data-type="obstacle">3 障碍</button>
     <button data-type="exit">4 出口</button>
+    <button data-mode="select-exit">7 选择出口</button>
     <button data-type="smoke_source">5 烟源</button>
     <button data-mode="alarm">6 警报</button>
   </div>
@@ -57,7 +61,14 @@ kbd{display:inline-block;padding:2px 6px;border:1px solid #bbb;border-radius:4px
 
   <div class="toolbar-group">
     <button id="saveBtn">保存 JSON</button>
-    <button id="clearSemanticBtn">清除语义</button><button id="clearAlarmBtn">清除警报</button>
+    <button id="clearSemanticBtn">清除语义</button><button id="clearAlarmBtn">清除警报</button><button data-mode="lockdown">L 标注封锁区</button><button id="clearLockdownBtn">清除封锁区</button>
+  </div>
+
+  <div class="toolbar-group" aria-label="地图编辑视图缩放">
+    <button id="zoomOutBtn" type="button" title="缩小视图">−</button>
+    <span class="zoom-level" id="zoomLevel">100%</span>
+    <button id="zoomInBtn" type="button" title="放大视图">+</button>
+    <button id="fitViewBtn" type="button">适合窗口</button>
   </div>
 
   <div class="status" id="status">等待导入地图</div>
@@ -74,6 +85,7 @@ kbd{display:inline-block;padding:2px 6px;border:1px solid #bbb;border-radius:4px
     <div class="shortcut"><kbd>2</kbd><span>墙 WALL</span></div>
     <div class="shortcut"><kbd>3</kbd><span>障碍 OBSTACLE</span></div>
     <div class="shortcut"><kbd>4</kbd><span>出口 EXIT</span></div>
+    <div class="shortcut"><kbd>7</kbd><span>选择出口（只框选，不改类型）</span></div>
     <div class="shortcut"><kbd>5</kbd><span>烟源 SMOKE_SOURCE</span></div>
     <div class="shortcut"><kbd>6</kbd><span>警报设备 ALARM（仅 FREE）</span></div>
 
@@ -88,12 +100,17 @@ kbd{display:inline-block;padding:2px 6px;border:1px solid #bbb;border-radius:4px
     <div class="shortcut"><kbd>O</kbd><span>图书馆</span></div>
     <div class="shortcut"><kbd>P</kbd><span>医院</span></div>
 
-    <div class="hint"><strong>鼠标：</strong>左键拖拽框选区域并批量修改。语义模式下，仅修改 FREE 元胞，与 Python 版 MapEditor 保持一致。</div>
+    <div class="hint"><strong>鼠标：</strong>左键拖拽框选区域并批量修改；滚轮缩放，中键拖动或滚动条平移视图。语义模式下，仅修改 FREE 元胞，与 Python 版 MapEditor 保持一致。</div>
+    <div class="panel-title" style="margin-top:16px">出口编号</div>
+    <div class="hint">框选出口后写入编号；运行器优先使用该编号。</div>
+    <input id="exitIdInput" placeholder="例如 exit_A" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:5px">
+    <button id="setExitIdBtn" style="margin-top:6px">写入选中出口编号</button>
+    <div class="hint" style="margin-top:12px">封锁区域只保存矩形范围，只有平台启用 zone_lockdown / all 时才生效。</div>
     <div class="selection" id="selectionInfo">当前未选择区域</div>
   </aside>
 
-  <section class="center">
-    <canvas id="mapCanvas"></canvas>
+  <section class="center" tabindex="0" aria-label="地图编辑视图，可用滚动条或方向键平移">
+    <div id="mapStage"><canvas id="mapCanvas"></canvas></div>
   </section>
 
   <aside class="side right">
@@ -127,6 +144,8 @@ kbd{display:inline-block;padding:2px 6px;border:1px solid #bbb;border-radius:4px
 
 const canvas=document.getElementById("mapCanvas");
 const ctx=canvas.getContext("2d");
+const center=document.querySelector(".center");
+const mapStage=document.getElementById("mapStage");
 
 let gridData=null;
 let editMode="type";
@@ -136,6 +155,8 @@ let dragStart=null;
 let dragEnd=null;
 let isDragging=false;
 let cellPixelSize=25;
+let lockdownArea=null;
+let viewScale=1; // Relative to the fitted view; never written into gridData.
 
 const TYPE_INFO={
   free:{label:"空地",color:"#fff"},
@@ -162,6 +183,7 @@ function normalizeMapData(data){
 
   data.name=data.name||"edited_map";
   data.cell_size=typeof data.cell_size==="number"?data.cell_size:0.5;
+  if(!("lockdown_area" in data)) data.lockdown_area=null;
 
   data.cells.forEach((cell,index)=>{
     if(typeof cell.x!=="number"||typeof cell.y!=="number"){
@@ -175,6 +197,7 @@ function normalizeMapData(data){
     if(!("risk" in cell)) cell.risk=0;
     if(!("guidance" in cell)) cell.guidance=0;
     if(!("alarm" in cell)) cell.alarm=false;
+    if(!("exit_id" in cell)) cell.exit_id="";
     if(cell.alarm===true && cell.type!=="free") cell.alarm=false;
   });
 
@@ -183,28 +206,71 @@ function normalizeMapData(data){
 
 function loadMapData(data){
   gridData=normalizeMapData(data);
+  lockdownArea=Array.isArray(gridData.lockdown_area)?[...gridData.lockdown_area]:null;
   dragStart=null; dragEnd=null; isDragging=false;
+  viewScale=1;
   updateMapInfo(); resizeCanvas(); draw();
   setStatus(`已加载地图：${gridData.name} ${gridData.width}×${gridData.height}`);
 }
 
 function getMapData(){
+  if(gridData) gridData.lockdown_area=lockdownArea?[...lockdownArea]:null;
   return gridData?JSON.parse(JSON.stringify(gridData)):null;
 }
 
 function calculateCellSize(){
   if(!gridData) return 25;
-  const center=document.querySelector(".center");
   const w=Math.max(300,center.clientWidth-30);
   const h=Math.max(300,center.clientHeight-30);
   return Math.max(4,Math.min(35,Math.floor(Math.min(w/gridData.width,h/gridData.height))));
 }
 
 function resizeCanvas(){
-  if(!gridData){canvas.width=600;canvas.height=600;return}
+  if(!gridData){canvas.width=600;canvas.height=600;updateView();return}
   cellPixelSize=calculateCellSize();
   canvas.width=gridData.width*cellPixelSize;
   canvas.height=gridData.height*cellPixelSize;
+  updateView();
+}
+
+function viewGeometry(){
+  const availableWidth=Math.max(1,center.clientWidth-24);
+  const availableHeight=Math.max(1,center.clientHeight-24);
+  const fitScale=Math.min(availableWidth/canvas.width,availableHeight/canvas.height);
+  const width=canvas.width*fitScale*viewScale;
+  const height=canvas.height*fitScale*viewScale;
+  return {width,height,stageWidth:Math.max(center.clientWidth,width),stageHeight:Math.max(center.clientHeight,height)};
+}
+
+function updateView(){
+  const view=viewGeometry();
+  mapStage.style.width=`${view.stageWidth}px`;
+  mapStage.style.height=`${view.stageHeight}px`;
+  canvas.style.width=`${view.width}px`;
+  canvas.style.height=`${view.height}px`;
+  document.getElementById("zoomLevel").textContent=`${Math.round(viewScale*100)}%`;
+  return view;
+}
+
+function zoomAt(factor,clientX,clientY){
+  const before=viewGeometry();
+  const rect=center.getBoundingClientRect();
+  const pointX=clientX-rect.left;
+  const pointY=clientY-rect.top;
+  const mapX=(center.scrollLeft+pointX-(before.stageWidth-before.width)/2)/before.width;
+  const mapY=(center.scrollTop+pointY-(before.stageHeight-before.height)/2)/before.height;
+  viewScale=Math.max(.25,Math.min(16,viewScale*factor));
+  const after=updateView();
+  center.scrollLeft=(after.stageWidth-after.width)/2+mapX*after.width-pointX;
+  center.scrollTop=(after.stageHeight-after.height)/2+mapY*after.height-pointY;
+}
+
+function fitMapView(){
+  viewScale=1;
+  resizeCanvas();
+  center.scrollLeft=0;
+  center.scrollTop=0;
+  draw();
 }
 
 function getCell(x,y){
@@ -224,6 +290,7 @@ function draw(){
   }
 
   drawGridLines();
+  drawLockdown();
   if(dragStart&&dragEnd) drawSelection();
 }
 
@@ -263,6 +330,18 @@ function drawGridLines(){
   ctx.stroke();
 }
 
+function drawLockdown(){
+  if(!lockdownArea) return;
+  const [x1,y1,x2,y2]=lockdownArea;
+  const xmin=Math.min(x1,x2),xmax=Math.max(x1,x2);
+  const ymin=Math.min(y1,y2),ymax=Math.max(y1,y2);
+  ctx.fillStyle="rgba(220,38,38,.18)";
+  ctx.fillRect(xmin*cellPixelSize,ymin*cellPixelSize,(xmax-xmin+1)*cellPixelSize,(ymax-ymin+1)*cellPixelSize);
+  ctx.strokeStyle="#dc2626";
+  ctx.lineWidth=3;
+  ctx.strokeRect(xmin*cellPixelSize+1,ymin*cellPixelSize+1,(xmax-xmin+1)*cellPixelSize-2,(ymax-ymin+1)*cellPixelSize-2);
+}
+
 function drawSelection(){
   const xmin=Math.min(dragStart.x,dragEnd.x);
   const xmax=Math.max(dragStart.x,dragEnd.x);
@@ -287,6 +366,10 @@ function applyTypeToRegion(xmin,ymin,xmax,ymax){
       const cell=getCell(x,y);
       if(!cell) continue;
       cell.type=currentType;
+      if(currentType==="exit"){
+        const exitId=document.getElementById("exitIdInput").value.trim();
+        if(exitId) cell.exit_id=exitId;
+      }
       if(currentType!=="free"&&cell.alarm===true){cell.alarm=false;alarmsCleared++;}
       changed++;
     }
@@ -296,6 +379,11 @@ function applyTypeToRegion(xmin,ymin,xmax,ymax){
 
 function applyAlarmToRegion(xmin,ymin,xmax,ymax){let changed=0,skipped=0;for(let y=ymin;y<=ymax;y++)for(let x=xmin;x<=xmax;x++){const cell=getCell(x,y);if(!cell)continue;if(cell.type==="free"){cell.alarm=true;changed++;}else skipped++;}setStatus(`已设置 ${changed} 个警报设备${skipped?`；跳过 ${skipped} 个非 FREE 元胞`:""}`);}
 function clearAlarmRegion(xmin,ymin,xmax,ymax){let changed=0;for(let y=ymin;y<=ymax;y++)for(let x=xmin;x<=xmax;x++){const cell=getCell(x,y);if(cell&&cell.alarm===true){cell.alarm=false;changed++;}}setStatus(`已清除 ${changed} 个警报设备标记`);}
+
+function applyLockdownRegion(xmin,ymin,xmax,ymax){
+  lockdownArea=[xmin,ymin,xmax,ymax];
+  setStatus(`已标注封锁区域：(${xmin},${ymin}) → (${xmax},${ymax})；启用 zone_lockdown/all 后生效`);
+}
 
 function applySemanticToRegion(xmin,ymin,xmax,ymax){
   if(!currentSemantic) return;
@@ -345,6 +433,43 @@ function getCanvasCell(event){
   return {x,y};
 }
 
+document.getElementById("zoomInBtn").addEventListener("click",()=>{
+  const rect=center.getBoundingClientRect();
+  zoomAt(1.16,rect.left+rect.width/2,rect.top+rect.height/2);
+});
+document.getElementById("zoomOutBtn").addEventListener("click",()=>{
+  const rect=center.getBoundingClientRect();
+  zoomAt(1/1.16,rect.left+rect.width/2,rect.top+rect.height/2);
+});
+document.getElementById("fitViewBtn").addEventListener("click",fitMapView);
+center.addEventListener("wheel",event=>{
+  if(!gridData) return;
+  event.preventDefault();
+  zoomAt(event.deltaY<0?1.16:1/1.16,event.clientX,event.clientY);
+},{passive:false});
+
+let panStart=null;
+center.addEventListener("pointerdown",event=>{
+  if(event.button!==1) return;
+  event.preventDefault();
+  panStart={x:event.clientX,y:event.clientY,left:center.scrollLeft,top:center.scrollTop,id:event.pointerId};
+  center.setPointerCapture(event.pointerId);
+  center.classList.add("panning");
+});
+center.addEventListener("pointermove",event=>{
+  if(!panStart||panStart.id!==event.pointerId) return;
+  center.scrollLeft=panStart.left+panStart.x-event.clientX;
+  center.scrollTop=panStart.top+panStart.y-event.clientY;
+});
+function finishPan(event){
+  if(!panStart||panStart.id!==event.pointerId) return;
+  panStart=null;
+  center.classList.remove("panning");
+}
+center.addEventListener("pointerup",finishPan);
+center.addEventListener("pointercancel",finishPan);
+center.addEventListener("auxclick",event=>event.preventDefault());
+
 canvas.addEventListener("mousedown",event=>{
   if(event.button!==0) return;
   const pos=getCanvasCell(event);
@@ -385,9 +510,11 @@ canvas.addEventListener("mouseup",event=>{
   else if(editMode==="semantic") applySemanticToRegion(xmin,ymin,xmax,ymax);
   else if(editMode==="alarm") applyAlarmToRegion(xmin,ymin,xmax,ymax);
   else if(editMode==="clear-alarm") clearAlarmRegion(xmin,ymin,xmax,ymax);
+  else if(editMode==="lockdown") applyLockdownRegion(xmin,ymin,xmax,ymax);
+  else if(editMode==="select-exit") setStatus(`已选择出口区域：(${xmin},${ymin}) → (${xmax},${ymax})，请填写出口编号`);
 
-  dragStart=null;
-  dragEnd=null;
+  const keepSelection=editMode==="select-exit";
+  if(!keepSelection){dragStart=null;dragEnd=null;}
   isDragging=false;
   updateSelectionInfo();
   draw();
@@ -407,6 +534,8 @@ document.addEventListener("keydown",event=>{
 
   if(typeMap[key]) setTypeMode(typeMap[key]);
   else if(key==="6") setAlarmMode();
+  else if(key==="l") setLockdownMode();
+  else if(key==="7") setSelectExitMode();
   else if(semanticMap[key]) setSemanticMode(semanticMap[key]);
   else if(key==="escape"){
     dragStart=null;dragEnd=null;isDragging=false;
@@ -431,6 +560,8 @@ function setSemanticMode(semantic){
   draw();
 }
 function setAlarmMode(){editMode="alarm";currentSemantic=null;updateModeUI();draw();}
+function setLockdownMode(){editMode="lockdown";currentSemantic=null;updateModeUI();draw();}
+function setSelectExitMode(){editMode="select-exit";currentSemantic=null;updateModeUI();draw();}
 function setClearAlarmMode(){editMode="clear-alarm";currentSemantic=null;updateModeUI();draw();}
 
 document.querySelectorAll("[data-type]").forEach(btn=>{
@@ -441,6 +572,18 @@ document.querySelectorAll("[data-semantic]").forEach(btn=>{
   btn.addEventListener("click",()=>setSemanticMode(btn.dataset.semantic));
 });
 document.querySelector('[data-mode="alarm"]').addEventListener("click",setAlarmMode);
+document.querySelector('[data-mode="lockdown"]').addEventListener("click",setLockdownMode);
+document.querySelector('[data-mode="select-exit"]').addEventListener("click",setSelectExitMode);
+document.getElementById("clearLockdownBtn").addEventListener("click",()=>{lockdownArea=null;setStatus("已清除封锁区域");draw();});
+document.getElementById("setExitIdBtn").addEventListener("click",()=>{
+  if(!dragStart||!dragEnd){setStatus("请先框选出口区域");return;}
+  const xmin=Math.min(dragStart.x,dragEnd.x),xmax=Math.max(dragStart.x,dragEnd.x);
+  const ymin=Math.min(dragStart.y,dragEnd.y),ymax=Math.max(dragStart.y,dragEnd.y);
+  const value=document.getElementById("exitIdInput").value.trim();
+  let changed=0;
+  for(let y=ymin;y<=ymax;y++)for(let x=xmin;x<=xmax;x++){const cell=getCell(x,y);if(cell&&cell.type==="exit"){cell.exit_id=value;changed++;}}
+  setStatus(`已为 ${changed} 个出口写入编号：${value||"（空，回退 exit_NN）"}`);
+});
 
 document.getElementById("clearSemanticBtn").addEventListener("click",()=>{
   if(!gridData){setStatus("当前没有地图");return}
@@ -500,6 +643,10 @@ function updateModeUI(){
     mode.textContent=`当前模式：语义 → ${SEMANTIC_LABEL[currentSemantic]||currentSemantic}`;
   }else if(editMode==="alarm"){
     mode.textContent="当前模式：警报设备 → 仅标记 FREE 元胞，不触发 runtime alarm";
+  }else if(editMode==="lockdown"){
+    mode.textContent="当前模式：封锁区域 → 框选矩形，只有 zone_lockdown/all 生效";
+  }else if(editMode==="select-exit"){
+    mode.textContent="当前模式：选择出口 → 只框选，不修改元胞类型";
   }else{
     mode.textContent="当前模式：清除警报设备标记";
   }
@@ -508,7 +655,9 @@ function updateModeUI(){
 
   const selector=editMode==="type"
     ? `[data-type="${currentType}"]`
-    : editMode==="semantic" ? `[data-semantic="${currentSemantic}"]` : `[data-mode="alarm"]`;
+    : editMode==="semantic" ? `[data-semantic="${currentSemantic}"]`
+    : editMode==="lockdown" ? `[data-mode="lockdown"]`
+    : editMode==="select-exit" ? `[data-mode="select-exit"]` : `[data-mode="alarm"]`;
 
   const button=document.querySelector(selector);
   if(button) button.classList.add("active");
@@ -551,6 +700,8 @@ draw();
 /* D 集成时使用的两个接口 */
 window.loadMapData=loadMapData;
 window.getMapData=getMapData;
+window.getLockdownArea=()=>lockdownArea?[...lockdownArea]:null;
+window.fitMapView=fitMapView;
 </script>
 </body>
 </html>
