@@ -1040,6 +1040,10 @@
     $("overlapCount").textContent = observed.overlapCells;
     if(extra.diagnostics && Number.isFinite(Number(extra.diagnostics.request_processing_ms))){
       $("stepLatency").textContent = `${Number(extra.diagnostics.request_processing_ms).toFixed(1)} ms`;
+      const runtimeMs = Number(extra.diagnostics.runtime_step_ms);
+      const artifactMs = Number(extra.diagnostics.artifact_write_ms);
+      const payloadBytes = Number(extra.diagnostics.payload_bytes);
+      $("stepLatency").title = `Runtime: ${Number.isFinite(runtimeMs) ? runtimeMs.toFixed(1) : "NA"} ms；派生归档: ${Number.isFinite(artifactMs) ? artifactMs.toFixed(1) : "NA"} ms；响应: ${Number.isFinite(payloadBytes) ? payloadBytes.toLocaleString() : "NA"} bytes`;
     }
     const currentStep = snapshot ? Number(snapshot.step || 0) : 0;
     const simulatedTime = snapshot ? Number(snapshot.time_s || 0) : 0;
@@ -1342,7 +1346,8 @@
     $("curveNote").textContent = `已记录 ${summary.total_steps ?? "NA"} 步 · 已撤离 ${summary.evacuated_count ?? "NA"}/${summary.initial_population ?? "NA"}`;
     draw();
     refreshStats();
-    log("已刷新本次运行的 CSV 分析图表");
+    const analysisMs = Number(data.diagnostics && data.diagnostics.analysis_compute_ms);
+    log(`已刷新本次运行的 CSV 分析图表${Number.isFinite(analysisMs) ? ` · 分析 ${analysisMs.toFixed(1)} ms` : ""}`);
   }
 
   function drawGuides(guides, ox, oy, cell){

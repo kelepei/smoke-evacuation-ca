@@ -748,19 +748,28 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         session = self._require_session()
         request_started = perf_counter()
         snapshot = session.runner.step()
-        step_compute_ms = (perf_counter() - request_started) * 1000.0
-        self._write_run_metadata(
-            session.runner,
-            snapshot,
-            session.input_files,
-            save_frame=session.runner.finished,
-        )
-        request_processing_ms = (perf_counter() - request_started) * 1000.0
+        runtime_step_ms = (perf_counter() - request_started) * 1000.0
+        artifact_write_ms = 0.0
+        # The CSV logger already persists every step.  Rebuilding every
+        # derived artifact here rereads the whole log and makes one click cost
+        # O(steps-so-far); defer it to completion or the explicit analysis API.
+        if session.runner.finished:
+            artifacts_started = perf_counter()
+            self._write_run_metadata(
+                session.runner,
+                snapshot,
+                session.input_files,
+                save_frame=True,
+            )
+            artifact_write_ms = (perf_counter() - artifacts_started) * 1000.0
         # 增量返回：grid / relations 是静态数据，初始化时已经下发过，
         # 每步不再重复发送（可减少约 57% 的响应体积，明显改善动画流畅度）。
         slim_snapshot = dict(snapshot)
         slim_snapshot.pop("grid", None)
         slim_snapshot.pop("relations", None)
+        payload_prepare_ms = (perf_counter() - request_started) * 1000.0 - runtime_step_ms - artifact_write_ms
+        payload_bytes = len(json.dumps(slim_snapshot, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+        request_processing_ms = (perf_counter() - request_started) * 1000.0
         return {
             "ok": True,
             "finished": session.runner.finished,
@@ -768,7 +777,10 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             "static_fields_omitted": ["grid", "relations"],
             "output_dir": str(session.runner.output_root / snapshot["run_id"]),
             "diagnostics": {
-                "step_compute_ms": round(step_compute_ms, 3),
+                "runtime_step_ms": round(runtime_step_ms, 3),
+                "artifact_write_ms": round(artifact_write_ms, 3),
+                "payload_prepare_ms": round(payload_prepare_ms, 3),
+                "payload_bytes": payload_bytes,
                 "request_processing_ms": round(request_processing_ms, 3),
             },
         }
@@ -843,6 +855,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         run_id = session.runner.current_run_id
         if snapshot is None or not run_id:
             raise WebRuntimeError("active session has no current snapshot to analyze")
+        analysis_started = perf_counter()
         try:
             result = build_runtime_analysis(
                 output_dir=session.runner.output_root / run_id,
@@ -853,6 +866,10 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         except ResultPackageError as exc:
             raise WebRuntimeError(str(exc)) from exc
         result["ok"] = True
+        result["diagnostics"] = {
+            "analysis_compute_ms": round((perf_counter() - analysis_started) * 1000.0, 3),
+            "analysis_response_bytes": len(json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8")),
+        }
         return result
 
     def _history_roots(self) -> tuple[Path, ...]:

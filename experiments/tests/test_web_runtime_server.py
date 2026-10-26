@@ -156,12 +156,17 @@ class WebRuntimeServerTests(unittest.TestCase):
                 self.assertGreaterEqual(
                     stepped_response["diagnostics"]["request_processing_ms"], 0
                 )
+                self.assertGreaterEqual(stepped_response["diagnostics"]["runtime_step_ms"], 0)
+                self.assertEqual(0.0, stepped_response["diagnostics"]["artifact_write_ms"])
+                self.assertGreater(stepped_response["diagnostics"]["payload_bytes"], 0)
                 self.assertTrue(Path(stepped_response["output_dir"], "final_frame.png").is_file())
                 with urlopen(base_url + "/api/session/analysis", timeout=10) as response:
                     analysis = json.loads(response.read().decode("utf-8"))
                 self.assertTrue(analysis["ok"])
                 self.assertIn("evacuation_curve_svg", analysis)
                 self.assertIn("occupancy_heatmap_svg", analysis)
+                self.assertGreaterEqual(analysis["diagnostics"]["analysis_compute_ms"], 0)
+                self.assertGreater(analysis["diagnostics"]["analysis_response_bytes"], 0)
                 self.assertIn("累计占用热力图", analysis["occupancy_heatmap_svg"])
                 academic = analysis["academic_crowd_fields"]
                 self.assertEqual("available", academic["status"])

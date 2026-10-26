@@ -148,6 +148,12 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
         self.assertIn("const columns=Math.max(1,maxX-minX+1), rows=Math.max(1,maxY-minY+1)", self.page)
         self.assertIn("const cell=Math.max(2,Math.min(plotWidth/columns,plotHeight/rows))", self.page)
 
+    def test_enhanced_page_surfaces_runtime_and_analysis_timing_diagnostics(self) -> None:
+        self.assertIn("extra.diagnostics.runtime_step_ms", self.page)
+        self.assertIn("extra.diagnostics.artifact_write_ms", self.page)
+        self.assertIn("extra.diagnostics.payload_bytes", self.page)
+        self.assertIn("data.diagnostics.analysis_compute_ms", self.page)
+
 
 if __name__ == "__main__":
     unittest.main()

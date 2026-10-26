@@ -372,27 +372,53 @@ def voronoi_density_for_frame(
         (person_id, (x + 0.5) * scale_m, (y + 0.5) * scale_m)
         for person_id, x, y in sites
     ]
+    width, height = int(grid["width"]), int(grid["height"])
+    site_by_id = {person_id: (x, y) for person_id, x, y in sites}
     for person_id, px, py in physical_sites:
+        # Clip the global rectangular extent once before considering legal
+        # cells.  This is algebraically identical to clipping every CA square
+        # independently, but limits the exact union-of-squares intersection
+        # to cells that can still touch this person's Voronoi polygon.
+        voronoi_polygon = [
+            (0.0, 0.0), (width * scale_m, 0.0),
+            (width * scale_m, height * scale_m), (0.0, height * scale_m),
+        ]
+        for other_id, ox, oy in physical_sites:
+            if other_id == person_id:
+                continue
+            nx, ny = ox - px, oy - py
+            c = (ox * ox + oy * oy - px * px - py * py) / 2.0
+            voronoi_polygon = _clip_half_plane(voronoi_polygon, nx=nx, ny=ny, c=c)
+            if not voronoi_polygon:
+                break
+        if not voronoi_polygon:
+            raise ValueError("Voronoi clipping produced a non-positive legal area")
+        min_x = max(0, math.floor(min(point[0] for point in voronoi_polygon) / scale_m))
+        max_x = min(width - 1, math.ceil(max(point[0] for point in voronoi_polygon) / scale_m) - 1)
+        min_y = max(0, math.floor(min(point[1] for point in voronoi_polygon) / scale_m))
+        max_y = min(height - 1, math.ceil(max(point[1] for point in voronoi_polygon) / scale_m) - 1)
         area_m2 = 0.0
-        for cell_x, cell_y in legal_cells:
-            polygon = _cell_polygon(cell_x, cell_y, scale_m)
-            for other_id, ox, oy in physical_sites:
-                if other_id == person_id:
+        for cell_y in range(min_y, max_y + 1):
+            for cell_x in range(min_x, max_x + 1):
+                if (cell_x, cell_y) not in legal_set:
                     continue
-                # Points nearer to p than q satisfy (q-p) dot z <=
-                # (|q|²-|p|²)/2.
-                nx, ny = ox - px, oy - py
-                c = (ox * ox + oy * oy - px * px - py * py) / 2.0
-                polygon = _clip_half_plane(polygon, nx=nx, ny=ny, c=c)
-                if not polygon:
-                    break
-            area_m2 += _polygon_area(polygon)
+                # The cell still needs an exact intersection.  Clip the
+                # already-computed Voronoi polygon against the four cell
+                # boundaries instead of reapplying every site half-plane.
+                left, top = cell_x * scale_m, cell_y * scale_m
+                right, bottom = left + scale_m, top + scale_m
+                polygon = voronoi_polygon
+                for nx, ny, c in ((1.0, 0.0, right), (-1.0, 0.0, -left), (0.0, 1.0, bottom), (0.0, -1.0, -top)):
+                    polygon = _clip_half_plane(polygon, nx=nx, ny=ny, c=c)
+                    if not polygon:
+                        break
+                area_m2 += _polygon_area(polygon)
         if area_m2 <= VORONOI_EPSILON:
             raise ValueError("Voronoi clipping produced a non-positive legal area")
         samples.append({
             "person_id": person_id,
-            "x": next(x for candidate_id, x, y in sites if candidate_id == person_id),
-            "y": next(y for candidate_id, x, y in sites if candidate_id == person_id),
+            "x": site_by_id[person_id][0],
+            "y": site_by_id[person_id][1],
             "voronoi_area_m2": area_m2,
             "density_persons_m2": 1.0 / area_m2,
             "validity": "valid",
