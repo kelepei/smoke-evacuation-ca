@@ -112,7 +112,10 @@ class EvacEngine:
             cell_size=self.cell_size,
         )
         self.panic_model = PanicModel(
-            self.movement.panic, time_step_s=self.time_step_s, rng=self.random
+            self.movement.panic,
+            time_step_s=self.time_step_s,
+            rng=self.random,
+            relations=getattr(scene, "relations", None),
         )
         self.speed_model = SpeedModel(
             self.movement.speed,
@@ -184,6 +187,7 @@ class EvacEngine:
         # 适配D可视化适配器新增属性
         self.smoke_matrix = self.smoke_engine.smoke_matrix
         self.smoke_sources = scene.smoke_sources
+        self._source_distance = self._build_source_distance()
         self.exits = scene.exits
         self.alarm_points = getattr(scene, "alarm_points", [])
 
@@ -311,11 +315,21 @@ class EvacEngine:
 
         # 5. 恐慌 / 危险感知 / 出口选择
         if self.handles_movement_speed:
+            source_proximity = self._source_proximity(alive)
             self.panic_model.update(
-                alive, smoke_mat, risk_dict, position_to_pid, dt=self.time_step_s
+                alive,
+                smoke_mat,
+                risk_dict,
+                position_to_pid,
+                dt=self.time_step_s,
+                source_proximity=source_proximity,
             )
             self.danger_model.update(
-                alive, risk_dict, self._blocked_last, dt=self.time_step_s
+                alive,
+                risk_dict,
+                self._blocked_last,
+                dt=self.time_step_s,
+                source_proximity=source_proximity,
             )
             forced_targets = {}
             for person in alive:
@@ -637,6 +651,56 @@ class EvacEngine:
             self._walk_dir[pid] = (dx, dy)
             self._walk_credit[pid] = credit - 1.0
             self._walk_total += 1
+
+    def _build_source_distance(self):
+        """多源 BFS：每个元胞到最近烟源的距离（元胞），用于烟源危险感知。"""
+        if not self.smoke_sources:
+            return None
+        from collections import deque
+
+        cell_index = getattr(self.grid, "_cell_index", None)
+        if cell_index is None:
+            cell_index = {(cell.x, cell.y): cell for cell in self.grid.cells}
+        distance = np.full((self.height, self.width), np.inf, dtype=np.float32)
+        queue = deque()
+        for source in self.smoke_sources:
+            sx, sy = int(source.x), int(source.y)
+            if 0 <= sx < self.width and 0 <= sy < self.height:
+                distance[sy, sx] = 0.0
+                queue.append((sx, sy))
+        while queue:
+            x, y = queue.popleft()
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, ny = x + dx, y + dy
+                if not (0 <= nx < self.width and 0 <= ny < self.height):
+                    continue
+                cell = cell_index.get((nx, ny))
+                if cell is None:
+                    continue
+                kind = str(getattr(cell.cell_type, "value", cell.cell_type)).lower()
+                if kind in {"wall", "obstacle"}:
+                    continue
+                if distance[ny, nx] > distance[y, x] + 1:
+                    distance[ny, nx] = distance[y, x] + 1
+                    queue.append((nx, ny))
+        return distance
+
+    def _source_proximity(self, persons):
+        """到烟源的高斯邻近度：烟源格=1，按 exp(-d^2/(2σ^2)) 衰减。"""
+        if self._source_distance is None:
+            return None
+        sigma = max(0.1, float(getattr(self.movement, "source_sigma_m", 1.5)))
+        scale = self.cell_size
+        proximity = {}
+        for person in persons:
+            x, y = int(person.x), int(person.y)
+            distance = float(self._source_distance[y, x])
+            if not np.isfinite(distance):
+                proximity[int(person.id)] = 0.0
+            else:
+                metres = distance * scale
+                proximity[int(person.id)] = float(np.exp(-(metres * metres) / (2.0 * sigma * sigma)))
+        return proximity
 
     def _local_density(self, occupied_positions: set[tuple[int, int]]) -> dict[tuple[int, int], int]:
         density: dict[tuple[int, int], int] = {}

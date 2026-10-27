@@ -42,6 +42,7 @@ P_i(0) = ρ_i （原文）或 0（项目默认，由烟雾驱动）
 exposure_i = min(1, S_i / smoke_ref)
            + delta_weight · min(1, max(0, ΔS_i) / dt)
            + risk_weight  · min(1, Risk_i / risk_ref)
+           + source_weight · Prox_i
 target_i   = 1 - exp(-exposure_i)
 
 P_i(t+dt) = clip( P_i + dt·[ ρ_i·growth·target_i·(1-P_i)
@@ -49,7 +50,32 @@ P_i(t+dt) = clip( P_i + dt·[ ρ_i·growth·target_i·(1-P_i)
                              - decay·P_i ], 0, 1 )
 ```
 
-- `ratio_i`：邻域（默认 3×3）内已恐慌者比例，实现情绪感染。
+- `ratio_i`：邻域（默认 3×3）内已恐慌者的**加权比例**，权重由社会关系决定，见 2.1.1。
+- `Prox_i = exp(−d_i² / (2σ_s²))`：到最近烟源的高斯邻近度（`d_i` 为米，`σ_s=1.5 m`），
+  烟源格为 1；`source_weight=1.0`。这一项直接叠加到暴露，不受 `Risk_i` 归一化截断影响，
+  解决"烟源处 Risk 已饱和、危险感知不够高"的问题。
+
+### 2.1.1 关系加权情绪传染（项目扩展）
+
+对邻居 `j`：
+
+```
+w_ij = ψ(type_ij) · [ floor + (1−floor) · (w_s·s_ij + w_t·τ_ij) / (w_s+w_t) ]
+
+ratio_i = Σ_j w_ij · [P_j ≥ α] / Σ_j w_ij
+```
+
+- `ψ`：关系类型基础权重，family 1.00、friend 0.80、classmate 0.65、colleague 0.60、
+  doctor_patient 0.50、staff_to_customer 0.35、stranger 0.20；
+- `s_ij`、`τ_ij`：关系强度、信任度；默认 `floor=0.30`、`w_s=w_t=0.50`；
+- 没有关系记录时按 stranger（`s=0, τ=0.1`）；同一对人重复关系取权重最大的一条；
+- `relation_contagion=False` 时退回原来的无权比例，旧场景数值不变；
+- 可选距离衰减：`w_ij ← w_ij · exp(−d_ij²/(2σ_d²))`，默认关闭，`σ_d=1.0` 格；
+- 关系来自 `scene.relations`，与 C 的 `SocialGraph` 同源；C 不改运行时逻辑，
+  只有关系动态变化时才调用 `PanicModel.set_relations()` 重建权重表。
+
+典型权重：family 0.965、friend 0.646、classmate 0.445、colleague 0.390、
+doctor_patient 0.334、staff_to_customer 0.166、stranger 0.067。
 - 阈值：原文 `α = 0.5`，高于 α 为感染者（恐慌）、低于 α 恢复为易感者；
   这里 `threshold = exit_threshold = 0.5`，不再额外加滞回。
 - 自衰减：原文 `β1 = 0.10`（步长 0.3 s），换算为 `decay ≈ 0.333/s`。
@@ -100,6 +126,8 @@ credit  += v·dt / cell_size
 - 元胞尺度：地图 JSON 的 `cell_size` 可能是像素尺度（例如 `edited_map.json` 是 10），
   不是米。`EvacEngine` 只在 `0.2~2.0 m` 之间采信 `grid.cell_size`，否则移动换算按 0.5 m
   参考元胞处理；否则会出现"一步只走 1/20 格"、网页端看起来完全不动的问题。
+- 性能：恐慌更新已改为 numpy 矩阵计算（邻域传染、暴露、衰减一次算完），
+  100 人、40×40 场景从约 26.7 ms/步降到约 19.5 ms/步；烟源邻近度用多源 BFS 预计算，不逐步搜索。
 - 性能：距离场 BFS 使用一维 `bytearray` + 一维距离表，避免在大地图上反复做
   `getattr/str/lower`。135×116 的地图、40 人时，B 引擎 + C 桥约 20 ms/步，
   网页 runner（含快照与 CSV 日志）约 100 ms/步。警报后 D 端会生成引导推荐，
@@ -159,7 +187,7 @@ t_c      = 低速或停滞持续时间（v < λ·v^e，λ=0.2）
 
 imp_i(t) = (1 - v_i/v_i^e) · exp(-γ·(v_i(t)-v_i(t-1))) · exp(β·t_c)
 
-imp_total = imp_i + smoke_gain · Risk_norm          # 项目扩展：烟雾附加压力
+imp_total = imp_i + smoke_gain · Risk_norm + source_weight · Prox_i
 D_i       = imp_total / (1 + imp_total)             # 归一化到 0~1
 ```
 
@@ -273,6 +301,12 @@ D 端完成 `movement` 透传后（见随附的《D 板块待改说明》第 2 �
 | panic | `initial_from_susceptibility` | False | True 时按原文 E(0)=ρ 初始化 |
 | panic | `threshold` / `exit_threshold` | 0.50 / 0.50 | 情绪阈值 α（原文 0.5，无滞回） |
 | panic | `speed_gain` | 0.20 | 恐慌加速 = 1.2 倍 |
+| panic | `source_weight` | 1.0 | 烟源邻近的附加暴露 |
+| movement | `source_sigma_m` | 1.5 | 烟源影响半径（米） |
+| panic | `relation_contagion` | True | 关系加权传染开关 |
+| panic | `relation_floor` / `relation_strength_weight` / `relation_trust_weight` | 0.30 / 0.5 / 0.5 | 关系权重公式参数 |
+| panic | `relation_type_weights` | 见 2.1.1 | 关系类型基础权重 ψ |
+| panic | `relation_distance_decay` / `relation_sigma_cells` | False / 1.0 | 可选距离衰减 |
 | speed | `accel_model` | xiong2025 | xiong2025=实测分布；constant=固定加速度 |
 | speed | `accel` / `accel_sd` / `accel_min` / `accel_max` | 2.0 / 0.6 / 0.5 / 5.5 | 仅 constant 模式使用（m/s²） |
 | speed | `decel` | 2.5 | 仅 constant 模式的减速度（m/s²） |
@@ -285,6 +319,7 @@ D 端完成 `movement` 透传后（见随附的《D 板块待改说明》第 2 �
 | danger | `window_steps` | 10 | 实时速度滚动窗口 |
 | danger | `smoke_gain` / `risk_ref` | 0.5 / 1.0 | 烟雾附加压力（0=纯原文） |
 | danger | `threshold` | 0.5 | 归一化危险压力阈值 |
+| danger | `source_weight` | 1.2 | 烟源邻近的附加压力 |
 | danger | `lateral_bonus` / `priority_gain` | 2.0 / 0.5 | 横向绕道/抢格加成 |
 | exit | `alpha` | 0.45 | 出口区域密度权重 α（原文 0.45） |
 | exit | `sigma` / `retention` | 0.002 / 0.90 | 选择模糊度 σ / 出口保持率 Pm（原文） |

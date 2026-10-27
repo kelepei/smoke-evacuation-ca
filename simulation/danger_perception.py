@@ -56,6 +56,7 @@ class DangerPerceptionModel:
         risk_map: Mapping[int, float] | None,
         blocked_flags: Mapping[int, bool] | None = None,
         dt: float | None = None,
+        source_proximity: Mapping[int, float] | None = None,
     ) -> dict[int, dict[str, float | bool]]:
         cfg = self.cfg
         dt = self.dt if dt is None else max(1e-6, float(dt))
@@ -88,7 +89,14 @@ class DangerPerceptionModel:
             impatience = min(50.0, max(0.0, impatience))
 
             risk_norm = min(1.0, max(0.0, float(risk_map.get(pid, 0.0) or 0.0) / max(1e-6, cfg.risk_ref)))
-            total = impatience + max(0.0, float(cfg.smoke_gain)) * risk_norm
+            proximity = 0.0
+            if source_proximity is not None:
+                proximity = max(0.0, float(source_proximity.get(pid, 0.0) or 0.0))
+            total = (
+                impatience
+                + max(0.0, float(cfg.smoke_gain)) * risk_norm
+                + max(0.0, float(cfg.source_weight)) * proximity
+            )
             pressure = total / (1.0 + total) if total > 0 else 0.0
 
             self._write(person, pressure, impatience, stagnation)

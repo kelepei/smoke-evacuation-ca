@@ -58,6 +58,24 @@ class PanicConfig:
     exit_threshold: float = 0.50
     # 恐慌后速度增益：1.2 倍 ⇒ 0.2
     speed_gain: float = 0.20
+    # 烟源本身的危险感知：在烟雾浓度之外，按到烟源的距离额外增加暴露
+    source_weight: float = 1.0
+    # ---- 关系加权情绪传染（任务书 5.3 / 项目设计） ----
+    relation_contagion: bool = True
+    relation_floor: float = 0.30
+    relation_strength_weight: float = 0.50
+    relation_trust_weight: float = 0.50
+    relation_distance_decay: bool = False
+    relation_sigma_cells: float = 1.0
+    relation_type_weights: dict = field(default_factory=lambda: {
+        "family": 1.00,
+        "friend": 0.80,
+        "classmate": 0.65,
+        "colleague": 0.60,
+        "doctor_patient": 0.50,
+        "staff_to_customer": 0.35,
+        "stranger": 0.20,
+    })
 
 
 @dataclass
@@ -115,6 +133,7 @@ class DangerConfig:
     window_steps: int = 10      # 实时速度的滚动窗口
     # ---- 项目扩展：烟雾/风险附加压力 ----
     smoke_gain: float = 0.5     # 每小时风险归一化值附加的不耐烦量；0=纯原文
+    source_weight: float = 1.2  # 烟源邻近的附加压力（0=不启用）
     risk_ref: float = 1.0
     # 归一化后超过该阈值触发行为（横向绕道、抢格优先、换出口）
     threshold: float = 0.5
@@ -177,6 +196,8 @@ class MovementConfig:
     # 未获知险情人员的行为：walk=正常速度随机行走 / freeze=原地 / evacuate=直接疏散
     unknown_behavior: str = "walk"
     unknown_speed_factor: float = 0.35
+    # 烟源危险感知的影响半径（米）：到烟源距离按 exp(-d^2/(2σ^2)) 衰减
+    source_sigma_m: float = 1.5
     panic: PanicConfig = field(default_factory=PanicConfig)
     speed: SpeedConfig = field(default_factory=SpeedConfig)
     danger: DangerConfig = field(default_factory=DangerConfig)

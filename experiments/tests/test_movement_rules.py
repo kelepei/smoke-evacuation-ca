@@ -6,7 +6,7 @@ import unittest
 
 import numpy as np
 
-from core.schema import Cell, CellType, Exit, Grid, Person, ScenarioConfig
+from core.schema import Cell, CellType, Exit, Grid, Person, Relation, RelationType, ScenarioConfig
 from simulation.conflict_solver import conflict_priority, resolve_conflict
 from simulation.danger_perception import DangerPerceptionModel
 from simulation.exit_choice import ExitChooser
@@ -309,6 +309,101 @@ class ExitChoiceTests(unittest.TestCase):
         switched = chooser.update_all(persons + crowd, 10, smoke, {})
         self.assertEqual(switched[1], "E_far")
         self.assertGreaterEqual(chooser.switch_total, 1)
+
+class RelationPanicTests(unittest.TestCase):
+    def _panic_with_relation(self, relation) -> float:
+        import random
+
+        cfg = MovementConfig().panic
+        model = PanicModel(
+            cfg, time_step_s=0.5, rng=random.Random(3), relations=[relation]
+        )
+        calm = Person(id=1, x=2, y=2, info_state="INFORMED")
+        source = Person(id=2, x=3, y=2, info_state="INFORMED")
+        # 第三个邻居保持平静且没有关系，用来提供分母权重；
+        # 只有一个邻居时加权比例恒为 1，测不出关系差异。
+        bystander = Person(id=3, x=2, y=3, info_state="INFORMED")
+        model.reset([calm, source, bystander])
+        smoke = np.zeros((5, 5), dtype=np.float32)
+        positions = {(2, 2): 1, (3, 2): 2, (2, 3): 3}
+        for _ in range(12):
+            source.panic = 1.0
+            source.is_panicked = True
+            model.update([calm, source, bystander], smoke, {}, positions)
+        return float(calm.panic)
+
+    def test_family_contagion_is_stronger_than_stranger(self) -> None:
+        family = Relation(
+            person_a_id=1,
+            person_b_id=2,
+            relation_type=RelationType.FAMILY,
+            strength=0.95,
+            trust=0.95,
+        )
+        stranger = Relation(
+            person_a_id=1,
+            person_b_id=2,
+            relation_type=RelationType.STRANGER,
+            strength=0.0,
+            trust=0.1,
+        )
+        family_panic = self._panic_with_relation(family)
+        stranger_panic = self._panic_with_relation(stranger)
+        self.assertGreater(family_panic, stranger_panic + 0.05)
+
+    def test_relation_contagion_can_be_disabled(self) -> None:
+        import random
+
+        def run(relation_type) -> float:
+            cfg = MovementConfig().panic
+            cfg.relation_contagion = False
+            relation = Relation(
+                person_a_id=1,
+                person_b_id=2,
+                relation_type=relation_type,
+                strength=0.95,
+                trust=0.95,
+            )
+            model = PanicModel(
+                cfg, time_step_s=0.5, rng=random.Random(3), relations=[relation]
+            )
+            calm = Person(id=1, x=2, y=2, info_state="INFORMED")
+            source = Person(id=2, x=3, y=2, info_state="INFORMED")
+            model.reset([calm, source])
+            smoke = np.zeros((5, 5), dtype=np.float32)
+            positions = {(2, 2): 1, (3, 2): 2}
+            for _ in range(12):
+                source.panic = 1.0
+                source.is_panicked = True
+                model.update([calm, source], smoke, {}, positions)
+            return float(calm.panic)
+
+        self.assertAlmostEqual(run(RelationType.FAMILY), run(RelationType.STRANGER), places=9)
+
+
+class SourceHazardTests(unittest.TestCase):
+    def test_source_proximity_raises_panic_without_smoke(self) -> None:
+        import random
+
+        cfg = MovementConfig().panic
+        model = PanicModel(cfg, time_step_s=0.5, rng=random.Random(1))
+        person = Person(id=1, x=2, y=2, info_state="INFORMED")
+        model.reset([person])
+        smoke = np.zeros((5, 5), dtype=np.float32)
+        for _ in range(12):
+            model.update(
+                [person], smoke, {}, {(2, 2): 1}, source_proximity={1: 1.0}
+            )
+        self.assertGreater(person.panic, 0.1)
+
+    def test_source_proximity_adds_danger_pressure(self) -> None:
+        cfg = MovementConfig().danger
+        model = DangerPerceptionModel(cfg, time_step_s=0.5, cell_size=0.5)
+        person = Person(id=1, x=2, y=2, speed=1.0, info_state="INFORMED")
+        model.reset([person])
+        for _ in range(12):
+            model.update([person], {1: 0.0}, {1: False}, source_proximity={1: 1.0})
+        self.assertGreater(person.danger_pressure, 0.2)
 
 
 if __name__ == "__main__":
