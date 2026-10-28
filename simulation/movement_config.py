@@ -198,6 +198,8 @@ class MovementConfig:
     unknown_speed_factor: float = 0.35
     # 烟源危险感知的影响半径（米）：到烟源距离按 exp(-d^2/(2σ^2)) 衰减
     source_sigma_m: float = 1.5
+    # 烟雾浓度超过该值时，该候选格直接不可进入（硬绕行）
+    smoke_avoid_threshold: float = 0.8
     panic: PanicConfig = field(default_factory=PanicConfig)
     speed: SpeedConfig = field(default_factory=SpeedConfig)
     danger: DangerConfig = field(default_factory=DangerConfig)

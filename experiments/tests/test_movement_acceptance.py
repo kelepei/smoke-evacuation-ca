@@ -124,6 +124,34 @@ class UnknownBehaviorAcceptanceTests(unittest.TestCase):
             engine.run_one_step(c_step_data={1: {"info_state": "UNKNOWN"}})
         self.assertNotEqual((person.x, person.y), start)
 
+class SmokeAvoidanceTests(unittest.TestCase):
+    def test_smoke_above_threshold_blocks_forward_cell(self) -> None:
+        from simulation.ca_model import _extend_path
+
+        grid = make_grid(6, 3, [(5, 1)])
+        cell_index = {(cell.x, cell.y): cell for cell in grid.cells}
+        smoke = np.zeros((3, 6), dtype=np.float32)
+        smoke[1, 3] = 0.85
+        x, y = _extend_path(
+            1, 1, 1, 0, 4, grid, cell_index, set(), smoke, grid.width, grid.height
+        )
+        self.assertEqual((x, y), (2, 1))
+
+    def test_smoke_below_threshold_is_passable(self) -> None:
+        from simulation.ca_model import _extend_path
+
+        grid = make_grid(6, 3, [(5, 1)])
+        cell_index = {(cell.x, cell.y): cell for cell in grid.cells}
+        smoke = np.zeros((3, 6), dtype=np.float32)
+        smoke[1, 3] = 0.75
+        x, y = _extend_path(
+            1, 1, 1, 0, 4, grid, cell_index, set(), smoke, grid.width, grid.height
+        )
+        self.assertEqual((x, y), (4, 1))
+
+    def test_default_threshold_is_zero_point_eight(self) -> None:
+        self.assertEqual(MovementConfig().smoke_avoid_threshold, 0.8)
+
 
 if __name__ == "__main__":
     unittest.main()

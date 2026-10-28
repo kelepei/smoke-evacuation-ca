@@ -361,6 +361,7 @@ class EvacEngine:
         }
         ca_weights = dict(self.scene.parameters.get("ca_weights", {}) or {})
         ca_weights.setdefault("w_lateral", self.movement.danger.lateral_bonus)
+        ca_weights.setdefault("smoke_avoid_threshold", self.movement.smoke_avoid_threshold)
         for person in alive:
             pid = int(person.id)
             single_behavior = c_step_data.get(pid, {}) or {}

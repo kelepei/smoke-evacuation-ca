@@ -76,7 +76,7 @@ def _adjacent_exit_step(px, py, grid, cell_index, occupied_positions, smoke_matr
 
 
 def _extend_path(px, py, dx, dy, steps, grid, cell_index, occupied_positions,
-                 smoke_matrix, max_x, max_y):
+                 smoke_matrix, max_x, max_y, smoke_avoid_threshold=0.8):
     """沿 (dx,dy) 方向最多走 steps 格，遇墙/占用/高浓度烟雾就停。"""
     best_x, best_y = px, py
     for _ in range(max(1, int(steps)) - 1):
@@ -89,7 +89,7 @@ def _extend_path(px, py, dx, dy, steps, grid, cell_index, occupied_positions,
         if (nx, ny) in occupied_positions:
             break
         smoke = float(smoke_matrix[ny][nx]) if 0 <= ny < len(smoke_matrix) and 0 <= nx < len(smoke_matrix[0]) else 0.0
-        if smoke > 0.9:
+        if smoke > smoke_avoid_threshold:
             break
         best_x, best_y = nx, ny
         if _cell_type_value(cell) == "exit":
@@ -177,6 +177,7 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
     w_follow = weights.get("w_follow", 1.2)
     w_dS     = weights.get("w_dS", 4.0)
     w_lateral = weights.get("w_lateral", 2.0)
+    smoke_avoid = float(weights.get("smoke_avoid_threshold", 0.8))
     follow_max_dist = weights.get("follow_max_dist", 6.0)
 
     if occupied_positions is None:
@@ -252,8 +253,8 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
         if 0 <= ty < len(smoke_matrix) and 0 <= tx < len(smoke_matrix[0]):
             next_smoke = float(smoke_matrix[ty][tx])
 
-        # 极端浓度硬约束
-        if next_smoke > 0.9:
+        # 高浓度硬约束：超过阈值直接不进入，逼出绕行
+        if next_smoke > smoke_avoid:
             continue
 
         utility = 0.0
@@ -352,7 +353,7 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
             best_x, best_y = _extend_path(
                 best_x, best_y, chosen["dx"], chosen["dy"], int(max_steps),
                 grid, cell_index, occupied_positions, smoke_matrix,
-                grid.width, grid.height,
+                grid.width, grid.height, smoke_avoid,
             )
 
     return best_x, best_y
