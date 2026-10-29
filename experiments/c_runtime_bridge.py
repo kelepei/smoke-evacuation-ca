@@ -715,6 +715,42 @@ class CWebRuntimeBridge:
     def guides(self) -> list[dict[str, Any]]:
         return [guide.to_dict() for guide in self.guides_model.guides]
 
+    def _information_payload(self, informed: int) -> dict[str, object]:
+        """把 C 的信息传播日志/计数暴露给 D，供网页画"谁告诉了谁"。"""
+        events: list[dict[str, object]] = []
+        try:
+            log = self.info_diffusion.get_propagation_log()
+        except Exception:
+            log = []
+        for entry in log[-20:]:
+            if not isinstance(entry, dict):
+                continue
+            from_id = entry.get("from_id")
+            to_id = entry.get("to_id")
+            relation_type = ""
+            if from_id is not None and to_id is not None:
+                try:
+                    relation = self.info_diffusion.graph.get_relation(int(from_id), int(to_id))
+                    if isinstance(relation, dict):
+                        relation_type = str(relation.get("relation_type", "") or "")
+                except Exception:
+                    relation_type = ""
+            events.append({
+                "step": entry.get("step"),
+                "from_id": from_id,
+                "to_id": to_id,
+                "method": entry.get("method", ""),
+                "relation_type": relation_type,
+                "message": entry.get("message", ""),
+            })
+        stats = getattr(self.info_diffusion, "step_stats", {}) or {}
+        return {
+            "informed_count": int(informed),
+            "remote_pair_spread": int(stats.get("remote_pair_spread", 0) or 0),
+            "relation_spread": int(stats.get("relation_spread", 0) or 0),
+            "propagation_events": events,
+        }
+
     def _publish_state(self) -> None:
         active = self._people()
         informed = sum(1 for person in active if self.info_state.get_state_value(int(person.id)) != "UNKNOWN")
@@ -724,6 +760,7 @@ class CWebRuntimeBridge:
         ]
         self.engine.c_runtime_state = {
             "informed_count": informed,
+            "information": self._information_payload(informed),
             "panic_count": sum(1 for value in panic_levels if value >= self.panic_threshold),
             "mean_panic_level": (sum(panic_levels) / len(panic_levels)) if panic_levels else 0.0,
             "max_panic_level": max(panic_levels) if panic_levels else 0.0,
