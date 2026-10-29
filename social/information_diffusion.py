@@ -56,6 +56,22 @@ DIFFUSION_PARAMS = {
         },
         "max_spread_per_step": 3,
     },
+    "remote_pair": {
+        "enabled": True,
+        "pairs_per_step": 3,
+        # 未在 relation_probabilities 中列出的关系类型使用该回退概率
+        "probability": 0.2,
+        "relation_probabilities": {
+            "family": 1.0,
+            "friend": 0.7,
+            "classmate": 0.5,
+            "colleague": 0.4,
+            "doctor_patient": 0.5,
+            "staff_to_customer": 0.3,
+            "stranger": 0.1,
+        },
+        "source_states": ["ALERTED", "CONFIRMED", "GUIDED"],
+    },
     "misinformation": {
         "enabled": True,
         "inject": {
@@ -90,6 +106,7 @@ class InformationDiffusionEngine:
         self.broadcast_params = DIFFUSION_PARAMS["broadcast"]
         self.wom_params = DIFFUSION_PARAMS["word_of_mouth"]
         self.rel_params = DIFFUSION_PARAMS["relation_spread"]
+        self.remote_pair_params = DIFFUSION_PARAMS["remote_pair"]
         self.misinfo_params = DIFFUSION_PARAMS["misinformation"]
 
         self.misinfo_active = False
@@ -142,6 +159,9 @@ class InformationDiffusionEngine:
         # 5. 关系传播
         if self.rel_params["enabled"]:
             self._apply_relation_spread(all_persons, current_step)
+
+        # 6. 远程关系对传播：随机挑几对关系，知情者告诉另一方
+        self._apply_remote_pair_spread(all_persons, current_step)
 
         return dict(self.step_stats)
 
@@ -385,6 +405,83 @@ class InformationDiffusionEngine:
                             self.step_stats["relation_spread"] += 1
                             self._log_propagation(spreader_id, neighbor_id_int, current_step,
                                                   "relation", f"关系传播: {rel_type}")
+
+    def _apply_remote_pair_spread(self, all_persons: List, current_step: int):
+        """随机选几对关系，让知情的一方把信息告诉另一方（不限距离）。"""
+        params = self.remote_pair_params
+        if not params.get("enabled", False):
+            return
+
+        max_pairs = max(0, int(params.get("pairs_per_step", 3)))
+        fallback_probability = min(1.0, max(0.0, float(params.get("probability", 0.2))))
+        relation_probabilities = params.get("relation_probabilities", {})
+        if not isinstance(relation_probabilities, dict):
+            relation_probabilities = {}
+        source_states = set(params.get("source_states", ["ALERTED", "CONFIRMED", "GUIDED"]))
+        if max_pairs <= 0:
+            return
+
+        alive_ids = {
+            int(person.id) for person in all_persons
+            if not getattr(person, "evacuated", False) and not getattr(person, "is_dead", False)
+        }
+        edges = [
+            (int(left), int(right))
+            for left, right in self.graph.graph.edges()
+            if int(left) in alive_ids and int(right) in alive_ids
+        ]
+        if not edges:
+            return
+
+        np.random.shuffle(edges)
+        spread = 0
+        for left, right in edges:
+            if spread >= max_pairs:
+                break
+            for source_id, target_id in ((left, right), (right, left)):
+                source_state = self.info_engine.get_state_value(source_id)
+                target_state = self.info_engine.get_state_value(target_id)
+                if source_state not in source_states:
+                    continue
+                if self.info_engine.state_priority_str(target_state) >= self.info_engine.state_priority_str(source_state):
+                    break
+                relation = self.graph.get_relation(source_id, target_id)
+                relation_type = (
+                    str(relation.get("relation_type", "stranger")).lower()
+                    if isinstance(relation, dict)
+                    else "stranger"
+                )
+                pair_probability = min(
+                    1.0,
+                    max(
+                        0.0,
+                        float(relation_probabilities.get(relation_type, fallback_probability)),
+                    ),
+                )
+                if np.random.random() < pair_probability:
+                    transferred = self.info_engine.transition_state(
+                        target_id,
+                        self.info_engine.str_to_enum(source_state),
+                        current_step,
+                        source=source_id,
+                        method="remote",
+                    )
+                    # UNKNOWN 不能直接跳到 CONFIRMED；先让对方“知道有危险”
+                    if not transferred:
+                        transferred = self.info_engine.transition_state(
+                            target_id,
+                            InfoState.ALERTED,
+                            current_step,
+                            source=source_id,
+                            method="remote",
+                        )
+                    if transferred:
+                        self.step_stats["remote_pair_spread"] += 1
+                        self._log_propagation(
+                            source_id, target_id, current_step, "remote", "远程关系传播"
+                        )
+                        spread += 1
+                break
 
     # ============================================================
     # 4. 错误信息注入
