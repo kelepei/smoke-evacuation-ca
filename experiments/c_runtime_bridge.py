@@ -127,6 +127,8 @@ class CWebRuntimeBridge:
         self._move_credit: dict[int, float] = {}
         self._move_allowed: dict[int, bool] = {}
         self._speed_stats = {"blocked_total": 0, "congested_total": 0, "same_cell_congested_total": 0}
+        self._smoke_peak_cache_key: tuple[int, int] | None = None
+        self._smoke_peak_cache_value = 0.0
         # 未获知险情人员行为：walk=正常速度随机行走（默认）/ freeze=原地 / evacuate=直接疏散
         self.unknown_behavior = str(settings.get("unknown_behavior", "walk") or "walk").strip().lower()
         self.unknown_speed_factor = max(0.0, float(settings.get("unknown_speed_factor", 0.35)))
@@ -317,13 +319,26 @@ class CWebRuntimeBridge:
         smoke = getattr(self.engine, "smoke_matrix", None)
         if smoke is None:
             return 0.0
+        smoke_engine = getattr(self.engine, "smoke_engine", None)
+        cache_key = (
+            id(smoke),
+            int(getattr(smoke_engine, "time_step_count", -1)),
+        )
+        if cache_key == self._smoke_peak_cache_key:
+            return self._smoke_peak_cache_value
         peak = 0.0
         try:
-            for row in smoke:
-                for value in row:
-                    peak = max(peak, float(value))
-        except (TypeError, ValueError):
-            return 0.0
+            peak = float(smoke.max())
+        except (AttributeError, TypeError, ValueError):
+            try:
+                for row in smoke:
+                    peak = max(peak, max(float(value) for value in row))
+            except (TypeError, ValueError):
+                peak = 0.0
+        if not math.isfinite(peak) or peak < 0.0:
+            peak = 0.0
+        self._smoke_peak_cache_key = cache_key
+        self._smoke_peak_cache_value = peak
         return peak
 
     def _configure_web_smoke_semantics(self, settings: Mapping[str, Any]) -> None:
