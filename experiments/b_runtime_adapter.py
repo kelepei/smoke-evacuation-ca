@@ -258,6 +258,12 @@ class EvacEngineRuntimeAdapter:
         return getattr(self._engine.scene, "smoke_sources", [])
 
     @property
+    def behavior_provider(self) -> BehaviorProvider | None:
+        """Public access to C's live behavior bridge for runtime controls."""
+
+        return self._behavior_provider
+
+    @property
     def current_step(self) -> int:
         return int(self._engine.current_step)
 
