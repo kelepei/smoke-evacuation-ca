@@ -67,8 +67,9 @@
 
       <div class="form-section">
         <h3>关系与随机性</h3>
-        <label for="intensity">关系强度</label>
+        <label for="intensity">关系强度 relation_intensity（0=最弱，1=默认最强）</label>
         <div class="row"><input id="intensity" data-testid="relation-intensity" type="range" min="0" max="1" step="0.01"><output id="intensityValue" class="value"></output></div>
+        <p class="hint">relation_intensity：0=关系最弱，1=默认最强；按比例缩放生成关系的 strength 与 trust。</p>
         <label>群体存在概率</label>
         <p class="hint">只显示当前场景可用的关系群体；未显示的群体将以 0 导出。</p>
         <div id="probabilities"></div>
