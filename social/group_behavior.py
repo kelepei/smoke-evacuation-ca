@@ -43,7 +43,7 @@ GROUP_PARAMS = {
     "wait": {
         "max_wait_steps": 10,           # 最大等待步数（10步 = 5秒）
         "wait_trigger_dist": 3.0,       # 同伴偏离超过3格触发等待
-        "wait_abandon_dist": 6.0,       # 同伴偏离超过6格放弃等待
+        "wait_abandon_dist": 20.0,      # 同伴偏离超过20格放弃等待（家庭成员相距超过20格即各自疏散）
     },
 
     # ====== 靠近行为 ======
@@ -58,6 +58,9 @@ GROUP_PARAMS = {
         "min_group_size": 2,            # 至少2人才能触发共同出口
         "majority_ratio": 0.5,          # 半数以上选择同一出口才触发
         "preference_bonus": 0.3,        # 出口偏好修正值（加到B组效用公式）
+        "force_same_exit": True,        # 家庭组强制使用同一出口
+        "force_relation_types": ["family"],  # 触发强制同出口的关系类型
+        "split_distance": 20.0,         # 家庭成员相距超过该距离则各自疏散
     },
 
     # ====== 组分散容差 ======
@@ -71,12 +74,14 @@ class GroupBehaviorEngine:
     在仿真每步中，为每个强关系成员计算结伴状态
     """
 
-    def __init__(self, social_graph):
+    def __init__(self, social_graph, exits=None):
         """
         :param social_graph: C03 构建的 SocialGraphBuilder 实例
+        :param exits: 出口列表 [(exit_id, x, y), ...]，用于家庭同出口判定
         """
         self.graph = social_graph
         self.persons = social_graph.persons
+        self.exits = exits or []
 
         # 从 GROUP_PARAMS 加载配置
         self.strong_relations = GROUP_PARAMS["strong_relation_types"]
@@ -131,10 +136,30 @@ class GroupBehaviorEngine:
             center_x = np.mean([p.x for p in active_members])
             center_y = np.mean([p.y for p in active_members])
 
+            # 家庭同出口：组内存在 family 关系时，取离组中心最近的出口
+            force_same_exit = self._group_has_force_relation(member_ids)
+            group_exit = self._nearest_exit(center_x, center_y) if force_same_exit else None
+            split_distance = self.co_exit_params.get("split_distance", 20.0)
+
             for person in active_members:
                 result = self._calc_person_behavior(
                     person, active_members, center_x, center_y, current_step
                 )
+                if force_same_exit and group_exit:
+                    nearest_member_dist = min(
+                        (self._distance(person, other)
+                         for other in active_members if other.id != person.id),
+                        default=0.0,
+                    )
+                    if nearest_member_dist <= split_distance:
+                        result['group_exit'] = group_exit
+                        result['group_split'] = False
+                    else:
+                        # 家庭成员相距超过 20 格：各自走最近出口，不再等待
+                        result['group_exit'] = None
+                        result['group_split'] = True
+                        result['is_waiting'] = False
+                        result['waiting_for'] = None
                 results[person.id] = result
 
         # 补充未分组或已撤离的行人
@@ -170,6 +195,8 @@ class GroupBehaviorEngine:
             "wait_start_step": None,
             "approach_target": None,
             "exit_preference": {},
+            "group_exit": None,
+            "group_split": False,
             "group_center_x": center_x,
             "group_center_y": center_y,
         }
@@ -243,6 +270,9 @@ class GroupBehaviorEngine:
 
         for other in other_members:
             other_dist = self._distance(other, (center_x, center_y))
+            # 同伴偏离超过放弃距离（默认 20 格）→ 不再等待
+            if other_dist > self.wait_params["wait_abandon_dist"]:
+                continue
             # 如果同伴距离组中心超过平均值2倍且超过触发阈值
             if other_dist > avg_dist * 2.0 and other_dist > self.wait_params["wait_trigger_dist"]:
                 # 检查是否已经等待太久
@@ -283,6 +313,37 @@ class GroupBehaviorEngine:
 
         return result
 
+    def _group_has_force_relation(self, member_ids) -> bool:
+        """组内是否存在需要强制同出口的关系（默认 family）。"""
+        types = set(self.co_exit_params.get('force_relation_types', ['family']))
+        if not types:
+            return False
+        ids = set(member_ids)
+        for pid in member_ids:
+            try:
+                neighbors = self.graph.graph.neighbors(pid)
+            except Exception:
+                continue
+            for nid in neighbors:
+                if nid in ids:
+                    rel = self.graph.get_relation(pid, nid)
+                    if rel.get('relation_type') in types:
+                        return True
+        return False
+
+    def _nearest_exit(self, x, y):
+        """返回离 (x, y) 最近的出口 id。"""
+        if not self.exits:
+            return None
+        best = None
+        best_d = float('inf')
+        for eid, ex, ey in self.exits:
+            d = (ex - x) ** 2 + (ey - y) ** 2
+            if d < best_d:
+                best_d = d
+                best = eid
+        return best
+
     def _has_strong_relation(self, person_id: int) -> bool:
         """检查此人是否有强关系"""
         for neighbor_id in self.graph.graph.neighbors(person_id):
@@ -315,6 +376,8 @@ class GroupBehaviorEngine:
             "wait_start_step": None,
             "approach_target": None,
             "exit_preference": {},
+            "group_exit": None,
+            "group_split": False,
             "group_center_x": None,
             "group_center_y": None,
         }
