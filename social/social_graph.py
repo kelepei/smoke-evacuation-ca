@@ -34,6 +34,11 @@ from .relation_templates import (
 
 # [OK]  使用绝对导入（项目根目录下的 control 模块）
 from control.scene_config import SceneConfig
+from core.relation_types import (
+    DEFAULT_RELATION_STRENGTH,
+    DEFAULT_RELATION_TRUST,
+    relation_contagion_weight,
+)
 
 # 导入 C02 生成函数（同包，相对导入）
 from .relation_templates import generate_profiles_from_config, generate_relations_from_config
@@ -89,7 +94,10 @@ class Person:
         "id", "x", "y", "speed", "group_id", "profile",
         "risk_sensitivity", "familiarity", "herding_tendency",
         "target_exit", "info_state", "evacuated", "dose",
-        "prev_x", "prev_y", "_locked_alert",
+        "prev_x", "prev_y", "_locked_alert", "is_dead",
+        "age_group", "gender", "age_coefficient", "competitiveness",
+        "vulnerable", "avoidance_probability", "avoidance_threshold",
+        "assistance_priority", "route_target", "yielded_to", "avoided_by",
     )
 
     def __init__(self, pid: int, profile: str, defaults: dict):
@@ -106,6 +114,18 @@ class Person:
         self.info_state = "UNKNOWN"
         self.evacuated = False
         self.dose = 0.0
+        self.is_dead = False
+        self.age_group = "adult"
+        self.gender = "unspecified"
+        self.age_coefficient = 0.0
+        self.competitiveness = 0.0
+        self.vulnerable = False
+        self.avoidance_probability = 0.0
+        self.avoidance_threshold = 1.0
+        self.assistance_priority = 0.0
+        self.route_target = ""
+        self.yielded_to = None
+        self.avoided_by = None
 
     def to_dict(self) -> dict:
         return {
@@ -150,6 +170,8 @@ class SocialGraphBuilder:
         """
         self.semantic = semantic
         self.seed = seed
+        # relation_intensity（0–1）：对生成关系的 strength/trust 做等比缩放；1.0 = 使用默认参数
+        self.relation_intensity = 1.0
         if seed is not None:
             np.random.seed(seed)
 
@@ -224,6 +246,10 @@ class SocialGraphBuilder:
         )
 
         builder.scene_config = scene_config
+        _intensity = getattr(scene_config, 'relation_intensity', 1.0)
+        builder.relation_intensity = max(
+            0.0, min(1.0, float(_intensity if _intensity is not None else 1.0))
+        )
 
         from .relation_templates import generate_profiles_from_config
         builder.profiles_list = generate_profiles_from_config(scene_config)
@@ -252,7 +278,9 @@ class SocialGraphBuilder:
 
         for u, v, rel_type in raw_relations:
             base_params = make_relation(rel_type)
-            params_uv = self._directional_params(u, v, rel_type, base_params)
+            params_uv = self._apply_relation_intensity(
+                self._directional_params(u, v, rel_type, base_params)
+            )
             self.graph.add_edge(u, v, **params_uv)
 
             if self.scene_config.enable_directional_override:
@@ -260,6 +288,7 @@ class SocialGraphBuilder:
             else:
                 params_vu = base_params.copy()
                 params_vu["relation_type"] = rel_type
+            params_vu = self._apply_relation_intensity(params_vu)
             self.graph.add_edge(v, u, **params_vu)
 
         self._assign_groups()
@@ -285,10 +314,33 @@ class SocialGraphBuilder:
 
         for u, v, rel_type in raw_relations:
             base_params = make_relation(rel_type)
-            params_uv = self._directional_params(u, v, rel_type, base_params)
+            params_uv = self._apply_relation_intensity(
+                self._directional_params(u, v, rel_type, base_params)
+            )
             self.graph.add_edge(u, v, **params_uv)
-            params_vu = self._directional_params(v, u, rel_type, base_params)
+            params_vu = self._apply_relation_intensity(
+                self._directional_params(v, u, rel_type, base_params)
+            )
             self.graph.add_edge(v, u, **params_vu)
+
+    def _apply_relation_intensity(self, params: dict) -> dict:
+        """按 relation_intensity 等比缩放关系的 strength 与 trust。
+
+        0.0 = 关系最弱；1.0 = 使用默认参数（不缩放）。
+        方向性覆盖发生在缩放之前，因此覆盖值同样会被缩放。
+        """
+        raw = getattr(self, 'relation_intensity', 1.0)
+        k = 1.0 if raw is None else max(0.0, min(1.0, float(raw)))
+        if k >= 1.0:
+            return params
+        result = dict(params)
+        for key in ('strength', 'trust'):
+            if key in result:
+                try:
+                    result[key] = max(0.0, min(1.0, float(result[key]) * k))
+                except (TypeError, ValueError):
+                    pass
+        return result
 
     def _directional_params(self, from_id: int, to_id: int,
                             rel_type: str, base_params: dict) -> dict:
@@ -342,11 +394,20 @@ class SocialGraphBuilder:
             return dict(self.graph[u][v])
         return {
             "relation_type": "stranger",
-            "strength": 0.0,
-            "trust": 0.1,
+            "strength": DEFAULT_RELATION_STRENGTH,
+            "trust": DEFAULT_RELATION_TRUST,
             "wait_probability": 0.0,
             "follow_probability": 0.05,
         }
+
+    def get_relation_contagion_weight(self, u: int, v: int) -> float:
+        """Expose the shared relation weight without calculating panic in C."""
+        relation = self.get_relation(u, v)
+        return relation_contagion_weight(
+            relation.get("relation_type", "stranger"),
+            relation.get("strength", DEFAULT_RELATION_STRENGTH),
+            relation.get("trust", DEFAULT_RELATION_TRUST),
+        )
 
     def get_group_members(self, person_id: int) -> List[int]:
         gid = self.persons[person_id].group_id
