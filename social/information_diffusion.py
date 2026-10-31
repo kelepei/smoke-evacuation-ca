@@ -36,7 +36,7 @@ DIFFUSION_PARAMS = {
     "word_of_mouth": {
         "enabled": True,
         "radius": 3,
-        "base_prob": 0.3,
+        "base_prob": 0.6,
         "trust_boost": 0.5,
         "state_required": "ALERTED",
         "max_spread_per_step": 5,
