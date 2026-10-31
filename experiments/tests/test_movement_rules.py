@@ -288,6 +288,23 @@ class ExitChoiceTests(unittest.TestCase):
         scene, _persons = self._scene()
         self.assertLess(self.floor.distance_to("E_near", 5, 2), self.floor.distance_to("E_far", 5, 2))
 
+    def test_preference_bonus_changes_exit_choice(self) -> None:
+        scene, persons = self._scene()
+        import random
+
+        smoke = np.zeros((scene.grid.height, scene.grid.width), dtype=np.float32)
+        baseline = ExitChooser(scene, random.Random(3), self.floor)
+        unbias = baseline.update_all(
+            persons, 0, smoke, {}, exit_preferences={1: {"E_far": 0.0}}
+        )
+        self.assertEqual("E_near", unbias[1])
+
+        biased = ExitChooser(scene, random.Random(3), self.floor)
+        preferred = biased.update_all(
+            persons, 0, smoke, {}, exit_preferences={1: {"E_far": 0.6}}
+        )
+        self.assertEqual("E_far", preferred[1])
+
     def test_crowding_near_exit_triggers_switch(self) -> None:
         scene, persons = self._scene()
         import random
