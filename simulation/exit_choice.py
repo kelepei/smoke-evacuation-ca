@@ -144,11 +144,13 @@ class ExitChooser:
         step: int,
         smoke_matrix: np.ndarray | None,
         forced_targets: Mapping[int, str] | None = None,
+        exit_preferences: Mapping[int, Mapping[str, float]] | None = None,
     ) -> dict[int, str]:
         """按原文公式为每个行人决定目标出口。"""
         if not self.cfg.enabled or not self.exits:
             return {}
         forced_targets = forced_targets or {}
+        exit_preferences = exit_preferences or {}
         counts = self._region_counts(persons)
         smoke_at_exit = self._region_smoke(smoke_matrix)
 
@@ -157,7 +159,8 @@ class ExitChooser:
             pid = int(person.id)
             current = self._target.get(pid)
             forced = forced_targets.get(pid)
-            probs = self._probabilities(person, counts, smoke_at_exit)
+            preference_bonus = exit_preferences.get(pid, {})
+            probs = self._probabilities(person, counts, smoke_at_exit, preference_bonus)
             if not probs:
                 continue
             if forced and str(forced) in probs:
@@ -175,7 +178,10 @@ class ExitChooser:
                 # send a person past a nearer exit merely because softmax
                 # probabilities are nearly flat.
                 nearest = self._nearest(person)
-                initial_exit = nearest[2] if nearest is not None else best_exit
+                has_preference = any(
+                    float(value or 0.0) > 0.0 for value in preference_bonus.values()
+                )
+                initial_exit = best_exit if has_preference else (nearest[2] if nearest is not None else best_exit)
                 self._target[pid] = initial_exit
                 self._prev_probs[pid] = probs
                 self._prev_best[pid] = best_prob
@@ -209,7 +215,7 @@ class ExitChooser:
         return result
 
     # ------------------------------------------------------------------ 概率
-    def _probabilities(self, person, counts, smoke_at_exit) -> dict[str, float]:
+    def _probabilities(self, person, counts, smoke_at_exit, exit_preferences: Mapping[str, float] | None = None) -> dict[str, float]:
         cfg = self.cfg
         px, py = int(person.x), int(person.y)
         distances = {
@@ -246,6 +252,25 @@ class ExitChooser:
             }
             norm = sum(probs.values()) or 1.0
             probs = {eid: value / norm for eid, value in probs.items()}
+
+        # C group/herding preferences are logit-style biases on exit choice.
+        # Previously they only decorated the already selected exit in B's cell
+        # utility, so changing preference_bonus could not change utilization.
+        if exit_preferences:
+            adjusted = dict(probs)
+            for exit_id, raw_bonus in exit_preferences.items():
+                key = str(exit_id)
+                if key not in adjusted:
+                    continue
+                try:
+                    bonus = float(raw_bonus or 0.0)
+                except (TypeError, ValueError):
+                    continue
+                if not math.isfinite(bonus) or math.isclose(bonus, 0.0):
+                    continue
+                adjusted[key] *= math.exp(max(-5.0, min(5.0, bonus)))
+            adjusted_sum = sum(adjusted.values()) or 1.0
+            probs = {eid: value / adjusted_sum for eid, value in adjusted.items()}
 
         # 项目扩展：恐慌判断噪声（默认 0）
         panic = float(getattr(person, "panic", 0.0) or 0.0)
