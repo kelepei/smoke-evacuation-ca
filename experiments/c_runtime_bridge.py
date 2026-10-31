@@ -90,14 +90,19 @@ class CWebRuntimeBridge:
         )
         settings = getattr(engine.scene, "parameters", {}).get("d_c_runtime", {})
         self.initial_informed_ratio = float(settings.get("initial_informed_ratio", 0.15))
-        self.alarm_enabled = bool(settings.get("alarm_enabled", True))
+        self.information_mode = str(settings.get("information_mode", "broadcast") or "broadcast").strip().lower()
+        if self.information_mode not in {"broadcast", "local"}:
+            self.information_mode = "broadcast"
+        self.alarm_enabled = bool(
+            settings.get("alarm_enabled", self.information_mode == "broadcast")
+        )
         self.guide_enabled = bool(settings.get("guide_enabled", True))
         self.guide_share = float(settings.get("guide_share", 0.30))
         # 网页运行时采用真实烟源语义：烟源附近先知情，浓度达阈值后广播。
         self.web_mode = bool(settings.get("web_mode", "source" in settings))
         self.smoke_local_radius = max(0.0, float(settings.get("smoke_local_radius", 5.0)))
         self.smoke_exposure_threshold = max(
-            0.0, float(settings.get("smoke_exposure_threshold", 0.02))
+            0.0, float(settings.get("smoke_exposure_threshold", 0.01))
         )
         self.info_diffusion.smoke_confirmation_threshold = self.smoke_exposure_threshold
         self.smoke_ramp_steps = max(
@@ -127,8 +132,6 @@ class CWebRuntimeBridge:
         self._move_credit: dict[int, float] = {}
         self._move_allowed: dict[int, bool] = {}
         self._speed_stats = {"blocked_total": 0, "congested_total": 0, "same_cell_congested_total": 0}
-        self._smoke_peak_cache_key: tuple[int, int] | None = None
-        self._smoke_peak_cache_value = 0.0
         # 未获知险情人员行为：walk=正常速度随机行走（默认）/ freeze=原地 / evacuate=直接疏散
         self.unknown_behavior = str(settings.get("unknown_behavior", "walk") or "walk").strip().lower()
         self.unknown_speed_factor = max(0.0, float(settings.get("unknown_speed_factor", 0.35)))
@@ -319,26 +322,13 @@ class CWebRuntimeBridge:
         smoke = getattr(self.engine, "smoke_matrix", None)
         if smoke is None:
             return 0.0
-        smoke_engine = getattr(self.engine, "smoke_engine", None)
-        cache_key = (
-            id(smoke),
-            int(getattr(smoke_engine, "time_step_count", -1)),
-        )
-        if cache_key == self._smoke_peak_cache_key:
-            return self._smoke_peak_cache_value
         peak = 0.0
         try:
-            peak = float(smoke.max())
-        except (AttributeError, TypeError, ValueError):
-            try:
-                for row in smoke:
-                    peak = max(peak, max(float(value) for value in row))
-            except (TypeError, ValueError):
-                peak = 0.0
-        if not math.isfinite(peak) or peak < 0.0:
-            peak = 0.0
-        self._smoke_peak_cache_key = cache_key
-        self._smoke_peak_cache_value = peak
+            for row in smoke:
+                for value in row:
+                    peak = max(peak, float(value))
+        except (TypeError, ValueError):
+            return 0.0
         return peak
 
     def _configure_web_smoke_semantics(self, settings: Mapping[str, Any]) -> None:
@@ -721,6 +711,15 @@ class CWebRuntimeBridge:
                     person.is_waiting = False
                     person.follow_target = None
 
+    def set_broadcast_enabled(self, enabled: bool) -> None:
+        """Toggle future global alarm broadcast without clearing received information."""
+
+        if not isinstance(enabled, bool):
+            raise TypeError("broadcast enabled must be boolean")
+        self.alarm_enabled = enabled
+        self.information_mode = "broadcast" if enabled else "local"
+        self._publish_state()
+
     def set_guide_enabled(self, enabled: bool) -> None:
         self.guide_enabled = bool(enabled)
         if not self.guide_enabled:
@@ -892,11 +891,10 @@ class CWebRuntimeBridge:
             guide_result = {}
         self._speed_gate(people)
         result: dict[int, dict[str, Any]] = {}
-        target_exit = (
-            self.guides_model.target_exit
-            if self.has_hazard and self.guides_model.guidance_active
-            else None
-        )
+        # C owns one guide destination, but B owns each person's exit choice.
+        # Applying the guide destination to everyone overrides B's per-person
+        # shortest-path, density, and smoke-aware exit selection.
+        # Guide influence remains active through behavior["guide_influence"].
         for person in people:
             person_id = int(person.id)
             group = group_result.get(person_id, {})
@@ -911,12 +909,11 @@ class CWebRuntimeBridge:
             if getattr(person, "_forced_exit_reroute", False):
                 person.is_waiting = False
                 person.follow_target = None
-            person_target_exit = target_exit or getattr(person, "target_exit", "") or ""
-            if not target_exit:
-                if group.get("group_split"):
-                    person_target_exit = ""
-                elif group.get("group_exit"):
-                    person_target_exit = group["group_exit"]
+            person_target_exit = getattr(person, "target_exit", "") or ""
+            if group.get("group_split"):
+                person_target_exit = ""
+            elif group.get("group_exit"):
+                person_target_exit = group["group_exit"]
             if self.control is not None and self.control.exit_closure_params.get("closed_exits"):
                 if person_target_exit and not self.control.is_exit_open(person_target_exit):
                     self.control._reassign_exit(person)
@@ -1168,6 +1165,8 @@ class CWebRuntimeBridge:
             "smoke_normalize": getattr(getattr(self.engine, "smoke_engine", None), "normalize", None),
             "smoke_target_intensity": next(iter(self._smoke_ramp_targets.values()), None),
             "smoke_ramp_steps": self.smoke_ramp_steps,
+            "information_mode": self.information_mode,
+            "alarm_enabled": self.alarm_enabled,
             "alarm_broadcast_step": self.info_diffusion.alarm_trigger_step,
             "broadcast_smoke_threshold": self.broadcast_smoke_threshold,
             "broadcast_min_step": self.broadcast_min_step,
