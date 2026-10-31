@@ -13,6 +13,8 @@ import csv
 import heapq
 import json
 import math
+from array import array
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -142,31 +144,41 @@ def _is_traversable(x: int, y: int, width: int, height: int, cell_types: list[st
     return 0 <= x < width and 0 <= y < height and cell_types[y * width + x] not in _BLOCKED_CELL_TYPES
 
 
-def _shortest_path(
+def _multi_source_shortest_paths(
     *,
-    start: tuple[int, int],
     goals: Iterable[tuple[int, int]],
     width: int,
     height: int,
-    cell_types: list[str],
-) -> tuple[list[tuple[int, int]], float] | None:
-    goal_set = set(goals)
-    if not goal_set or not _is_traversable(*start, width, height, cell_types):
-        return None
-    frontier: list[tuple[float, int, int]] = [(0.0, start[0], start[1])]
-    distances = {start: 0.0}
-    previous: dict[tuple[int, int], tuple[int, int]] = {}
+    cell_types: tuple[str, ...],
+) -> tuple[array, array]:
+    """Return distance and parent tables for every cell to the nearest goal.
+
+    A guidance pass compares each person against every physical exit.  Running
+    one single-source search per person/exit pair repeatedly scans the whole
+    building and made the first post-alarm snapshot appear to hang.  Searching
+    outward from all cells of one exit instead produces the same shortest-path
+    tree with one grid traversal per exit.  The result is cached by
+    ``_exit_route_tables`` because map geometry does not change between steps.
+    """
+
+    cell_count = width * height
+    distances = array('d', [math.inf]) * cell_count
+    previous = array('i', [-1]) * cell_count
+    frontier: list[tuple[float, int, int]] = []
+
+    for gx, gy in sorted(set(goals), key=lambda cell: (cell[1], cell[0])):
+        if not _is_traversable(gx, gy, width, height, cell_types):
+            continue
+        goal_index = gy * width + gx
+        if distances[goal_index] != 0.0:
+            distances[goal_index] = 0.0
+            heapq.heappush(frontier, (0.0, gx, gy))
+
     while frontier:
         distance, x, y = heapq.heappop(frontier)
-        current = (x, y)
-        if distance != distances.get(current):
+        current_index = y * width + x
+        if distance != distances[current_index]:
             continue
-        if current in goal_set:
-            path = [current]
-            while path[-1] != start:
-                path.append(previous[path[-1]])
-            path.reverse()
-            return path, distance
         for dx, dy, cost in _NEIGHBORS:
             nx, ny = x + dx, y + dy
             if not _is_traversable(nx, ny, width, height, cell_types):
@@ -177,13 +189,49 @@ def _shortest_path(
                 or not _is_traversable(x, y + dy, width, height, cell_types)
             ):
                 continue
+            neighbor_index = ny * width + nx
             candidate = distance + cost
-            neighbor = (nx, ny)
-            if candidate < distances.get(neighbor, math.inf):
-                distances[neighbor] = candidate
-                previous[neighbor] = current
+            if candidate < distances[neighbor_index]:
+                distances[neighbor_index] = candidate
+                previous[neighbor_index] = current_index
                 heapq.heappush(frontier, (candidate, nx, ny))
-    return None
+    return distances, previous
+
+
+@lru_cache(maxsize=3)
+def _exit_route_tables(
+    width: int,
+    height: int,
+    cell_types: tuple[str, ...],
+    entities: tuple[tuple[str, tuple[tuple[int, int], ...]], ...],
+) -> tuple[tuple[str, array, array], ...]:
+    """Build route trees once per map/exit topology, not once per person."""
+
+    tables: list[tuple[str, array, array]] = []
+    for entity_id, member_cells in entities:
+        distances, previous = _multi_source_shortest_paths(
+            goals=member_cells,
+            width=width,
+            height=height,
+            cell_types=cell_types,
+        )
+        tables.append((entity_id, distances, previous))
+    return tuple(tables)
+
+
+def _mean_smoke_on_route(
+    start_index: int,
+    previous: array,
+    smoke_values: list[float],
+) -> float | None:
+    total = 0.0
+    count = 0
+    current = start_index
+    while current != -1:
+        total += smoke_values[current]
+        count += 1
+        current = int(previous[current])
+    return total / count if count else None
 
 
 def _normalise_costs(candidates: list[dict[str, Any]], key: str, target: str) -> None:
@@ -270,6 +318,13 @@ def generate_guidance(
         return output
 
     output["status"] = "active"
+    route_tables = _exit_route_tables(
+        width,
+        height,
+        tuple(cell_types),
+        tuple(entities),
+    )
+    smoke_values = [value for row in smoke_field for value in row]
     for person in sorted(snapshot.get("people", []), key=lambda item: int(item.get("person_id", -1)) if isinstance(item, Mapping) else -1):
         if not isinstance(person, Mapping) or person.get("evacuated") is True:
             continue
@@ -277,20 +332,21 @@ def generate_guidance(
         if any(isinstance(value, bool) or not isinstance(value, int) for value in (person_id, x, y)):
             continue
         candidates: list[dict[str, Any]] = []
-        for entity_id, member_cells in entities:
-            route = _shortest_path(
-                start=(x, y), goals=member_cells, width=width, height=height, cell_types=cell_types
-            )
-            if route is None:
-                continue
-            path, distance = route
-            route_smoke = sum(smoke_field[py][px] for px, py in path) / len(path)
-            candidates.append({
-                "exit_entity_id": entity_id,
-                "route_distance_cost": distance,
-                "route_smoke_cost": route_smoke,
-                "feasible": True,
-            })
+        start_index = y * width + x if 0 <= x < width and 0 <= y < height else None
+        if start_index is not None:
+            for entity_id, distances, previous in route_tables:
+                route_distance = float(distances[start_index])
+                if not math.isfinite(route_distance):
+                    continue
+                route_smoke = _mean_smoke_on_route(start_index, previous, smoke_values)
+                if route_smoke is None:
+                    continue
+                candidates.append({
+                    "exit_entity_id": entity_id,
+                    "route_distance_cost": route_distance,
+                    "route_smoke_cost": route_smoke,
+                    "feasible": True,
+                })
         if not candidates:
             output["recommendations"].append({
                 "person_id": person_id,
