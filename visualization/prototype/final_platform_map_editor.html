@@ -37,15 +37,19 @@
   input:disabled,textarea:disabled{background:#eef2f6;color:#667589}
   textarea{min-height:96px;resize:vertical;font-family:Consolas,monospace;font-size:12px}
   .canvas-wrap{position:relative;height:100%;display:flex;flex-direction:column}
-  .toolbar{height:50px;min-height:50px;flex:0 0 50px;display:flex;align-items:center;gap:4px;padding:7px;overflow:hidden;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fbfdff,#f2f7fc)}
-  .toolbar .spacer{flex:1 1 auto;min-width:0}
+  .toolbar{flex:0 0 auto;display:flex;flex-direction:column;gap:6px;padding:7px;overflow:visible;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fbfdff,#f2f7fc)}
+  .toolbar-row{display:flex;align-items:center;gap:5px;min-width:0;width:100%}
+  .toolbar-primary{flex-wrap:wrap}
+  .toolbar-layers{padding-top:6px;border-top:1px solid #d5dfeb}
+  .layer-caption{flex:0 0 auto;color:#475569;font-size:11px;font-weight:800;white-space:nowrap}
+  .toolbar .spacer{flex:1 1 20px;min-width:0}
   .init-control{flex:0 0 88px;min-width:88px;white-space:nowrap}
   .run-control{flex:0 0 56px;min-width:56px;white-space:nowrap}
   .run-controls{display:flex;align-items:center;gap:4px;flex:0 0 auto;margin-left:4px}
   .map-expand{margin-left:4px}
-  .layer-controls{display:flex;flex:0 0 auto;align-items:center;gap:4px;flex-wrap:nowrap;white-space:nowrap;padding-left:3px;border-left:1px solid #d5dfeb;font-size:11px;color:#475569}.layer-controls label{display:flex;align-items:center;gap:2px;margin:0;color:inherit}.layer-controls label:has(input:disabled){color:#94a3b8}.layer-controls input{width:auto;margin:0}
-  #timeText{flex:0 0 86px;width:86px;text-align:right;white-space:nowrap;font-size:11px;font-variant-numeric:tabular-nums}
-  .layer-notice{position:absolute;left:12px;right:auto;top:55px;width:auto;max-width:180px;height:32px;display:block;padding:6px 9px;overflow:hidden;white-space:nowrap;text-align:left;text-overflow:ellipsis;border:1px solid #cbd5e1;border-radius:6px;background:rgba(255,255,255,.94);color:#475569;font-size:11px;pointer-events:none}
+  .layer-controls{display:flex;flex:1 1 auto;min-width:0;align-items:center;gap:6px 10px;flex-wrap:wrap;white-space:nowrap;font-size:11px;color:#475569}.layer-controls label{display:flex;align-items:center;gap:3px;margin:0;color:inherit}.layer-controls label:has(input:disabled){color:#94a3b8}.layer-controls input{width:auto;margin:0}
+  #timeText{flex:0 0 92px;width:92px;text-align:right;white-space:nowrap;font-size:11px;font-variant-numeric:tabular-nums}
+  .layer-notice{position:absolute;right:12px;left:auto;bottom:12px;top:auto;width:auto;max-width:220px;height:32px;display:block;padding:6px 9px;overflow:hidden;white-space:nowrap;text-align:left;text-overflow:ellipsis;border:1px solid #cbd5e1;border-radius:6px;background:rgba(255,255,255,.94);color:#475569;font-size:11px;pointer-events:none}
   canvas{width:100%;height:auto;min-height:0;flex:1 1 auto;display:block;background:#f8fafc}
   .legend{position:absolute;left:12px;bottom:12px;display:flex;flex-direction:column;gap:4px;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-size:11px;pointer-events:none}
   .swatch{width:13px;height:13px;display:inline-block;border-radius:3px;margin-right:4px;border:1px solid rgba(0,0,0,.12);vertical-align:-2px}
@@ -86,9 +90,9 @@
   .guidance-status{margin:2px 0 7px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:7px;background:#f8fafc;color:#475569;font-size:12px;font-weight:700}.guidance-status.active{border-color:#86efac;background:#f0fdf4;color:#166534}.guidance-status.inactive{border-color:#fde68a;background:#fffbeb;color:#92400e}.guidance-status.unavailable{border-color:#cbd5e1;background:#f8fafc;color:#64748b}.guidance-summary{display:grid;gap:4px;margin:7px 0;color:#475569;font-size:11px}.guidance-table-wrap{max-height:176px;overflow:auto;border:1px solid #dbe4ef;border-radius:7px}.guidance-table{width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap}.guidance-table th,.guidance-table td{padding:5px 6px;border-bottom:1px solid #e5edf5;text-align:left;vertical-align:top}.guidance-table th{position:sticky;top:0;background:#f8fafc;color:#475569;font-weight:800}.guidance-table tr:last-child td{border-bottom:0}.guidance-table button{height:auto;min-height:27px;padding:4px 6px;font-size:11px}.guidance-detail{margin-top:7px;padding:7px 8px;border-left:3px solid #60a5fa;background:#f8fbff;color:#475569;font-size:11px;line-height:1.5;overflow-wrap:anywhere}.guidance-detail b{color:#1e3a5f}
   .editor-modal{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(15,23,42,.55)}.editor-modal.open{display:flex}.editor-dialog{width:min(1440px,96vw);height:min(900px,92vh);display:flex;flex-direction:column;overflow:hidden;border-radius:10px;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.28)}.editor-dialog header{height:auto;min-height:50px;padding:8px 12px;background:#fff;color:var(--ink);box-shadow:none;border-bottom:1px solid var(--line)}.editor-dialog header strong{margin-right:auto}.editor-dialog iframe{width:100%;min-height:0;flex:1;border:0}.editor-actions{display:flex;justify-content:flex-end;gap:8px;padding:8px 12px;border-top:1px solid var(--line)}
   .choice-dialog{width:min(520px,92vw);overflow:hidden;border-radius:10px;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.28)}.choice-dialog header{height:auto;min-height:50px;padding:12px 16px;background:#fff;color:var(--ink);box-shadow:none;border-bottom:1px solid var(--line)}.choice-dialog-content{padding:16px;color:#475569;line-height:1.7}.choice-dialog-content strong{color:#1e3a5f}.choice-actions{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid var(--line)}.choice-actions button{height:auto;min-height:34px;padding:7px 12px}
-  @media(max-width:1640px){.layer-controls{display:none}}
+  @media(max-width:1640px){.toolbar-primary{gap:4px}}
   @media(max-width:1180px){body{overflow:auto}.top-nav{display:none}main{height:auto;min-height:calc(100vh - 56px);grid-template-columns:280px minmax(420px,1fr);grid-template-rows:minmax(560px,70vh) auto auto}.config-side{grid-column:1;grid-row:1}.canvas-wrap{grid-column:2;grid-row:1}.runtime-side{grid-column:1 / 3;grid-row:2}.insights{grid-column:1 / 3;grid-row:3;grid-template-columns:repeat(2,minmax(0,1fr))}}
-  @media(max-width:760px){main{grid-template-columns:1fr;grid-template-rows:auto}.config-side,.canvas-wrap,.runtime-side,.insights{grid-column:1;grid-row:auto}.insights{grid-template-columns:1fr}.canvas-wrap{height:70vh}.layer-controls{display:none}}
+  @media(max-width:760px){main{grid-template-columns:1fr;grid-template-rows:auto}.config-side,.canvas-wrap,.runtime-side,.insights{grid-column:1;grid-row:auto}.insights{grid-template-columns:1fr}.canvas-wrap{height:70vh}}
 </style>
 </head>
 <body>
@@ -101,7 +105,7 @@
   <aside class="panel side config-side">
     <div class="section-kicker">INPUTS</div>
     <div class="title">场景与人群 <span class="pill">真实输入</span></div>
-    <label>A 地图（JSON / CSV / PNG / JPG / BMP）<input id="mapFile" type="file" accept=".json,.csv,.png,.jpg,.jpeg,.bmp,application/json,text/csv,image/png,image/jpeg,image/bmp"></label>
+    <label>A 地图（JSON / CSV / PNG）<input id="mapFile" type="file" accept=".json,.csv,.png,application/json,text/csv,image/png"></label>
     <div class="row">
       <button id="previewMap" class="primary">导入并显示地图</button>
       <button id="sampleBtn">加载仓库样例</button>
@@ -124,20 +128,8 @@
     <div class="title">本次运行参数 <span class="pill">直传 runtime</span></div>
     <label>总人数 <input id="totalPersons" type="number" min="1" step="1" value="40"></label>
     <label>random_seed（留空为随机）<input id="randomSeed" type="number" value="42"></label>
-    <label>relation_intensity <input id="relationIntensity" type="number" min="0" max="1" step="0.01" value="0.6"></label>
-    <label>initial_informed_ratio（网页由烟源邻近感知替代） <input id="initialInformedRatio" type="number" min="0" max="1" step="0.01" value="0.0"></label>
-    <label>物理元胞尺寸（m/格，假设尺度／演示用途，可留空） <input id="physicalCellSizeM" type="number" min="0.0001" step="0.01" placeholder="留空则保持 NA"></label>
-    <div class="hint">仅用于本次学术热力图分析；不会覆盖地图原有 cell_size。没有真实标定依据时请明确视为演示假设。</div>
-    <div class="row"><label>分析网格尺寸（m，学术参数，可留空）<input id="analysisMeshSizeM" type="number" min="0.0001" step="0.1" placeholder="需显式配置"></label><label>采样时间窗（s，可留空）<input id="samplingWindowS" type="number" min="0.0001" step="0.1" placeholder="需显式配置"></label></div>
-    <label>ROI 半径（m，学术参数，可留空）<input id="roiRadiusM" type="number" min="0.0001" step="0.1" placeholder="需显式配置"></label>
-    <div class="hint">三项参数只定义 academic 分析的统计网格、时间窗和 ROI，不等同于地图元胞尺寸；留空时保持准确的不可用/NA 状态。</div>
-    <label>信息传播情形
-      <select id="informationMode">
-        <option value="broadcast">全员报警广播</option>
-        <option value="local">局部感知与社会传播</option>
-      </select>
-    </label>
-    <div class="hint">全员报警广播会在 B 报警后调用 C 的全员广播；局部感知与社会传播保留 C 的烟雾感知、口头传播和关系传播，不调用全员广播。</div>
+    <label title="关系紧密程度：0=关系最弱，1=默认最强；按比例缩放关系的 strength 与 trust">relation_intensity（关系紧密程度 0–1）<input id="relationIntensity" type="number" min="0" max="1" step="0.01" value="0.6"></label>
+    <div class="hint">relation_intensity：0=关系最弱，1=默认最强；会按比例缩放生成关系的强度（strength）与信任（trust），进而影响结伴分组与信息传播概率。</div>
     <div class="row"><label>student <input id="ratioStudent" type="number" min="0" step="0.01" value="0.8"></label><label>teacher <input id="ratioTeacher" type="number" min="0" step="0.01" value="0.1"></label><label>staff <input id="ratioStaff" type="number" min="0" step="0.01" value="0.1"></label></div>
     <button id="generatePeopleBtn" class="primary" disabled>生成 / 初始化人员</button>
     <div class="row"><label>time_step / s<input id="timeStep" type="number" min="0.01" max="60" step="0.01" value="0.5"></label><label>最大步数<input id="maxSteps" type="number" min="1" max="5000" value="500"></label></div>
@@ -146,17 +138,19 @@
     <label>策略选择
       <select id="controlStrategy">
         <option value="none">不启用</option>
-        <option value="exit_closure">出口关闭</option>
-        <option value="zone_lockdown">区域封锁</option>
-        <option value="zoned_evacuation">分区疏散</option>
-        <option value="route_control">路线管控</option>
-        <option value="all">四种全部</option>
+        <option value="fire_aware">综合管控（出口关闭+区域封锁+分区疏散+路线管控）</option>
+        <option value="vision_astar" selected>地图时间型A*（烟雾调速）</option>
+        <option value="dual_objective_aco">时间—风险双目标管控（杨天鹏）</option>
       </select>
     </label>
-    <div class="row"><label>触发步<input id="controlTriggerStep" type="number" min="0" step="1" value="10"></label><label>路线改派比例<input id="controlRouteShiftRatio" type="number" min="0" max="1" step="0.05" value="0.2"></label></div>
+    <div class="row"><label>触发步<input id="controlTriggerStep" type="number" min="0" step="1" value="0"></label><label>路线改派比例<input id="controlRouteShiftRatio" type="number" min="0" max="1" step="0.05" value="0.2"></label></div>
     <label>关闭出口（逗号分隔）<input id="controlClosedExits" value="exit_04" placeholder="exit_04,exit_03"></label>
     <label>封锁区域 x1,y1,x2,y2<input id="controlLockdownArea" value="" placeholder="40,30,70,60"></label>
-    <div class="hint">none 为对照组；all 会同时启用出口关闭、区域封锁、分区疏散和路线管控。</div>
+    <div class="row"><label>封锁触发<select id="controlLockdownTrigger"><option value="smoke_threshold">烟雾阈值</option><option value="manual">启用即封锁</option></select></label><label>烟阈值<input id="controlLockdownSmokeThreshold" type="number" min="0" max="1" step="0.05" value="0.5"></label></div>
+    <div class="row"><label>自动解除封锁<select id="controlLockdownAutoUnlock"><option value="true">是</option><option value="false">否</option></select></label><label>分区软偏好/m<input id="controlZoneBiasM" type="number" min="0" step="0.5" value="4"></label></div>
+    <div class="row"><label>A*重规划/s<input id="visionReplanIntervalS" type="number" min="1" step="1" value="30"></label><label>双目标风险权重<input id="dualRiskWeight" type="number" min="0" max="1" step="0.05" value="0.5" title="0=最短时间，1=最低风险"></label></div>
+    <div class="row"><label>双目标重规划/s<input id="dualReplanIntervalS" type="number" min="1" step="1" value="30"></label></div>
+    <div class="hint">fire_aware 是四合一综合策略：出口关闭、区域封锁、分区疏散、火灾感知路线管控同时生效；none 为对照组。vision_astar 只使用所选 A 地图，区域速度随烟雾浓度折减。dual_objective_aco 依据杨天鹏论文的时间—风险双目标模型，比较所有可达出口的完整路径，风险权重 0=最短时间、1=最低风险；两种路线型策略的路径都显示在“规划路线”图层。</div>
     <div class="title" style="margin-top:12px">C 配置文件 <span class="pill">部分字段生效</span></div>
     <div class="row">
       <button id="yamlBtn">导入 YAML</button>
@@ -175,26 +169,21 @@
 
     <details class="diagnostics">
       <summary>烟雾输入</summary>
-      <div class="hint" id="smokeInputHint">烟源只来自地图 cell.type = smoke_source；导入已有烟源时由用户选择保留或清除，烟场只绘制 B 返回的 smoke_matrix。</div>
+      <div class="hint" id="smokeInputHint">B06 publishes a normalized smoke concentration in [0, 1]. 烟源只来自地图 cell.type = smoke_source；导入已有烟源时由用户选择保留或清除，烟场只绘制 B 返回的 smoke_matrix。</div>
     </details>
 
   </aside>
 
   <section class="panel canvas-wrap" id="runtime">
-  <div class="toolbar">
+  <div class="toolbar" aria-label="仿真运行工具栏">
+    <div class="toolbar-row toolbar-primary">
       <button id="initBtn" class="good init-control">初始化仿真</button>
+      <button id="guideToggle" class="primary">疏散指导：开</button>
       <select id="speedSelect" aria-label="播放速度" style="width:78px;height:34px;padding:4px 5px">
         <option value="150">快速</option>
         <option value="300" selected>标准</option>
         <option value="600">慢速</option>
       </select>
-      <div class="layer-controls" aria-label="真实数据图层">
-        <label><input id="layerPeople" type="checkbox" disabled>人员</label>
-        <label><input id="layerExits" type="checkbox" disabled>出口</label>
-        <label><input id="layerSmoke" type="checkbox" disabled>烟雾</label>
-        <label><input id="layerOccupancy" type="checkbox" disabled>累计占用</label>
-        <label><input id="layerTrajectories" type="checkbox" disabled>轨迹</label>
-      </div>
       <div class="spacer"></div>
       <button id="mapExpandBtn" class="figure-expand map-expand" type="button" aria-label="放大查看主地图" title="放大查看地图">⛶</button>
       <span id="timeText">step 0 / 0.0s</span>
@@ -205,6 +194,19 @@
         <button id="startBtn" class="primary run-control">开始</button>
       </div>
     </div>
+    <div class="toolbar-row toolbar-layers">
+      <span class="layer-caption">图层</span>
+      <div class="layer-controls" aria-label="真实数据图层">
+        <label><input id="layerPeople" type="checkbox" disabled>人员</label>
+        <label><input id="layerExits" type="checkbox" disabled>出口</label>
+        <label><input id="layerSmoke" type="checkbox" disabled>烟雾</label>
+        <label><input id="layerOccupancy" type="checkbox" disabled>累计占用</label>
+        <label><input id="layerTrajectories" type="checkbox" disabled>轨迹</label>
+        <label><input id="layerPath" type="checkbox" disabled checked>疏散路径</label>
+        <label><input id="layerVisionRoutes" type="checkbox" disabled checked>规划路线</label>
+      </div>
+    </div>
+  </div>
     <canvas id="view"></canvas>
     <div class="layer-notice" id="layerNotice">图层等待真实运行数据。</div>
     <div class="legend">
@@ -213,9 +215,7 @@
       <span><i class="swatch" style="background:#8a94a3"></i>obstacle</span>
       <span><i class="swatch" style="background:#22c55e"></i>exit</span>
       <span><i class="swatch" style="background:#f97316"></i>smoke source</span>
-      <span><i class="swatch" style="background:#2563eb"></i>未知情</span>
-      <span><i class="swatch" style="background:#dc2626"></i>已知情</span>
-      <span><i class="swatch" style="background:#f97316"></i>烟雾暴露外环</span>
+      <span><i class="swatch" style="background:#2563eb"></i>person</span>
     </div>
   </section>
 
@@ -228,7 +228,6 @@
     <div class="kv"><span>当前模拟时间</span><b id="simTime">0.0 s</b></div>
     <div class="kv"><span>人员总数</span><b id="peopleCount">NA</b></div>
     <div class="kv"><span>知情人数</span><b id="informedCount">NA</b></div>
-    <div class="kv"><span>报警状态</span><b id="alarmState">NA</b></div>
     <div class="kv"><span>引导员状态</span><b id="guideState">NA</b></div>
     <div class="kv"><span>死亡人数</span><b id="deadCount">NA</b></div>
     <div class="kv"><span>已撤离</span><b id="evacCount">0</b></div>
@@ -366,9 +365,12 @@
   const expandedMapView = {scale:1, panX:0, panY:0};
   let currentMapViewKey = "";
   let snapshot = null;
+  let liveHistory = [];
   let activeSession = false;
+  let guideEnabled = true;
   let timer = null;
   let pending = false;
+  let generatingPeople = false;
   let autoPlaying = false;
   let autoDelayMs = 300;
   let lastOutputDir = "";
@@ -483,6 +485,22 @@
     return String(value || "free").toLowerCase();
   }
 
+  // Do not use Math.max(...field): the 480x270 school maps contain 129,600
+  // cells, which exceeds Chromium's call-argument limit and throws
+  // "Maximum call stack size exceeded".
+  function maxFiniteFieldValue(field){
+    let maximum = null;
+    if(!Array.isArray(field)) return maximum;
+    field.forEach(row => {
+      const values = Array.isArray(row) ? row : [row];
+      values.forEach(raw => {
+        const value = Number(raw);
+        if(Number.isFinite(value) && (maximum === null || value > maximum)) maximum = value;
+      });
+    });
+    return maximum;
+  }
+
   function layerEnabled(id){
     const control = $(id);
     return !control || (!control.disabled && control.checked);
@@ -538,11 +556,8 @@
         const rawValue = Number(raw);
         const exposureThreshold = Number(snapshot?.c_runtime?.smoke_exposure_threshold ?? 0.02);
         if(!Number.isFinite(rawValue) || rawValue < exposureThreshold) return;
-        // B06 publishes a normalized smoke concentration in [0, 1].
-        // Render that real contract directly: the former /10 mapping made a
-        // true maximum (1.0) nearly transparent in the Enhanced canvas.
         const value = Math.max(0, Math.min(1, rawValue));
-        ctx.fillStyle = `rgba(249,115,22,${0.16 + value * .64})`;
+        ctx.fillStyle = `rgba(249,115,22,${0.12 + value * .48})`;
         ctx.fillRect(ox + x * cell, oy + y * cell, cell, cell);
       });
     });
@@ -569,14 +584,8 @@
     if(!layerEnabled("layerOccupancy") || !logLayers) return;
     const field = logLayers.cumulative_occupancy;
     if(!Array.isArray(field)) return;
-    // A large map can contain 100k+ cells. Do not spread the entire matrix
-    // into Math.max(), which exceeds the browser call-stack argument limit.
-    let maximum = 0;
-    field.forEach(row => Array.isArray(row) && row.forEach(raw => {
-      const value = Number(raw);
-      if(Number.isFinite(value) && value > maximum) maximum = value;
-    }));
-    if(maximum <= 0) return;
+    const maximum = maxFiniteFieldValue(field);
+    if(maximum === null || maximum <= 0) return;
     field.forEach((row, y) => Array.isArray(row) && row.forEach((raw, x) => {
       const value = Number(raw);
       if(!Number.isFinite(value) || value <= 0 || x >= grid.width || y >= grid.height) return;
@@ -584,6 +593,58 @@
       ctx.fillStyle = `rgba(220,38,38,${0.08 + ratio * 0.48})`;
       ctx.fillRect(ox + x * cell, oy + y * cell, cell, cell);
     }));
+  }
+
+  function drawLivePaths(grid, ox, oy, cell){
+    if(!layerEnabled("layerPath") || liveHistory.length < 2) return;
+    const recent = liveHistory.slice(-20);
+    const current = snapshot && Array.isArray(snapshot.people) ? snapshot.people : [];
+    const ids = current.filter(person => person && !person.evacuated).slice(0, 28)
+      .map(person => String(person.person_id ?? person.id));
+    ids.forEach((id, index) => {
+      const points = recent.map(snap => (snap.people || []).find(person => String(person.person_id ?? person.id) === id))
+        .filter(person => person && !person.evacuated);
+      if(points.length < 2) return;
+      const hash = [...id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+      ctx.beginPath();
+      ctx.strokeStyle = `hsla(${hash * 47 % 360},72%,42%,.62)`;
+      ctx.lineWidth = Math.max(1.2, Math.min(2.8, cell * .10));
+      ctx.setLineDash([4, 3]);
+      points.forEach((person, pointIndex) => {
+        const x = Number(person.x), y = Number(person.y);
+        if(!Number.isFinite(x) || !Number.isFinite(y)) return;
+        const px = ox + (x + .5) * cell, py = oy + (y + .5) * cell;
+        if(pointIndex === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+    });
+  }
+
+  function drawVisionRoutes(routes, grid, ox, oy, cell){
+    if(!layerEnabled("layerVisionRoutes") || !Array.isArray(routes) || routes.length === 0) return;
+    const palette = ["#dc2626", "#ea580c", "#7c3aed", "#0891b2", "#be123c", "#4d7c0f"];
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = Math.max(1.2, Math.min(3.2, cell * .16));
+    routes.forEach((route, index) => {
+      const path = route && route.path;
+      if(!Array.isArray(path) || path.length < 2) return;
+      ctx.strokeStyle = palette[index % palette.length];
+      ctx.globalAlpha = .78;
+      ctx.beginPath();
+      path.forEach((cellPoint, pointIndex) => {
+        const x = Number(cellPoint && cellPoint[0]);
+        const y = Number(cellPoint && cellPoint[1]);
+        if(!Number.isFinite(x) || !Number.isFinite(y)) return;
+        const px = ox + (x + .5) * cell;
+        const py = oy + (y + .5) * cell;
+        if(pointIndex === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+    });
+    ctx.restore();
   }
 
   function drawTrajectories(grid, ox, oy, cell){
@@ -629,31 +690,20 @@
       const px = ox + (x + .5) * cell;
       const py = oy + (y + .5) * cell;
       ctx.beginPath();
-      const guidePerson = Boolean(person.is_guide);
+      const profileColor = {security:"#8b5cf6", staff:"#8b5cf6", teacher:"#8b5cf6"};
+      const profile = String(person.profile || "").toLowerCase();
+      const guidePerson = Boolean(person.is_guide) || ["security", "staff", "teacher"].includes(profile);
       const infoState = String(person.info_state || "UNKNOWN").toUpperCase();
       const exposureThreshold = Number(snapshot?.c_runtime?.smoke_exposure_threshold ?? 0.02);
       const personSmoke = Number(person.smoke_concentration ?? person.smoke ?? 0);
       const inSmoke = Number.isFinite(personSmoke) && personSmoke >= exposureThreshold;
-      const knowsFire = ["ALERTED", "CONFIRMED", "GUIDED", "INFORMED"].includes(infoState);
-      ctx.fillStyle = person.is_dead ? "#111827" : (knowsFire ? "#dc2626" : "#2563eb");
+      const knowsFire = inSmoke || ["ALERTED", "CONFIRMED", "GUIDED", "INFORMED"].includes(infoState);
+      ctx.fillStyle = person.is_dead ? "#111827" : (guidePerson ? "#8b5cf6" : (knowsFire ? "#dc2626" : (profileColor[profile] || "#2563eb")));
       ctx.strokeStyle = "#fff";
       ctx.lineWidth = Math.max(1.5, cell * .08);
       ctx.arc(px, py, Math.max(3, Math.min(8, cell * .32)), 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-      if(inSmoke && !person.is_dead){
-        ctx.beginPath();
-        ctx.strokeStyle = "#f97316";
-        ctx.lineWidth = Math.max(1.5, cell * .10);
-        ctx.arc(px, py, Math.max(5, Math.min(10, cell * .43)), 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      if(guidePerson && !person.is_dead){
-        ctx.beginPath();
-        ctx.fillStyle = "#8b5cf6";
-        ctx.arc(px + Math.max(2, cell * .18), py - Math.max(2, cell * .18), Math.max(2, cell * .12), 0, Math.PI * 2);
-        ctx.fill();
-      }
     });
   }
 
@@ -758,6 +808,12 @@
       drawSmokeSources(snapshot.fields && snapshot.fields.smoke_sources, grid, ox, oy, cell);
     }
     drawTrajectories(grid, ox, oy, cell);
+    drawLivePaths(grid, ox, oy, cell);
+    const plannedRoutes = [].concat(
+      (snapshot.c_runtime && snapshot.c_runtime.vision_routes) || [],
+      (snapshot.c_runtime && snapshot.c_runtime.dual_routes) || []
+    );
+    drawVisionRoutes(plannedRoutes, grid, ox, oy, cell);
     if(layerEnabled("layerPeople")) drawPeople(snapshot.people, grid, ox, oy, cell);
     drawGuides(snapshot.guides, ox, oy, cell);
     drawGuidanceOverlay(grid, ox, oy, cell);
@@ -839,11 +895,7 @@
     const people = snapshot && Array.isArray(snapshot.people) ? snapshot.people : [];
     const evacuated = people.filter(p => p.evacuated).length;
     const smoke = snapshot && snapshot.fields && snapshot.fields.smoke_field;
-    let maxSmoke = null;
-    if(Array.isArray(smoke)) smoke.forEach(row => Array.isArray(row) && row.forEach(raw => {
-      const value = Number(raw);
-      if(Number.isFinite(value) && (maxSmoke === null || value > maxSmoke)) maxSmoke = value;
-    }));
+    const maxSmoke = maxFiniteFieldValue(smoke);
     const occupied = new Map();
     people.filter(p => !p.evacuated).forEach(person => {
       const key = `${person.x},${person.y}`;
@@ -1021,11 +1073,6 @@
     $("peopleCount").textContent = hasPeople ? observed.people.length : "NA";
     const cRuntime = snapshot && snapshot.c_runtime && typeof snapshot.c_runtime === "object" ? snapshot.c_runtime : null;
     $("informedCount").textContent = cRuntime ? `${cRuntime.informed_count ?? "NA"} / ${cRuntime.active_person_count ?? "NA"}` : "NA";
-    const alarm = snapshot && snapshot.fields ? snapshot.fields.alarm_triggered : null;
-    const broadcast = cRuntime && cRuntime.alarm_broadcast_triggered;
-    $("alarmState").textContent = alarm === true
-      ? (broadcast ? "已报警 · 已广播" : "已报警 · 局部传播")
-      : (alarm === false ? "未报警" : "NA");
     $("guideState").textContent = cRuntime ? (cRuntime.guide_state || "NA") : "NA";
     $("deadCount").textContent = hasPeople ? String(observed.people.filter(person => person && person.is_dead).length) : "NA";
     if(hasPeople) $("totalPersons").value = String(observed.people.length);
@@ -1040,10 +1087,6 @@
     $("overlapCount").textContent = observed.overlapCells;
     if(extra.diagnostics && Number.isFinite(Number(extra.diagnostics.request_processing_ms))){
       $("stepLatency").textContent = `${Number(extra.diagnostics.request_processing_ms).toFixed(1)} ms`;
-      const runtimeMs = Number(extra.diagnostics.runtime_step_ms);
-      const artifactMs = Number(extra.diagnostics.artifact_write_ms);
-      const payloadBytes = Number(extra.diagnostics.payload_bytes);
-      $("stepLatency").title = `Runtime: ${Number.isFinite(runtimeMs) ? runtimeMs.toFixed(1) : "NA"} ms；派生归档: ${Number.isFinite(artifactMs) ? artifactMs.toFixed(1) : "NA"} ms；响应: ${Number.isFinite(payloadBytes) ? payloadBytes.toLocaleString() : "NA"} bytes`;
     }
     const currentStep = snapshot ? Number(snapshot.step || 0) : 0;
     const simulatedTime = snapshot ? Number(snapshot.time_s || 0) : 0;
@@ -1060,12 +1103,20 @@
     setLayerAvailability("layerSmoke", Boolean(grid && observed.smokeSourceCount > 0), true);
     setLayerAvailability("layerOccupancy", activeSession, false);
     setLayerAvailability("layerTrajectories", activeSession, false);
+    setLayerAvailability("layerPath", activeSession && liveHistory.length >= 2, true);
+    const routeCount = ((snapshot && snapshot.c_runtime && snapshot.c_runtime.vision_routes) || []).length
+      + ((snapshot && snapshot.c_runtime && snapshot.c_runtime.dual_routes) || []).length;
+    setLayerAvailability("layerVisionRoutes", activeSession && routeCount > 0, true);
+    if(routeCount > 0){
+      $("layerVisionRoutes").checked = true;
+    }
     const notices = [];
     if(!grid) notices.push("图层等待真实地图与运行数据");
     else if(observed.smokeSourceCount === 0) notices.push("当前场景无烟源；不生成视觉烟雾");
     else if(grid && !observed.smokeActive) notices.push("烟雾图层等待真实 smoke_matrix 非零值");
     if(layerEnabled("layerOccupancy") && !logLayers) notices.push("累计占用等待 people_log 分析");
     if(layerEnabled("layerTrajectories") && !logLayers) notices.push("轨迹等待 people_log 分析");
+    if(layerEnabled("layerVisionRoutes") && routeCount === 0) notices.push("规划路线等待路线型管控策略运行数据");
     if(!activeSession && grid) notices.push("人员、轨迹与累计占用需初始化后启用");
     const noticeDetail = notices.join("；") || "当前图层均来自真实快照与 people_log";
     const noticeText = !grid
@@ -1103,8 +1154,13 @@
     }
     if(extra.resetHistory){
       logLayers = null;
+      liveHistory = [];
       liveExitUtilizationRepresentation = Array.isArray(next && next.exit_entities) && next.exit_entities.length > 0
         ? "entity" : "legacy_cell";
+    }
+    if(next && next.grid && Array.isArray(next.people)){
+      liveHistory.push(next);
+      if(liveHistory.length > 600) liveHistory.shift();
     }
     snapshot = next;
     startPersonTransition(previousSnapshot, next);
@@ -1113,13 +1169,6 @@
     draw();
     drawInsights(observed);
     return observed;
-  }
-
-  function appendFrontendRenderTiming(renderMs){
-    if(!Number.isFinite(renderMs)) return;
-    const latency = $("stepLatency");
-    const previousTitle = latency.title || "";
-    latency.title = `${previousTitle}${previousTitle ? "；" : ""}前端同步绘制: ${renderMs.toFixed(1)} ms`;
   }
 
   function finiteMean(values){
@@ -1353,8 +1402,7 @@
     $("curveNote").textContent = `已记录 ${summary.total_steps ?? "NA"} 步 · 已撤离 ${summary.evacuated_count ?? "NA"}/${summary.initial_population ?? "NA"}`;
     draw();
     refreshStats();
-    const analysisMs = Number(data.diagnostics && data.diagnostics.analysis_compute_ms);
-    log(`已刷新本次运行的 CSV 分析图表${Number.isFinite(analysisMs) ? ` · 分析 ${analysisMs.toFixed(1)} ms` : ""}`);
+    log("已刷新本次运行的 CSV 分析图表");
   }
 
   function drawGuides(guides, ox, oy, cell){
@@ -1392,16 +1440,10 @@
     const keys={density:"density_persons_m2",cl:"cl_m_inv",cn:"cn",crowd_danger:"crowd_danger_persons_m3"};
     const points=(academic.records||[]).map(r=>({x:Number(r.analysis_x),y:Number(r.analysis_y),v:Number(r[keys[kind]])})).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.v));
     if(!points.length){setAnalysisFigure("heatmapFigure","","该指标没有有效真实样本；不会生成伪热图。");return;}
-    // Records may cover every cell of a large map. Compute extrema linearly
-    // instead of using spread arguments, which overflow for 100k+ samples.
-    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity,max=-Infinity;
-    points.forEach(point=>{minX=Math.min(minX,point.x);minY=Math.min(minY,point.y);maxX=Math.max(maxX,point.x);maxY=Math.max(maxY,point.y);max=Math.max(max,point.v);});
-    const plotWidth=476, plotHeight=292, plotX=22, plotY=48;
-    const columns=Math.max(1,maxX-minX+1), rows=Math.max(1,maxY-minY+1);
-    const cell=Math.max(2,Math.min(plotWidth/columns,plotHeight/rows));
-    const offsetX=plotX+(plotWidth-columns*cell)/2, offsetY=plotY+(plotHeight-rows*cell)/2;
-    const cells=points.map(p=>{const q=max>0?p.v/max:0;return `<rect x="${offsetX+(p.x-minX)*cell}" y="${offsetY+(p.y-minY)*cell}" width="${cell}" height="${cell}" fill="hsl(${220-q*200},72%,${92-q*42}%)"/>`;}).join("");
-    const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="520" height="360" viewBox="0 0 520 360" preserveAspectRatio="xMidYMid meet"><rect width="100%" height="100%" fill="#fff"/><text x="22" y="25" font-size="16">${labels[kind][0]}（真实 artifact）</text>${cells}</svg>`;
+    const extents=points.reduce((acc,p)=>({minX:Math.min(acc.minX,p.x),minY:Math.min(acc.minY,p.y),maxX:Math.max(acc.maxX,p.x),maxY:Math.max(acc.maxY,p.y),max:Math.max(acc.max,p.v)}),{minX:Infinity,minY:Infinity,maxX:-Infinity,maxY:-Infinity,max:-Infinity});
+    const {minX,minY,max,cell=26}=extents;
+    const cells=points.map(p=>{const q=max>0?p.v/max:0;return `<rect x="${40+(p.x-minX)*cell}" y="${50+(p.y-minY)*cell}" width="${cell}" height="${cell}" fill="hsl(${220-q*200},72%,${92-q*42}%)"/>`;}).join("");
+    const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="520" height="360"><rect width="100%" height="100%" fill="#fff"/><text x="40" y="25" font-size="16">${labels[kind][0]}（真实 artifact）</text>${cells}</svg>`;
     setAnalysisFigure("heatmapFigure",svg,"不会生成伪热图。");
   }
 
@@ -1474,7 +1516,11 @@
     $("editMapBtn").disabled = false;
     $("autoPositionBtn").disabled = false;
     $("generatePeopleBtn").disabled = false;
-    setStatus(`地图已显示：${currentMapName}\n当前状态：内存 JSON${smokeSources ? `；烟源 ${smokeSources} 个` : "；无烟源"}`, "地图预览");
+    const exitIds = (currentMapData.cells || []).filter(cell => cell && cell.type === "exit").map((cell, index) => cell.exit_id || `exit_${index + 1}`);
+    if(!exitIds.length){
+      $("mapEditorHint").textContent = "当前地图没有出口。请点击“编辑地图”添加至少一个 exit 元胞，否则无法生成可疏散人员。";
+    }
+    setStatus(`地图已显示：${currentMapName}\n当前状态：内存 JSON${smokeSources ? `；烟源 ${smokeSources} 个` : "；无烟源"}\n出口ID：${exitIds.join(", ") || "无"}${exitIds.length ? "" : "\n缺少出口：请先编辑地图添加 exit 后再生成人员"}`, "地图预览");
     return result;
   }
 
@@ -1504,9 +1550,9 @@
     await previewCurrentMap();
     const strategy = String($("controlStrategy").value || "none");
     const lockdownNote = Array.isArray(editorLockdown) && editorLockdown.length === 4
-      ? (strategy === "zone_lockdown" || strategy === "all"
+      ? (strategy === "fire_aware" || strategy === "integrated"
         ? `；封锁区域已写入并会在当前策略下生效：${editorLockdown.join(",")}`
-        : `；封锁区域已写入 ${editorLockdown.join(",")}，当前策略为 ${strategy}，只有选择 zone_lockdown 或 all 才生效`)
+        : `；封锁区域已写入 ${editorLockdown.join(",")}，当前策略为 ${strategy}，只有选择综合管控才生效`)
       : "";
     $("mapEditorHint").textContent = `地图已编辑：${currentMapName}；确认后的同一份地图将进入自动分配和 runtime${lockdownNote}`;
     log("地图编辑已确认，currentMapData 已替换" + lockdownNote);
@@ -1558,10 +1604,24 @@
     currentMapName = mapFile.name;
     $("editMapBtn").disabled = true;
     $("autoPositionBtn").disabled = true;
-    $("mapEditorHint").textContent = "PNG / CSV 保留原导入运行方式；在线编辑当前仅支持 JSON 地图。";
+    $("generatePeopleBtn").disabled = true;
+    $("mapEditorHint").textContent = "PNG / CSV 保留原导入运行方式；在线编辑与直接生成人员当前仅支持 JSON 地图。";
     const result = await api("/api/map/preview", {map_file:mapFile, source_name:mapFile.name});
+    currentMapData = result.map_data || null;
+    currentMapName = mapFile.name;
     selectedTemplate = null;
     $("templateHint").textContent = "当前使用手动上传地图；模板选择已取消。";
+    $("editMapBtn").disabled = !currentMapData;
+    $("autoPositionBtn").disabled = !currentMapData;
+    $("generatePeopleBtn").disabled = !currentMapData;
+    const convertedExitCount = currentMapData
+      ? (currentMapData.cells || []).filter(cell => cell && String(cell.type || "").toLowerCase() === "exit").length
+      : 0;
+    $("mapEditorHint").textContent = currentMapData
+      ? (convertedExitCount
+        ? "当前地图已转换为可编辑栅格 JSON；可直接生成人员、分配位置或在线编辑。"
+        : "当前地图已转换为可编辑栅格 JSON，但没有 exit 元胞；请先编辑地图添加出口，再生成人员。")
+      : "该地图未能转换为可编辑栅格 JSON；请改用 JSON 地图。";
     activeSession = false;
     sessionFinished = false;
     stopTimer();
@@ -1569,7 +1629,7 @@
     applySnapshot(result.snapshot, {resetHistory:true});
     const meta = result.map_meta || {};
     const smokeSources = Number((meta.cell_counts || {}).smoke_source || 0);
-    setStatus(`地图已显示。\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\n烟源: ${smokeSources}${smokeSources ? " 个；启动联调后显示 B 烟雾" : " 个；当前地图无 smoke_source，因此不会产生烟雾"}\ncell_type: ${JSON.stringify(meta.cell_counts || {})}`, "地图预览");
+    setStatus(`地图已显示。\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\n烟源: ${smokeSources}${smokeSources ? " 个；启动联调后显示 B 烟雾" : " 个；当前地图无 smoke_source，因此不会产生烟雾"}\ncell_type: ${JSON.stringify(meta.cell_counts || {})}${currentMapData ? "\n下一步：可直接生成人员" : ""}`, "地图预览");
     log(`地图预览成功：${mapFile.name}`);
   }
 
@@ -1579,11 +1639,14 @@
       return;
     }
     const result = await api("/api/template/preview", {template_id:templateId});
-    currentMapData = null;
-    currentMapName = "";
-    $("editMapBtn").disabled = true;
-    $("autoPositionBtn").disabled = true;
-    $("mapEditorHint").textContent = "标准模板保留原有流程；在线编辑与自动位置分配当前仅支持上传 JSON 地图。";
+    currentMapData = result.map_data || null;
+    currentMapName = `${templateId}.json`;
+    $("editMapBtn").disabled = !currentMapData;
+    $("autoPositionBtn").disabled = !currentMapData;
+    $("generatePeopleBtn").disabled = !currentMapData;
+    $("mapEditorHint").textContent = currentMapData
+      ? `当前标准模板：${templateId}；可直接生成人员，也可在线编辑后运行。`
+      : "标准模板缺少可编辑 JSON；请改用上传 JSON 地图。";
     selectedTemplate = templateId;
     activeSession = false;
     sessionFinished = false;
@@ -1592,8 +1655,10 @@
     applySnapshot(result.snapshot, {resetHistory:true});
     const meta = result.map_meta || {};
     const smokeSources = Number((meta.cell_counts || {}).smoke_source || 0);
-    $("templateHint").textContent = `已选择 ${templateId} 模板。启动联调时请上传 C 生成人员后、经 A 按该模板分配坐标的人员文件。`;
-    setStatus(`A 标准模板已显示：${templateId}\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\n地图烟源: ${smokeSources} 个\n下一步：上传 C 生成人员、经 A 按该模板分配坐标后的文件，再启动联调。`, "模板预览");
+    $("templateHint").textContent = currentMapData
+      ? `已选择 ${templateId} 模板；可直接点击“生成 / 初始化人员”，也可上传已有人员文件后启动联调。`
+      : `已选择 ${templateId} 模板，但未返回可编辑地图 JSON。`;
+    setStatus(`A 标准模板已显示：${templateId}\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\n地图烟源: ${smokeSources} 个\n下一步：点击“生成 / 初始化人员”，或上传 C 人员文件后启动联调。`, "模板预览");
     log(`A 标准模板预览成功：${templateId}`);
   }
 
@@ -1602,28 +1667,10 @@
     const randomSeed = seedRaw === "" ? null : Number(seedRaw);
     const timeStep = Number($("timeStep").value);
     const maxSteps = Number($("maxSteps").value);
-    const physicalRaw = $("physicalCellSizeM").value.trim();
-    const physicalCellSizeM = physicalRaw === "" ? null : Number(physicalRaw);
-    const meshRaw = $("analysisMeshSizeM").value.trim();
-    const samplingRaw = $("samplingWindowS").value.trim();
-    const roiRaw = $("roiRadiusM").value.trim();
-    const analysisMeshSizeM = meshRaw === "" ? null : Number(meshRaw);
-    const samplingWindowS = samplingRaw === "" ? null : Number(samplingRaw);
-    const roiRadiusM = roiRaw === "" ? null : Number(roiRaw);
     if(seedRaw !== "" && !Number.isInteger(randomSeed)) throw new Error("random_seed 必须是整数或留空");
     if(!Number.isFinite(timeStep) || timeStep <= 0 || timeStep > 60) throw new Error("time_step 必须在 0 到 60 秒之间");
     if(!Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 5000) throw new Error("最大步数必须是 1 到 5000 的整数");
-    if(physicalRaw !== "" && (!Number.isFinite(physicalCellSizeM) || physicalCellSizeM <= 0)) throw new Error("物理元胞尺寸必须是大于 0 的数值，或留空");
-    if(meshRaw !== "" && (!Number.isFinite(analysisMeshSizeM) || analysisMeshSizeM <= 0)) throw new Error("分析网格尺寸必须是大于 0 的数值，或留空");
-    if(samplingRaw !== "" && (!Number.isFinite(samplingWindowS) || samplingWindowS <= 0)) throw new Error("采样时间窗必须是大于 0 的数值，或留空");
-    if(roiRaw !== "" && (!Number.isFinite(roiRadiusM) || roiRadiusM <= 0)) throw new Error("ROI 半径必须是大于 0 的数值，或留空");
-    return {random_seed:randomSeed, time_step_s:timeStep, max_steps:maxSteps, physical_cell_size_m:physicalCellSizeM, analysis_mesh_size_m:analysisMeshSizeM, sampling_window_s:samplingWindowS, roi_radius_m:roiRadiusM, ...informationModePayload(), ...controlConfigPayload()};
-  }
-
-  function informationModePayload(){
-    const mode = String($("informationMode").value || "broadcast").trim().toLowerCase();
-    if(!["broadcast", "local"].includes(mode)) throw new Error("信息传播情形必须为全员报警广播或局部感知与社会传播");
-    return {information_mode:mode};
+    return {random_seed:randomSeed, time_step_s:timeStep, max_steps:maxSteps, guide_enabled:guideEnabled, ...controlConfigPayload()};
   }
 
   function controlConfigPayload(){
@@ -1633,13 +1680,23 @@
     if(!Number.isInteger(triggerStep) || triggerStep < 0) throw new Error("C10 触发步必须是非负整数");
     if(!Number.isFinite(routeShiftRatio) || routeShiftRatio < 0 || routeShiftRatio > 1) throw new Error("C10 路线改派比例必须在 0 到 1 之间");
     const closed = String($("controlClosedExits").value || "").split(",").map(item => item.trim()).filter(Boolean);
+    const lockdownTrigger = String($("controlLockdownTrigger").value || "smoke_threshold");
+    const lockdownSmokeThreshold = Number($("controlLockdownSmokeThreshold").value);
+    const lockdownAutoUnlock = String($("controlLockdownAutoUnlock").value || "true") === "true";
+    const zoneBiasM = Number($("controlZoneBiasM").value);
+    const dualRiskWeight = Number($("dualRiskWeight").value);
+    const dualReplanIntervalS = Number($("dualReplanIntervalS").value);
+    if(!Number.isFinite(lockdownSmokeThreshold) || lockdownSmokeThreshold < 0 || lockdownSmokeThreshold > 1) throw new Error("封锁烟雾阈值必须在 0 到 1 之间");
+    if(!Number.isFinite(dualRiskWeight) || dualRiskWeight < 0 || dualRiskWeight > 1) throw new Error("双目标风险权重必须在 0 到 1 之间");
+    if(!Number.isFinite(dualReplanIntervalS) || dualReplanIntervalS <= 0) throw new Error("双目标重规划间隔必须大于 0 秒");
+    if(!Number.isFinite(zoneBiasM) || zoneBiasM < 0) throw new Error("分区软偏好必须是非负数");
     const areaText = String($("controlLockdownArea").value || "").trim();
     let area = null;
     if(areaText){
       area = areaText.split(",").map(item => Number(item.trim()));
       if(area.length !== 4 || area.some(value => !Number.isInteger(value))) throw new Error("封锁区域必须是 x1,y1,x2,y2 四个整数");
     }
-    return {control_strategy:strategy, control_trigger_step:triggerStep, control_closed_exits:closed, control_lockdown_area:area, route_shift_ratio:routeShiftRatio};
+    return {control_strategy:strategy, control_trigger_step:triggerStep, control_closed_exits:closed, control_lockdown_area:area, route_shift_ratio:routeShiftRatio, control_lockdown_trigger:lockdownTrigger, control_lockdown_smoke_threshold:lockdownSmokeThreshold, control_lockdown_auto_unlock:lockdownAutoUnlock, zone_bias_m:zoneBiasM, vision_replan_interval_s:Number($("visionReplanIntervalS").value||30), dual_risk_weight:dualRiskWeight, dual_replan_interval_s:dualReplanIntervalS};
   }
 
   function sceneConfigPayload(){
@@ -1654,9 +1711,7 @@
     if(Object.values(ratios).some(v => !Number.isFinite(v) || v < 0)) throw new Error("角色比例必须为非负数字");
     const ratioSum = Object.values(ratios).reduce((a,b)=>a+b,0);
     if(Math.abs(ratioSum - 1) > 0.01) throw new Error("角色比例之和必须约等于 1");
-    const initialInformedRatio = Number($("initialInformedRatio").value);
-    if(!Number.isFinite(initialInformedRatio) || initialInformedRatio < 0 || initialInformedRatio > 1) throw new Error("initial_informed_ratio 必须在 0 到 1 之间");
-    return {total_persons:total, random_seed:seed, relation_intensity:intensity, initial_informed_ratio:initialInformedRatio, profile_ratios:ratios};
+    return {total_persons:total, random_seed:seed, relation_intensity:intensity, alarm_enabled:true, profile_ratios:ratios};
   }
 
   function showSpawnCapacityError(error, actionLabel){
@@ -1673,8 +1728,19 @@
   }
 
   async function generatePeopleSession(){
+    if(generatingPeople){ log("人员正在生成，请稍候。"); return; }
     if(pending){ log("当前运行正在计算，请稍候。"); return; }
     if(!currentMapData){ setStatus("请先导入并确认 JSON 地图，再生成人员。", "缺少地图"); return; }
+    const exitCount = (currentMapData.cells || []).filter(cell => cell && String(cell.type || "").toLowerCase() === "exit").length;
+    if(!exitCount){
+      setStatus("当前地图没有出口，无法生成可疏散人员。\n请先点击“编辑地图”，在边界或安全区域添加至少一个 exit 元胞，再重新生成。", "缺少出口");
+      return;
+    }
+    const generateButton = $("generatePeopleBtn");
+    generatingPeople = true;
+    generateButton.disabled = true;
+    generateButton.textContent = "生成中...";
+    setStatus("正在由 C 生成人员/关系，并由 A 分配初始位置，请稍候...", "生成中");
     try{
       const sceneConfig = sceneConfigPayload();
       const uploadedYaml = await readFilePayload($("yamlFile"));
@@ -1692,6 +1758,10 @@
         setStatus(error.message || String(error), "初始化失败");
         log("人员初始化失败：" + (error.message || error));
       }
+    }finally{
+      generatingPeople = false;
+      generateButton.textContent = "生成 / 初始化人员";
+      generateButton.disabled = !currentMapData;
     }
   }
 
@@ -1741,8 +1811,7 @@
       : (observed.smokeSourceCount
         ? `烟雾: ${observed.smokeActive ? "已显示" : "已接入，等待 B 首步更新"}`
         : "烟雾: 当前场景无 smoke_source，烟雾图层已禁用");
-    const informationMode = (result.snapshot.c_runtime || {}).information_mode === "local" ? "局部感知与社会传播（不全员广播）" : "全员报警广播";
-    setStatus(`A+B+C 文件联调已初始化\nB: ${meta.b_runtime_api || "run_one_step(c_step_data)"}\nC 人员: 已接入\nC 配置: ${configSource}\nC 每步行为: ${behaviorStatus}\nC 信息传播: ${informationMode}\nC10: ${((result.snapshot.c_runtime || {}).control_strategy || {}).active_strategies || "none"}\n速度: 未知情 x0.35；知情 x1.15；个体速度差 ±30%；拥堵处继续减速\nB字段: is_panicked、panic_level、speed_multiplier 已随每步行为传入\n颜色: 蓝色=未知情；红色=已知火情；橙色外环=烟雾暴露\n${smokeStatus}\n绘图: ${drawingStatus}`, "真实联调");
+    setStatus(`A+B+C 文件联调已初始化\nB: ${meta.b_runtime_api || "run_one_step(c_step_data)"}\nC 人员: 已接入\nC 配置: ${configSource}\nC 每步行为: ${behaviorStatus}\nC 信息传播: 烟源附近先知情；烟雾达阈值后广播；其余靠口头/关系/引导\nC10: ${((result.snapshot.c_runtime || {}).control_strategy || {}).active_strategies || "none"} 关闭出口=${(((result.snapshot.c_runtime || {}).control_strategy || {}).closed_exits || []).join(",")||"无"}\n烟雾: normalize=${(result.snapshot.c_runtime || {}).smoke_normalize} grow=${(result.snapshot.c_runtime || {}).smoke_sigma_grow} target=${(result.snapshot.c_runtime || {}).smoke_target_intensity} ramp=${(result.snapshot.c_runtime || {}).smoke_ramp_steps} 报警步=${(result.snapshot.c_runtime || {}).alarm_broadcast_step ?? "未触发"}\n速度: 未知情 x0.35；知情 x1.15；个体速度差 ±30%；拥堵处继续减速\nB字段: is_panicked、panic_level、speed_multiplier 已随每步行为传入\n颜色: 红色=已知火情，紫色=引导员\n${smokeStatus}\n绘图: ${drawingStatus}`, "真实联调");
     log("A+B+C 联调初始化成功");
   }
 
@@ -1787,7 +1856,8 @@
     currentMapName = "";
     $("editMapBtn").disabled = true;
     $("autoPositionBtn").disabled = true;
-    $("mapEditorHint").textContent = "仓库样例保留原有流程；在线编辑与自动位置分配当前仅支持上传 JSON 地图。";
+    $("generatePeopleBtn").disabled = true;
+    $("mapEditorHint").textContent = "仓库样例已包含人员；在线编辑与自动位置分配请上传 JSON 地图。";
     activeSession = true;
     sessionFinished = false;
     pauseRequested = false;
@@ -1811,13 +1881,11 @@
     pending = true;
     setRunControlsBusy(true);
     $("stepLatency").textContent = "计算中";
-    setStatus(`B 正在计算 step ${Number(snapshot && snapshot.step || 0) + 1}。\n请勿重复点击，完成后会恢复操作控件。`, "计算中");
+    setStatus(`B 正在计算 step ${Number(snapshot && snapshot.step || 0) + 1}。\n最新版烟雾模型可能需要十几秒，请勿重置或重复点击。`, "计算中");
     try{
       const result = await api("/api/session/step", {});
       sessionFinished = Boolean(result.finished);
-      const renderStarted = performance.now();
       const observed = applySnapshot(result.snapshot, {output_dir:result.output_dir, diagnostics:result.diagnostics});
-      appendFrontendRenderTiming(performance.now() - renderStarted);
       refreshCoreMetrics().catch(error => log(`本步指标未刷新：${error.message}`));
       if(layerEnabled("layerOccupancy") || layerEnabled("layerTrajectories")){
         refreshLogLayers().catch(error => log(`日志图层未刷新：${error.message}`));
@@ -1956,7 +2024,7 @@
     );
   };
   $("clearYaml").onclick = () => { $("yamlFile").value = ""; setConfigState("未选择 YAML。", ""); };
-  ["layerPeople", "layerExits", "layerSmoke", "layerOccupancy", "layerTrajectories"].forEach(id => {
+  ["layerPeople", "layerExits", "layerSmoke", "layerOccupancy", "layerTrajectories", "layerPath", "layerVisionRoutes"].forEach(id => {
     $(id).onchange = () => {
       draw(); refreshStats();
       if(activeSession && (id === "layerOccupancy" || id === "layerTrajectories") && $(id).checked && !logLayers){
@@ -1964,6 +2032,20 @@
       }
     };
   });
+  $("guideToggle").onclick = async () => {
+    guideEnabled = !guideEnabled;
+    $("guideToggle").textContent = guideEnabled ? "疏散指导：开" : "疏散指导：关";
+    if(activeSession){
+      try{
+        await api("/api/session/guide", {enabled:guideEnabled});
+        log(`疏散指导已${guideEnabled ? "开启" : "关闭"}`);
+      }catch(error){
+        guideEnabled = !guideEnabled;
+        $("guideToggle").textContent = guideEnabled ? "疏散指导：开" : "疏散指导：关";
+        setStatus(`疏散指导切换失败：${error.message}`, "切换失败");
+      }
+    }
+  };
   $("initBtn").onclick = () => initSession().catch(error => setStatus(`联调初始化失败：${error.message}`, "初始化失败"));
   $("sampleBtn").onclick = () => loadSample().catch(error => setStatus(`仓库样例失败：${error.message}`, "样例失败"));
   $("startBtn").onclick = startTimer;
