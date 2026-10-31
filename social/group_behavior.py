@@ -28,6 +28,13 @@ from collections import Counter
 # ============================================================
 # 结伴行为参数（全部集中在此，无需外部YAML文件）
 # ============================================================
+def _person_target_exit_id(person) -> str:
+    """Read B's current target across legacy and current Person fields."""
+
+    value = getattr(person, "target_exit", None) or getattr(person, "target_exit_id", None)
+    return str(value or "")
+
+
 GROUP_PARAMS = {
     # 强关系类型（任务书5.5节）
     "strong_relation_types": ["family", "friend"],
@@ -255,8 +262,9 @@ class GroupBehaviorEngine:
                 result["is_waiting"] = False
                 result["approach_target"] = None
                 # 共同出口偏好也会被跟随目标影响
-                if hasattr(nearest, 'target_exit') and nearest.target_exit:
-                    result["exit_preference"][nearest.target_exit] = (
+                nearest_target = _person_target_exit_id(nearest)
+                if nearest_target:
+                    result["exit_preference"][nearest_target] = (
                         self.co_exit_params["preference_bonus"] * 0.5
                     )
                 return result
@@ -299,8 +307,9 @@ class GroupBehaviorEngine:
         # ============================================================
         exit_counts = Counter()
         for p in active_members:
-            if hasattr(p, "target_exit") and p.target_exit:
-                exit_counts[p.target_exit] += 1
+            target_exit = _person_target_exit_id(p)
+            if target_exit:
+                exit_counts[target_exit] += 1
 
         if exit_counts:
             most_common_exit, count = exit_counts.most_common(1)[0]
