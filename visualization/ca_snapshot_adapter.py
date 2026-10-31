@@ -13,6 +13,8 @@ import math
 from numbers import Integral, Real
 from typing import Any, Iterable, Mapping
 
+import numpy as np
+
 from experiments.crowd_metrics import with_runtime_dt
 
 
@@ -54,7 +56,6 @@ def _json_compatible(value: Any) -> Any:
         if not math.isfinite(normalized):
             raise SnapshotAdapterError("snapshot numeric values must be finite")
         return normalized
-
     item = getattr(value, "item", None)
     if callable(item):
         scalar = item()
@@ -118,6 +119,25 @@ def _matrix_to_lists(
     if matrix is None:
         return []
 
+    if (
+        isinstance(matrix, np.ndarray)
+        and matrix.ndim == 2
+        and matrix.dtype.kind in "biuf"
+    ):
+        if matrix.shape != (height, width):
+            rows, columns = matrix.shape
+            raise SnapshotAdapterError(
+                f"{field_name} shape must be ({height}, {width}), "
+                f"got ({rows}, {columns})"
+            )
+        if not np.isfinite(matrix).all():
+            raise SnapshotAdapterError(
+                f"{field_name} must contain only finite numeric values"
+            )
+        if matrix.dtype.kind == "f":
+            return matrix.tolist()
+        return matrix.astype(float).tolist()
+
     raw = matrix.tolist() if hasattr(matrix, "tolist") else matrix
     rows = [list(row) for row in raw]
     if len(rows) != height or any(len(row) != width for row in rows):
@@ -134,7 +154,12 @@ def _matrix_to_lists(
                 raise SnapshotAdapterError(
                     f"{field_name} must contain only numeric values"
                 )
-            normalized_row.append(float(value))
+            normalized_value = float(value)
+            if not math.isfinite(normalized_value):
+                raise SnapshotAdapterError(
+                    f"{field_name} must contain only finite numeric values"
+                )
+            normalized_row.append(normalized_value)
         normalized.append(normalized_row)
     return normalized
 
