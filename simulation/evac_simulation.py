@@ -22,7 +22,10 @@ from pathlib import Path
 BASE_PATH = Path(__file__).parent.parent
 sys.path.insert(0, str(BASE_PATH))
 
+import math
 import random
+from collections.abc import Mapping
+
 import numpy as np
 from core.schema import ScenarioConfig, Grid, Person, CellType
 from .ca_model import calc_next_position
@@ -332,15 +335,34 @@ class EvacEngine:
                 source_proximity=source_proximity,
             )
             forced_targets = {}
+            exit_preferences = {}
             for person in alive:
                 behavior = c_step_data.get(int(person.id)) or {}
-                forced = behavior.get("target_exit") if isinstance(behavior, dict) else None
+                if not isinstance(behavior, Mapping):
+                    continue
+                forced = behavior.get("target_exit")
                 if forced:
                     forced_targets[int(person.id)] = str(forced)
+                raw_preferences = behavior.get("exit_preference")
+                if isinstance(raw_preferences, Mapping):
+                    preferences = {}
+                    for exit_id, raw_bonus in raw_preferences.items():
+                        try:
+                            bonus = float(raw_bonus or 0.0)
+                        except (TypeError, ValueError):
+                            continue
+                        if math.isfinite(bonus) and not math.isclose(bonus, 0.0):
+                            preferences[str(exit_id)] = bonus
+                    if preferences:
+                        exit_preferences[int(person.id)] = preferences
             interval = max(1, int(self.movement.exit_choice.reevaluate_interval))
             if self.current_step == 0 or self.current_step % interval == 0 or forced_targets:
                 chosen = self.exit_chooser.update_all(
-                    alive, self.current_step, smoke_mat, forced_targets
+                    alive,
+                    self.current_step,
+                    smoke_mat,
+                    forced_targets,
+                    exit_preferences=exit_preferences,
                 )
                 for pid, eid in chosen.items():
                     person = self.person_map.get(pid)
