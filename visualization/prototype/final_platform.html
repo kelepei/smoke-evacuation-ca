@@ -122,7 +122,7 @@
     <details class="diagnostics">
       <summary>待接入参数与 C 静态字段</summary>
       <div class="hint">scene、profile、relation_intensity 与 group_config 由 YAML/人员文件记录。当前人员已预生成，C 每步行为尚未进入 B 移动决策，因此此处不提供会造成误解的滑块。</div>
-      <label>relation_intensity <input value="由 YAML 记录；当前不改变 B 移动" disabled></label>
+      <label>relation_intensity <input value="由 YAML 记录；影响生成关系的 strength 与 trust（本页人员已预生成，不会重新生成）" disabled></label>
       <label>profile_ratios / group_config<input value="只用于上游生成人员；本页不重新生成" disabled></label>
       <label>C 每步策略 <input value="待 C→B person_id 契约接入" disabled></label>
     </details>
@@ -420,12 +420,8 @@
     if(!layerEnabled("layerOccupancy") || !logLayers) return;
     const field = logLayers.cumulative_occupancy;
     if(!Array.isArray(field)) return;
-    // Avoid spreading 100k+ large-map cells into Math.max().
-    let maximum = 0;
-    field.forEach(row => Array.isArray(row) && row.forEach(raw => {
-      const value = Number(raw);
-      if(Number.isFinite(value) && value > maximum) maximum = value;
-    }));
+    const values = field.flat().map(Number).filter(value => Number.isFinite(value) && value > 0);
+    const maximum = values.length ? Math.max(...values) : 0;
     if(maximum <= 0) return;
     field.forEach((row, y) => Array.isArray(row) && row.forEach((raw, x) => {
       const value = Number(raw);
@@ -611,10 +607,10 @@
     const evacuated = people.filter(p => p.evacuated).length;
     const smoke = snapshot && snapshot.fields && snapshot.fields.smoke_field;
     let maxSmoke = null;
-    if(Array.isArray(smoke)) smoke.forEach(row => Array.isArray(row) && row.forEach(raw => {
-      const value = Number(raw);
-      if(Number.isFinite(value) && (maxSmoke === null || value > maxSmoke)) maxSmoke = value;
-    }));
+    if(Array.isArray(smoke)){
+      const values = smoke.flat().map(Number).filter(Number.isFinite);
+      if(values.length) maxSmoke = Math.max(...values);
+    }
     const occupied = new Map();
     people.filter(p => !p.evacuated).forEach(person => {
       const key = `${person.x},${person.y}`;
