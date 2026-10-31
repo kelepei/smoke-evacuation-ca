@@ -179,6 +179,7 @@
     <div class="toolbar-row toolbar-primary">
       <button id="initBtn" class="good init-control">初始化仿真</button>
       <button id="guideToggle" class="primary">疏散指导：开</button>
+      <button id="broadcastToggle" class="good">全局广播：开启</button>
       <select id="speedSelect" aria-label="播放速度" style="width:78px;height:34px;padding:4px 5px">
         <option value="150">快速</option>
         <option value="300" selected>标准</option>
@@ -368,6 +369,7 @@
   let liveHistory = [];
   let activeSession = false;
   let guideEnabled = true;
+  let broadcastEnabled = true;
   let timer = null;
   let pending = false;
   let generatingPeople = false;
@@ -970,6 +972,7 @@
     const fields = snapshot && snapshot.fields && typeof snapshot.fields === "object" ? snapshot.fields : {};
     if(!guidance){
       const cRuntime = snapshot && snapshot.c_runtime && typeof snapshot.c_runtime === "object" ? snapshot.c_runtime : {};
+    if(cRuntime && cRuntime.information_mode){ syncBroadcastToggle(cRuntime.information_mode === "broadcast"); }
       $("guidanceAlarm").textContent = `alarm=${fields.alarm_triggered ?? "NA"} · max=${guidanceNumber(fields.max_smoke_concentration)} · 烟源=${guidanceNumber(cRuntime.source_smoke_concentration)} · 广播阈值=${guidanceNumber(cRuntime.broadcast_smoke_threshold)}`;
       $("guidancePolicy").textContent = "smoke_distance_baseline_v1";
       $("guidanceSummary").textContent = "推荐人数：NA；实体出口汇总：NA。";
@@ -1662,6 +1665,20 @@
     log(`A 标准模板预览成功：${templateId}`);
   }
 
+  function syncBroadcastToggle(enabled, notify = false){
+    broadcastEnabled = Boolean(enabled);
+    const button = $("broadcastToggle");
+    if(!button) return;
+    button.textContent = broadcastEnabled ? "全局广播：开启" : "全局广播：关闭";
+    button.classList.toggle("good", broadcastEnabled);
+    button.classList.toggle("danger", !broadcastEnabled);
+    if(notify){
+      log(broadcastEnabled
+        ? "全局广播已开启；后续烟雾阈值满足时会全局广播。"
+        : "全局广播已关闭；仅保留局部感知、口碑与关系传播。");
+    }
+  }
+
   function runtimeParameterPayload(){
     const seedRaw = $("randomSeed").value.trim();
     const randomSeed = seedRaw === "" ? null : Number(seedRaw);
@@ -1670,7 +1687,7 @@
     if(seedRaw !== "" && !Number.isInteger(randomSeed)) throw new Error("random_seed 必须是整数或留空");
     if(!Number.isFinite(timeStep) || timeStep <= 0 || timeStep > 60) throw new Error("time_step 必须在 0 到 60 秒之间");
     if(!Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 5000) throw new Error("最大步数必须是 1 到 5000 的整数");
-    return {random_seed:randomSeed, time_step_s:timeStep, max_steps:maxSteps, guide_enabled:guideEnabled, ...controlConfigPayload()};
+    return {random_seed:randomSeed, time_step_s:timeStep, max_steps:maxSteps, guide_enabled:guideEnabled, information_mode:broadcastEnabled ? "broadcast" : "local", alarm_enabled:broadcastEnabled, ...controlConfigPayload()};
   }
 
   function controlConfigPayload(){
@@ -1711,7 +1728,7 @@
     if(Object.values(ratios).some(v => !Number.isFinite(v) || v < 0)) throw new Error("角色比例必须为非负数字");
     const ratioSum = Object.values(ratios).reduce((a,b)=>a+b,0);
     if(Math.abs(ratioSum - 1) > 0.01) throw new Error("角色比例之和必须约等于 1");
-    return {total_persons:total, random_seed:seed, relation_intensity:intensity, alarm_enabled:true, profile_ratios:ratios};
+    return {total_persons:total, random_seed:seed, relation_intensity:intensity, alarm_enabled:broadcastEnabled, profile_ratios:ratios};
   }
 
   function showSpawnCapacityError(error, actionLabel){
@@ -1897,15 +1914,19 @@
       const smokeContractViolated = observed.maxSmoke !== null && observed.maxSmoke > 10;
       if(observed.overlapCells > 0) warnings.push(`检测到 ${observed.overlapCells} 个活动人员重叠元胞`);
       if(smokeContractViolated) warnings.push(`烟雾最大值 ${observed.maxSmoke.toFixed(3)} 超出 B 约定 0~10`);
+      const deadCount = observed.people.filter(person => person && person.is_dead).length;
       const completed = observed.people.length > 0 && observed.evacuated === observed.people.length;
+      const allAccountedFor = observed.people.length > 0 && observed.evacuated + deadCount === observed.people.length;
       const runState = completed
         ? "全员疏散完成"
-        : (result.finished ? "已达到最大步数" : (pauseRequested ? "已暂停" : (autoPlaying ? "连续运行中" : "单步完成")));
+        : (result.finished
+          ? (allAccountedFor ? `仿真结束（死亡 ${deadCount} 人）` : "已达到最大步数")
+          : (pauseRequested ? "已暂停" : (autoPlaying ? "连续运行中" : "单步完成")));
       const warningText = warnings.length
         ? `\n契约诊断：${warnings.join("；")}。D 保留原始数据，未伪造或静默修正。`
         : "";
       setStatus(
-        `${runState}：step ${result.snapshot.step}，当前模拟时间 ${timeValue(result.snapshot.time_s || 0)} s，已撤离 ${observed.evacuated}/${observed.people.length}。${warningText}${smokeContractViolated ? "\n烟雾越界，连续运行已自动暂停。" : ""}`,
+        `${runState}：step ${result.snapshot.step}，当前模拟时间 ${timeValue(result.snapshot.time_s || 0)} s，已撤离 ${observed.evacuated}/${observed.people.length}，死亡 ${deadCount} 人。${warningText}${smokeContractViolated ? "\n烟雾越界，连续运行已自动暂停。" : ""}`,
         warnings.length ? "契约告警" : runState
       );
       if(smokeContractViolated){
@@ -2032,6 +2053,24 @@
       }
     };
   });
+  $("broadcastToggle").onclick = async () => {
+    const next = !broadcastEnabled;
+    try{
+      if(activeSession){
+        const result = await api("/api/session/broadcast", {enabled:next});
+        syncBroadcastToggle(Boolean(result.broadcast_enabled), true);
+        setStatus(result.broadcast_enabled
+          ? "全局广播已开启。"
+          : "全局广播已关闭；已接收信息的人员状态不会回滚。", "广播控制");
+      }else{
+        syncBroadcastToggle(next, true);
+        setStatus(next ? "全局广播已开启，下次初始化生效。" : "全局广播已关闭，下次初始化生效。", "广播控制");
+      }
+    }catch(error){
+      setStatus(`广播开关切换失败：${error.message}`, "广播控制失败");
+    }
+  };
+
   $("guideToggle").onclick = async () => {
     guideEnabled = !guideEnabled;
     $("guideToggle").textContent = guideEnabled ? "疏散指导：开" : "疏散指导：关";
@@ -2083,6 +2122,7 @@
   window.addEventListener("resize", resize);
   resize();
   refreshStats();
+  syncBroadcastToggle(broadcastEnabled);
   setRunControlsBusy(false);
   log("统一前端已加载");
 })();
