@@ -348,6 +348,8 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                         response = self._create_repository_sample(payload)
                     elif path == "/api/session/step":
                         response = self._step_session()
+                    elif path == "/api/session/broadcast":
+                        response = self._set_broadcast_enabled(payload)
                     elif path == "/api/session/reset":
                         response = self._reset_session()
                     elif path == "/api/session/close":
@@ -783,6 +785,23 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 "payload_bytes": payload_bytes,
                 "request_processing_ms": round(request_processing_ms, 3),
             },
+        }
+
+    def _set_broadcast_enabled(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        """Toggle future alarm broadcast for the active C runtime bridge."""
+
+        enabled = payload.get("enabled")
+        if not isinstance(enabled, bool):
+            raise WebRuntimeError("enabled must be a boolean")
+        session = self._require_session()
+        provider = getattr(session.runner.simulation, "behavior_provider", None)
+        if provider is None or not callable(getattr(provider, "set_broadcast_enabled", None)):
+            raise WebRuntimeError("active runtime does not expose a broadcast controller")
+        provider.set_broadcast_enabled(enabled)
+        return {
+            "ok": True,
+            "broadcast_enabled": enabled,
+            "information_mode": "broadcast" if enabled else "local",
         }
 
     def _reset_session(self) -> dict[str, Any]:
