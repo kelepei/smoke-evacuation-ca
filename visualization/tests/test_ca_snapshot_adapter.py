@@ -10,7 +10,105 @@ from core.schema import CellType, Relation
 from experiments.b_runtime_adapter import EvacEngineRuntimeAdapter
 from scenarios.mock_data import build_base_scene
 from simulation.evac_simulation import EvacEngine
-from visualization.ca_snapshot_adapter import CaSnapshotAdapter, SnapshotAdapterError
+from visualization.ca_snapshot_adapter import (
+    CaSnapshotAdapter,
+    SnapshotAdapterError,
+    _matrix_to_lists,
+)
+
+
+class MatrixToListsTests(unittest.TestCase):
+    def test_numpy_real_matrices_preserve_shape_values_and_float_output(self) -> None:
+        for dtype in (np.bool_, np.int32, np.uint16, np.float32, np.float64):
+            with self.subTest(dtype=dtype):
+                matrix = np.asarray([[0, 1], [2, 3]], dtype=dtype)
+                result = _matrix_to_lists(
+                    matrix, width=2, height=2, field_name="test_field"
+                )
+                self.assertEqual(matrix.astype(float).tolist(), result)
+                self.assertTrue(
+                    all(isinstance(value, float) for row in result for value in row)
+                )
+
+    def test_none_and_generic_numeric_rows_keep_existing_output_contract(self) -> None:
+        self.assertEqual(
+            [],
+            _matrix_to_lists(None, width=2, height=2, field_name="test_field"),
+        )
+        self.assertEqual(
+            [[1.0, 2.5], [3.0, 4.0]],
+            _matrix_to_lists(
+                [[1, 2.5], [np.int64(3), np.float32(4)]],
+                width=2,
+                height=2,
+                field_name="test_field",
+            ),
+        )
+
+    def test_rejects_numpy_and_generic_non_finite_values(self) -> None:
+        for value in (np.nan, np.inf, -np.inf):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(
+                    SnapshotAdapterError, "finite numeric values"
+                ):
+                    _matrix_to_lists(
+                        np.asarray([[0.0, value]], dtype=np.float64),
+                        width=2,
+                        height=1,
+                        field_name="test_field",
+                    )
+                with self.assertRaisesRegex(
+                    SnapshotAdapterError, "finite numeric values"
+                ):
+                    _matrix_to_lists(
+                        [[0.0, value]],
+                        width=2,
+                        height=1,
+                        field_name="test_field",
+                    )
+
+    def test_rejects_wrong_shape_with_existing_error_contract(self) -> None:
+        with self.assertRaisesRegex(
+            SnapshotAdapterError,
+            r"test_field shape must be \(2, 2\), got \(2, 3\)",
+        ):
+            _matrix_to_lists(
+                np.zeros((2, 3), dtype=np.float32),
+                width=2,
+                height=2,
+                field_name="test_field",
+            )
+
+    def test_non_matrix_numpy_dimensions_keep_generic_type_error(self) -> None:
+        for invalid in (np.asarray(1.0), np.asarray([1.0, 2.0])):
+            with self.subTest(shape=invalid.shape):
+                with self.assertRaises(TypeError):
+                    _matrix_to_lists(
+                        invalid,
+                        width=2,
+                        height=1,
+                        field_name="test_field",
+                    )
+
+    def test_object_complex_and_non_numeric_values_use_strict_generic_path(self) -> None:
+        object_matrix = np.asarray([[1, np.float32(2.5)]], dtype=object)
+        self.assertEqual(
+            [[1.0, 2.5]],
+            _matrix_to_lists(
+                object_matrix, width=2, height=1, field_name="test_field"
+            ),
+        )
+        for invalid in (
+            np.asarray([[1 + 2j]], dtype=np.complex64),
+            np.asarray([["not-a-number"]], dtype=object),
+        ):
+            with self.subTest(dtype=invalid.dtype):
+                with self.assertRaisesRegex(
+                    SnapshotAdapterError, "only numeric values"
+                ):
+                    _matrix_to_lists(
+                        invalid, width=1, height=1, field_name="test_field"
+                    )
 
 
 class CaSnapshotAdapterTests(unittest.TestCase):

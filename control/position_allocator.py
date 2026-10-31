@@ -810,8 +810,39 @@ def cell_distance(
 def get_nearby_cells(
         cells,
         center,
-        max_distance=3
+        max_distance=3,
+        position_index=None
 ):
+    if position_index is not None:
+
+        center_x, center_y = center
+        nearby = []
+
+        for dx in range(-max_distance, max_distance + 1):
+
+            remaining_distance = max_distance - abs(dx)
+
+            for dy in range(-remaining_distance, remaining_distance + 1):
+
+                item = position_index.get(
+                    (
+                        center_x + dx,
+                        center_y + dy
+                    )
+                )
+
+                if item is not None:
+                    nearby.append(item)
+
+        nearby.sort(
+            key=lambda item: item[0]
+        )
+
+        return [
+            cell
+            for _, cell in nearby
+        ]
+
     result = []
 
     for x, y, cell in cells:
@@ -834,6 +865,34 @@ def get_nearby_cells(
     return result
 
 
+def build_position_index(cells):
+    """Index unique candidate coordinates while preserving their list order.
+
+    ``get_nearby_cells`` historically returns candidates in the input-list
+    order.  The stored ordinal and final sort retain that order, so using the
+    index does not change the seeded selection sequence.
+    """
+
+    position_index = {}
+
+    for index, cell in enumerate(cells):
+
+        coordinate = (
+            cell[0],
+            cell[1]
+        )
+
+        if coordinate in position_index:
+            return None
+
+        position_index[coordinate] = (
+            index,
+            cell
+        )
+
+    return position_index
+
+
 # ============================================================
 # 18. group 位置生成
 # ============================================================
@@ -843,7 +902,8 @@ def generate_group_position(
         count,
         occupied,
         rng,
-        max_group_distance=3
+        max_group_distance=3,
+        position_index=None
 ):
     """
     同一个 group 尽量安排在一起。
@@ -904,7 +964,8 @@ def generate_group_position(
         nearby = get_nearby_cells(
             available,
             center,
-            max_distance=max_group_distance
+            max_distance=max_group_distance,
+            position_index=position_index
         )
 
         nearby = [
@@ -1069,6 +1130,12 @@ def allocate_positions(
 
     occupied = set()
 
+    all_cells_position_index = build_position_index(
+        available_cells
+    )
+
+    profile_candidates = {}
+
     # ========================================================
     # 逐 group 分配
     # ========================================================
@@ -1085,10 +1152,23 @@ def allocate_positions(
         # semantic 优先
         # ----------------------------------------------------
 
-        candidates = select_cells_for_profile(
-            available_cells,
-            profile
-        )
+        profile_key = str(profile).strip().lower()
+
+        if profile_key not in profile_candidates:
+
+            candidates = select_cells_for_profile(
+                available_cells,
+                profile
+            )
+
+            profile_candidates[profile_key] = (
+                candidates,
+                build_position_index(candidates)
+            )
+
+        candidates, candidate_position_index = profile_candidates[
+            profile_key
+        ]
 
         # ----------------------------------------------------
         # 尝试在 semantic 区域内安排
@@ -1099,7 +1179,8 @@ def allocate_positions(
             count=len(members),
             occupied=occupied,
             rng=rng,
-            max_group_distance=3
+            max_group_distance=3,
+            position_index=candidate_position_index
         )
 
         # ----------------------------------------------------
@@ -1140,7 +1221,8 @@ def allocate_positions(
                 count=len(members),
                 occupied=occupied,
                 rng=rng,
-                max_group_distance=3
+                max_group_distance=3,
+                position_index=all_cells_position_index
             )
 
         # ----------------------------------------------------
