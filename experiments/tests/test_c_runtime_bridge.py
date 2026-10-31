@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+from core.schema import CellType, Exit
 from experiments.b_runtime_adapter import EvacEngineRuntimeAdapter
 from experiments.c_runtime_bridge import CWebRuntimeBridge
 from scenarios.mock_data import build_base_scene
@@ -63,6 +64,58 @@ class CWebRuntimeBridgeTests(unittest.TestCase):
         self.assertFalse(_bridge._move_allowed[1])
         self.assertTrue(_bridge._move_allowed[2])
         self.assertGreaterEqual(speed_state["blocked_total"], 1)
+
+    def test_global_guide_target_does_not_override_person_exit_choice(self) -> None:
+        scene = build_base_scene()
+        scene.grid.cells[5 * scene.grid.width + 5].cell_type = CellType.EXIT
+        scene.grid.cells[6 * scene.grid.width + 18].cell_type = CellType.EXIT
+        scene.exits = [
+            Exit(id="near", x=5, y=5),
+            Exit(id="far", x=18, y=6),
+        ]
+        for index, person in enumerate(scene.persons):
+            person.x = 6 + index
+            person.y = 5
+            person.target_exit = "near"
+            person.target_exit_id = "near"
+        scene.parameters = {
+            "d_c_runtime": {"initial_informed_ratio": 0.0, "alarm_enabled": True}
+        }
+        engine = EvacEngine(scene)
+        bridge = CWebRuntimeBridge(engine)
+        bridge._activate_alarm()
+        self.assertEqual("far", bridge.guides_model.target_exit)
+
+        behavior = bridge(engine)
+
+        self.assertEqual("near", behavior[1]["target_exit"])
+        self.assertEqual("near", behavior[2]["target_exit"])
+        self.assertGreater(behavior[1]["guide_influence"], 0.0)
+
+    def test_broadcast_toggle_updates_runtime_state(self) -> None:
+        scene = build_base_scene()
+        scene.parameters = {
+            "d_c_runtime": {
+                "initial_informed_ratio": 0.0,
+                "alarm_enabled": True,
+                "information_mode": "broadcast",
+            }
+        }
+        engine = EvacEngine(scene)
+        bridge = CWebRuntimeBridge(engine)
+        self.assertTrue(bridge.alarm_enabled)
+        self.assertEqual("broadcast", engine.c_runtime_state["information_mode"])
+
+        bridge.set_broadcast_enabled(False)
+
+        self.assertFalse(bridge.alarm_enabled)
+        self.assertEqual("local", engine.c_runtime_state["information_mode"])
+        self.assertFalse(engine.c_runtime_state["alarm_enabled"])
+
+        bridge.set_broadcast_enabled(True)
+
+        self.assertTrue(bridge.alarm_enabled)
+        self.assertEqual("broadcast", engine.c_runtime_state["information_mode"])
 
     def test_web_mode_is_an_explicit_c_runtime_contract(self) -> None:
         scene = build_base_scene()
