@@ -170,10 +170,16 @@ class ExitChooser:
             best_exit = max(probs, key=probs.get)
             best_prob = probs[best_exit]
             if current is None:
-                self._target[pid] = best_exit
+                # Start from the shortest reachable route.  Density and smoke
+                # may justify a later switch, but the initial choice must not
+                # send a person past a nearer exit merely because softmax
+                # probabilities are nearly flat.
+                nearest = self._nearest(person)
+                initial_exit = nearest[2] if nearest is not None else best_exit
+                self._target[pid] = initial_exit
                 self._prev_probs[pid] = probs
                 self._prev_best[pid] = best_prob
-                result[pid] = best_exit
+                result[pid] = initial_exit
                 continue
 
             # 原文：当前时间步"出口最大概率"与上一时间步相比，差值 ≥ σ 才考虑换出口
