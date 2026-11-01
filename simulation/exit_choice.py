@@ -15,7 +15,6 @@
 本项目扩展（默认不改变原文行为）：
 - `smoke_weight`：出口区域平均烟雾浓度对 E_k 的指数惩罚，0 即完全按原文；
 - `exit_pressure_gain` / `panic_noise`：危险感知削弱 Pm、恐慌判断噪声，默认 0。
-- `ban_smoke_source_exits` / `smoke_source_ban_radius_m`：烟源半径内的出口直接禁用（默认开启，3.2 m）。
 """
 
 from __future__ import annotations
@@ -85,7 +84,6 @@ class ExitChooser:
         self._prev_best: dict[int, float] = {}
         self._last_switch: dict[int, int] = {}
         self.switch_total = 0
-        self.switch_counts: dict[int, int] = {}
 
         # 出口区域半径（元胞）与容量（元胞数）
         self._radius_cells = max(1.0, float(self.cfg.region_radius_m) / self.cell_size)
@@ -98,37 +96,6 @@ class ExitChooser:
             1.0,
             area / (self.cell_size ** 2) * max(1e-6, float(self.cfg.capacity_scale)),
         )
-
-        # 烟源附近出口禁用：距任一烟源不超过半径的出口，直接不参与选择
-        self.all_exits = list(self.exits)
-        self.banned_exits: set[str] = set()
-        self.forced_switch_total = 0
-        if getattr(self.cfg, "ban_smoke_source_exits", False):
-            self.banned_exits = self._find_smoke_source_exits()
-            if len(self.banned_exits) >= len(self.all_exits):
-                # 所有出口都在烟源附近：退回原规则，避免无出口可选
-                self.banned_exits = set()
-            else:
-                self.exits = [e for e in self.all_exits if e[0] not in self.banned_exits]
-
-    def _find_smoke_source_exits(self) -> set[str]:
-        """返回距任一烟源不超过 smoke_source_ban_radius_m 的出口 id 集合。"""
-        if self.scene is None:
-            return set()
-        sources = list(getattr(self.scene, "smoke_sources", []) or [])
-        if not sources:
-            return set()
-        radius = max(0.0, float(getattr(self.cfg, "smoke_source_ban_radius_m", 3.2)))
-        radius_cells = radius / self.cell_size
-        banned: set[str] = set()
-        for eid, ex, ey, _width in self.all_exits:
-            for src in sources:
-                sx = int(getattr(src, "x", -10**6))
-                sy = int(getattr(src, "y", -10**6))
-                if (ex - sx) ** 2 + (ey - sy) ** 2 <= radius_cells ** 2:
-                    banned.add(eid)
-                    break
-        return banned
 
     # ------------------------------------------------------------------ 旧接口
     def select_exit(self, person, mode: str, guided_exit_id: Optional[str] = None):
@@ -205,27 +172,39 @@ class ExitChooser:
 
             best_exit = max(probs, key=probs.get)
             best_prob = probs[best_exit]
-            # 烟源附近出口被禁用：当前目标若已被禁，立即改到可用出口（不受 σ/Pm 限制）
-            if current in self.banned_exits and best_exit != current:
-                self._target[pid] = best_exit
-                self._last_switch[pid] = int(step)
-                self.switch_total += 1
-                self.switch_counts[pid] = self.switch_counts.get(pid, 0) + 1
-                self.forced_switch_total += 1
-                self._prev_probs[pid] = probs
-                self._prev_best[pid] = best_prob
-                result[pid] = best_exit
-                continue
-            if current is None:
-                # Start from the shortest reachable route.  Density and smoke
-                # may justify a later switch, but the initial choice must not
-                # send a person past a nearer exit merely because softmax
-                # probabilities are nearly flat.
-                nearest = self._nearest(person)
-                has_preference = any(
-                    float(value or 0.0) > 0.0 for value in preference_bonus.values()
+            valid_distances = {
+                eid: self._distance(eid, int(person.x), int(person.y))
+                for eid, _ex, _ey, _w in self.exits
+            }
+            valid_distances = {
+                eid: distance
+                for eid, distance in valid_distances.items()
+                if math.isfinite(distance) and distance < 9998
+            }
+            crowding_alternative = self._crowding_alternative(
+                person, current, counts, valid_distances
+            )
+            crowding_override = crowding_alternative is not None
+            if crowding_override:
+                best_exit = crowding_alternative
+                best_prob = max(best_prob, probs.get(best_exit, 0.0))
+            detour_override = False
+            if current is not None and current in valid_distances and best_exit in valid_distances:
+                detour_limit = max(
+                    0.0, float(getattr(self.cfg, "detour_override_cells", 6.0))
                 )
-                initial_exit = best_exit if has_preference else (nearest[2] if nearest is not None else best_exit)
+                current_distance = float(valid_distances[current])
+                candidate_distance = float(valid_distances[best_exit])
+                detour_override = (
+                    best_exit != current
+                    and candidate_distance + detour_limit < current_distance
+                )
+            if current is None:
+                # The probability model is already distance-dominant and
+                # smoke-aware.  Picking an unconditional nearest exit here
+                # ignored smoke; picking pure max probability with the old
+                # nearly-flat distance softmax caused unnecessary detours.
+                initial_exit = best_exit
                 self._target[pid] = initial_exit
                 self._prev_probs[pid] = probs
                 self._prev_best[pid] = best_prob
@@ -244,20 +223,51 @@ class ExitChooser:
                 current_distance = self._distance(str(current), int(person.x), int(person.y))
                 if math.isfinite(current_distance) and current_distance <= commit_radius:
                     can_switch = False
-            if can_switch and best_exit != current and delta >= float(self.cfg.sigma):
+            if can_switch and best_exit != current and (
+                crowding_override or detour_override or delta >= float(self.cfg.sigma)
+            ):
                 danger = min(1.0, max(0.0, float(getattr(person, "danger_pressure", 0.0) or 0.0)))
                 # 原文：以 Pm 概率保持原出口，以 1-Pm 概率换出口
                 retention = float(self.cfg.retention) * max(
                     0.0, 1.0 - float(self.cfg.exit_pressure_gain) * danger
                 )
+                if crowding_override:
+                    retention *= 0.25
+                if detour_override:
+                    retention = 0.0
                 if self.rng.random() >= retention:
                     self._target[pid] = best_exit
                     self._last_switch[pid] = int(step)
                     self.switch_total += 1
-                    self.switch_counts[pid] = self.switch_counts.get(pid, 0) + 1
             self._prev_probs[pid] = probs
             result[pid] = self._target[pid]
         return result
+
+    def _crowding_alternative(
+        self,
+        person,
+        current,
+        counts,
+        valid_distances,
+    ) -> str | None:
+        """Allow a farther exit only when the current exit is severely crowded."""
+
+        if current is None or current not in valid_distances:
+            return None
+        current_density = counts.get(str(current), 0.0) / self._capacity
+        trigger = max(1.0, float(getattr(self.cfg, "crowding_override_density", 2.0)))
+        if current_density < trigger:
+            return None
+        current_distance = float(valid_distances[current])
+        max_extra = max(0.0, float(getattr(self.cfg, "crowding_override_extra_cells", 8.0)))
+        alternatives = []
+        for exit_id, distance in valid_distances.items():
+            if exit_id == current or distance > current_distance + max_extra:
+                continue
+            density = counts.get(str(exit_id), 0.0) / self._capacity
+            if density <= current_density * 0.5:
+                alternatives.append((density, distance, exit_id))
+        return min(alternatives)[2] if alternatives else None
 
     # ------------------------------------------------------------------ 概率
     def _probabilities(self, person, counts, smoke_at_exit, exit_preferences: Mapping[str, float] | None = None) -> dict[str, float]:
@@ -271,9 +281,15 @@ class ExitChooser:
         if not valid:
             return {}
 
-        # P1：距离概率 softmax(-d / Σd)
-        total_d = sum(valid.values()) or 1.0
-        weights = {eid: math.exp(-d / total_d) for eid, d in valid.items()}
+        # P1: distance-difference softmax.  The paper's raw -d/sum(d)
+        # leaves all exits at nearly equal probability, which made distant
+        # exits win even when a nearby exit was available.
+        minimum_distance = min(valid.values())
+        distance_scale = max(0.5, float(getattr(cfg, "distance_scale_cells", 2.0)))
+        weights = {
+            eid: math.exp(-(d - minimum_distance) / distance_scale)
+            for eid, d in valid.items()
+        }
         weight_sum = sum(weights.values()) or 1.0
         p1 = {eid: weights[eid] / weight_sum for eid in weights}
 
@@ -313,7 +329,7 @@ class ExitChooser:
                     continue
                 if not math.isfinite(bonus) or math.isclose(bonus, 0.0):
                     continue
-                adjusted[key] *= math.exp(max(-5.0, min(5.0, bonus)))
+                adjusted[key] = max(0.0, adjusted[key] + max(-1.0, min(1.0, bonus)))
             adjusted_sum = sum(adjusted.values()) or 1.0
             probs = {eid: value / adjusted_sum for eid, value in adjusted.items()}
 
@@ -346,6 +362,10 @@ class ExitChooser:
         radius = self._radius_cells
         counts = {eid: 0.0 for eid, _x, _y, _w in self.exits}
         for person in persons:
+            # Evacuated/dead people no longer occupy an exit approach and must
+            # not keep generating congestion pressure for active evacuees.
+            if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
+                continue
             px, py = int(person.x), int(person.y)
             for eid, ex, ey, _w in self.exits:
                 if math.hypot(px - ex, py - ey) <= radius:
@@ -359,15 +379,15 @@ class ExitChooser:
         radius = int(math.ceil(self._radius_cells))
         result: dict[str, float] = {}
         for eid, ex, ey, _w in self.exits:
-            total = 0.0
-            count = 0
+            peak = 0.0
             for dy in range(-radius, radius + 1):
                 for dx in range(-radius, radius + 1):
                     if math.hypot(dx, dy) > self._radius_cells:
                         continue
                     x, y = ex + dx, ey + dy
                     if 0 <= x < width and 0 <= y < height:
-                        total += float(smoke_matrix[y, x])
-                        count += 1
-            result[eid] = (total / count) if count else 0.0
+                        peak = max(peak, float(smoke_matrix[y, x]))
+            # A smoky cell anywhere in the exit approach is a safety hazard;
+            # averaging diluted one dangerous cell across the whole region.
+            result[eid] = peak
         return result
