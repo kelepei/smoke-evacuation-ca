@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
@@ -20,12 +21,19 @@ class CWebRuntimeBridgeTests(unittest.TestCase):
         bridge = CWebRuntimeBridge(engine)
         return engine, bridge, EvacEngineRuntimeAdapter(engine, behavior_provider=bridge)
 
+    def test_empty_initial_lockdown_state_reuses_b_distance_field(self) -> None:
+        engine, bridge, _runtime = self._runtime(ratio=0.0)
+        with patch.object(engine.floor_field, "compute_distance_field") as recompute:
+            bridge._apply_lockdown_walls()
+        recompute.assert_not_called()
+
     def test_initial_information_is_partial_and_step_twenty_is_not_a_broadcast(self) -> None:
         engine, bridge, runtime = self._runtime(ratio=1 / 3)
         initial = engine.c_runtime_state
-        # One person comes from initial_informed_ratio and one from the new
-        # fire-room/3-cell immediate-awareness rule.
-        self.assertEqual(2, initial["informed_count"])
+        # The initial seed and the three-cell fire awareness rule may select
+        # the same person.  The contract is partial awareness, not a fixed count.
+        self.assertGreaterEqual(initial["informed_count"], 1)
+        self.assertLess(initial["informed_count"], len(engine.person_map))
         bridge.info_diffusion.wom_params["enabled"] = False
         bridge.info_diffusion.rel_params["enabled"] = False
         engine.alarm_threshold = 2.0

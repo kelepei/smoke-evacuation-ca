@@ -60,6 +60,10 @@ class PanicConfig:
     speed_gain: float = 0.20
     # 烟源本身的危险感知：在烟雾浓度之外，按到烟源的距离额外增加暴露
     source_weight: float = 1.0
+    # B lambda experiment: panic amplifies the freshly calculated risk once.
+    # Defaults preserve the non-lambda runtime exactly.
+    panic_to_risk_gain: float = 0.0
+    risk_feedback_cap: float = 3.0
     # ---- 关系加权情绪传染（任务书 5.3 / 项目设计） ----
     relation_contagion: bool = True
     relation_floor: float = 0.30
@@ -203,7 +207,7 @@ class MovementConfig:
     # 烟源危险感知的影响半径（米）：到烟源距离按 exp(-d^2/(2σ^2)) 衰减
     source_sigma_m: float = 1.5
     # 烟雾浓度超过该值时，该候选格直接不可进入（硬绕行）
-    smoke_avoid_threshold: float = 0.8
+    smoke_avoid_threshold: float = 0.4
     panic: PanicConfig = field(default_factory=PanicConfig)
     speed: SpeedConfig = field(default_factory=SpeedConfig)
     danger: DangerConfig = field(default_factory=DangerConfig)

@@ -1615,9 +1615,10 @@
     }
     const requestedGeneration = sessionGeneration;
     const requestedRunId = snapshot && snapshot.run_id;
-    const response = await fetch("/api/session/analysis");
-    const data = await response.json().catch(() => ({ok:false, error:"分析结果无法解析"}));
-    if(!response.ok || !data.ok) throw new Error(data.error || "无法生成真实分析");
+    setStatus("正在生成基础撤离曲线、占用热力图和出口指标。", "分析中");
+    const response = await fetchWithTimeout("/api/session/analysis-base", 30000, "基础分析超时");
+    const data = await response.json().catch(() => ({ok:false, error:"基础分析结果无法解析"}));
+    if(!response.ok || !data.ok) throw new Error(data.error || "无法生成基础分析");
     if(requestedGeneration !== sessionGeneration || requestedRunId !== (snapshot && snapshot.run_id)) return;
     const summary = data.summary || {};
     renderAnalysisMetrics(data);
@@ -1629,7 +1630,24 @@
     $("curveNote").textContent = `已记录 ${summary.total_steps ?? "NA"} 步 · 已撤离 ${summary.evacuated_count ?? "NA"}/${summary.initial_population ?? "NA"}`;
     draw();
     refreshStats();
-    log("已刷新本次运行的 CSV 分析图表");
+    log("基础撤离曲线、占用热力图和出口指标已刷新");
+    setStatus("基础图表已更新；Density/CL/CN/Crowd Danger 学术分析计算中。", "学术分析中");
+    try{
+      const academicResponse = await fetchWithTimeout("/api/session/academic-analysis", 180000, "学术分析超时");
+      const academicData = await academicResponse.json().catch(() => ({ok:false, error:"学术分析结果无法解析"}));
+      if(!academicResponse.ok || !academicData.ok) throw new Error(academicData.error || "无法生成学术分析");
+      if(requestedGeneration !== sessionGeneration || requestedRunId !== (snapshot && snapshot.run_id)) return;
+      latestAnalysis = {
+        ...latestAnalysis,
+        academic_crowd_fields: academicData.academic_crowd_fields
+      };
+      renderSelectedHeatmap();
+      setStatus("基础图表和完整学术分析均已更新。", "分析完成");
+      log(`Density/CL/CN/Crowd Danger 学术分析已刷新${academicData.cache_hit ? "（复用缓存）" : ""}`);
+    }catch(error){
+      setStatus(`基础图表已更新；学术分析未完成：${error.message}`, "学术分析失败");
+      log(`学术分析失败：${error.message}`);
+    }
   }
 
   function drawGuides(guides, ox, oy, cell){
@@ -2265,37 +2283,73 @@
     log("联调会话已重置");
   }
 
+  function responseFilename(response, fallback){
+    const header = response.headers.get("Content-Disposition") || "";
+    const match = header.match(/filename="?([^";]+)"?/i);
+    if(!match) return fallback;
+    try{
+      return decodeURIComponent(match[1]);
+    }catch(_error){
+      return match[1];
+    }
+  }
+
+  function triggerBlobDownload(blob, filename){
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.rel = "noopener";
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    // Some browsers start the download asynchronously after click().
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  async function fetchWithTimeout(url, timeoutMs, timeoutMessage){
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try{
+      return await fetch(url, {signal:controller.signal});
+    }catch(error){
+      if(error && error.name === "AbortError") throw new Error(timeoutMessage);
+      throw error;
+    }finally{
+      clearTimeout(timeout);
+    }
+  }
+
   async function exportPackage(){
     if(pending){ log("当前单步正在计算，请等待完成后再导出。 "); return; }
     if(!activeSession){ log("没有活动联调会话，暂不能导出结果包。"); return; }
-    const response = await fetch("/api/session/export");
+    setStatus("正在生成结果包；完整分析可能需要较长时间，请勿重复点击。", "导出中");
+    const response = await fetchWithTimeout("/api/session/export", 180000, "结果包生成超时，请检查后端状态后重试");
     if(!response.ok){
       const data = await response.json().catch(() => ({error:"导出失败"}));
       throw new Error(data.error || "导出失败");
     }
     const blob = await response.blob();
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = (response.headers.get("Content-Disposition") || "").match(/filename="?(.*?)"?$/)?.[1] || "d_runtime_result_package.zip";
-    link.click();
-    URL.revokeObjectURL(link.href);
+    if(!blob.size) throw new Error("结果包为空");
+    triggerBlobDownload(blob, responseFilename(response, "d_runtime_result_package.zip"));
+    setStatus("结果包已生成并开始下载。", "导出完成");
     log(`已导出结果包；本地输出目录：${lastOutputDir || "见 outputs/experiments"}`);
   }
 
   async function exportLambdaCsv(){
     if(pending){ log("当前单步正在计算，请等待完成后再导出。 "); return; }
     if(!activeSession){ log("没有活动联调会话，暂不能导出 λ CSV。"); return; }
-    const response = await fetch("/api/session/lambda.csv");
+    setStatus("正在生成 λ CSV，请稍候。", "导出中");
+    const response = await fetchWithTimeout("/api/session/lambda.csv", 30000, "λ CSV 导出超时");
     if(!response.ok){
       const data = await response.json().catch(() => ({error:"λ CSV 导出失败"}));
       throw new Error(data.error || "λ CSV 导出失败");
     }
     const blob = await response.blob();
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = (response.headers.get("Content-Disposition") || "").match(/filename="?(.*?)"?$/)?.[1] || "lambda_experiment.csv";
-    link.click();
-    URL.revokeObjectURL(link.href);
+    if(!blob.size) throw new Error("λ CSV 为空");
+    triggerBlobDownload(blob, responseFilename(response, "lambda_experiment.csv"));
+    setStatus("λ CSV 已生成并开始下载。", "导出完成");
     log("已导出与结果包同源的 λ 实验 CSV；缺失的 B 指标保持 NA。");
   }
 

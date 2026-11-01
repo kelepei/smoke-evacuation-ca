@@ -270,6 +270,8 @@ def _heatmap_svg(occupancy: list[list[int]]) -> str:
     cells: list[str] = []
     for y, row in enumerate(occupancy):
         for x, value in enumerate(row):
+            if value <= 0:
+                continue
             # This affects only SVG colour; ``occupancy`` remains raw counts.
             cells.append(
                 f'<rect x="{margin + x * cell}" y="{title_h + y * cell}" width="{cell}" height="{cell}" fill="{_occupancy_display_color(value)}" stroke="#e5e7eb" stroke-width="0.4"/>'
@@ -378,19 +380,37 @@ def build_runtime_analysis(
     if not isinstance(analysis_contract, Mapping): analysis_contract = {}
     if not isinstance(snapshot_grid, Mapping): snapshot_grid = {}
     width, height = _snapshot_grid_dimensions(final_snapshot)
-    visual = _log_visual_data(
-        people_rows,
-        width=width,
-        height=height,
+    visual = (
+        _log_visual_data(
+            people_rows,
+            width=width,
+            height=height,
+        )
+        if include_figures or include_layers
+        else None
     )
     exit_entities = final_snapshot.get("exit_entities", []) if isinstance(final_snapshot, Mapping) else []
-    entity_level = isinstance(exit_entities, list) and len(exit_entities) > 0
-    valid_exit_ids = [
-        str(item.get("exit_entity_id"))
-        for item in exit_entities
-        if isinstance(item, Mapping) and item.get("exit_entity_id") not in (None, "")
-    ] if entity_level else []
-    week6_metrics = analyze_run(base, valid_exit_ids=valid_exit_ids or None)
+    exit_universe = final_snapshot.get("exit_universe", {}) if isinstance(final_snapshot, Mapping) else {}
+    universe_available = (
+        isinstance(exit_universe, Mapping)
+        and exit_universe.get("status") == "available"
+        and isinstance(exit_universe.get("valid_exit_ids"), list)
+    )
+    valid_exit_ids = (
+        [str(exit_id) for exit_id in exit_universe["valid_exit_ids"] if exit_id not in (None, "")]
+        if universe_available
+        else []
+    )
+    representation = exit_universe.get("representation") if universe_available else None
+    entity_level = representation == "entity" or (
+        representation is None and isinstance(exit_entities, list) and len(exit_entities) > 0
+    )
+    snapshot_metrics = final_snapshot.get("metrics") if isinstance(final_snapshot, Mapping) else None
+    week6_metrics = analyze_run(
+        base,
+        valid_exit_ids=valid_exit_ids if universe_available else None,
+        snapshot_metrics=snapshot_metrics if isinstance(snapshot_metrics, Mapping) else None,
+    )
     summary = {
         "initial_population": week6_metrics["total_persons"],
         "evacuated_count": week6_metrics["evacuated_count"],
@@ -414,6 +434,7 @@ def build_runtime_analysis(
         "exit_utilization_contract": {
             "representation": "entity" if entity_level else "legacy_cell",
             "source": "actual_exit_entity" if entity_level else "actual_exit",
+            "valid_exit_universe": "verified" if universe_available else "unavailable",
         },
     }
     if include_academic:
@@ -423,11 +444,13 @@ def build_runtime_analysis(
             analysis_contract=analysis_contract,
         )
     if include_figures:
+        assert visual is not None
         result["evacuation_curve_svg"] = _curve_svg(
             visual["curve"], summary["initial_population"]
         )
         result["occupancy_heatmap_svg"] = _heatmap_svg(visual["occupancy"])
     if include_layers:
+        assert visual is not None
         result["layers"] = {
             "grid": visual["grid"],
             "cumulative_occupancy": visual["occupancy"],
@@ -507,6 +530,7 @@ def build_result_package(
     final_snapshot: Mapping[str, Any],
     input_files: Mapping[str, Path],
     max_steps: int,
+    precomputed_academic: Mapping[str, Any] | None = None,
 ) -> ResultPackage:
     """Create a ZIP result package from one active D runtime session."""
 
@@ -543,7 +567,16 @@ def build_result_package(
         physical_scale=analysis_contract.get("physical_scale"),
     )
     congestion_level = congestion_level_field(kinematics, grid=snapshot_grid if isinstance(snapshot_grid, Mapping) else {}, analysis_contract=analysis_contract)
-    academic_crowd = academic_crowd_fields(people_rows, grid=snapshot_grid if isinstance(snapshot_grid, Mapping) else {}, analysis_contract=analysis_contract, kinematic_rows=kinematics)
+    academic_crowd = (
+        dict(precomputed_academic)
+        if isinstance(precomputed_academic, Mapping)
+        else academic_crowd_fields(
+            people_rows,
+            grid=snapshot_grid if isinstance(snapshot_grid, Mapping) else {},
+            analysis_contract=analysis_contract,
+            kinematic_rows=kinematics,
+        )
+    )
 
     metadata = {
         "run_id": run_id,

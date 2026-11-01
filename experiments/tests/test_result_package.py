@@ -13,20 +13,73 @@ from experiments.result_package import _heatmap_svg, _occupancy_display_color, b
 
 
 class ResultPackageTests(unittest.TestCase):
+    def test_analysis_uses_snapshot_metrics_and_verified_open_exit_universe(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "people_log.csv").write_text(
+                "step,time_s,person_id,x,y,evacuated,actual_exit_entity\n"
+                "0,0,1,1,1,false,\n"
+                "1,0.5,1,2,1,true,exit_entity_01\n",
+                encoding="utf-8",
+            )
+            analysis = build_runtime_analysis(
+                output_dir=root,
+                final_snapshot={
+                    "grid": {"width": 4, "height": 3},
+                    "exit_entities": [
+                        {"exit_entity_id": "exit_entity_01"},
+                        {"exit_entity_id": "exit_entity_02"},
+                        {"exit_entity_id": "exit_entity_03"},
+                    ],
+                    "exit_universe": {
+                        "status": "available",
+                        "representation": "entity",
+                        "valid_exit_ids": ["exit_entity_01", "exit_entity_02"],
+                        "closed_exit_ids": ["exit_entity_03"],
+                    },
+                    "metrics": {
+                        "switch_total": 2,
+                        "switch_counts": {"1": 2},
+                        "conflict_total": 4,
+                        "conflict_lost_total": 1,
+                        "exit_usage": {"exit_entity_01": 1},
+                    },
+                },
+            )
+        metrics = analysis["week6_metrics"]
+        self.assertEqual({"exit_entity_01": 1, "exit_entity_02": 0}, metrics["exit_usage"])
+        self.assertEqual(0.0, metrics["exit_entropy_h"])
+        self.assertEqual(0.5, metrics["exit_gini_g"])
+        self.assertEqual(2, metrics["switch_total"])
+        self.assertEqual({"1": 2}, metrics["switch_counts"])
+        self.assertEqual(4, metrics["conflict_total"])
+        self.assertEqual(1, metrics["conflict_lost_total"])
+
     def test_occupancy_heatmap_uses_fixed_absolute_scale_without_changing_raw_counts(self) -> None:
         run_a = [0, 1, 5, 10, 25, 50, 100]
         run_b = [0, 1, 5, 10, 25, 50, 100, 137]
 
         occupancy_a, occupancy_b = [run_a.copy()], [run_b.copy()]
         svg_a, svg_b = _heatmap_svg(occupancy_a), _heatmap_svg(occupancy_b)
-        colors_a = dict(zip(run_a, re.findall(r'<rect[^>]+fill="([^"]+)" stroke="#e5e7eb"', svg_a)))
-        colors_b = dict(zip(run_b, re.findall(r'<rect[^>]+fill="([^"]+)" stroke="#e5e7eb"', svg_b)))
         for value in (1, 5, 10, 25, 50, 100):
-            self.assertEqual(colors_a[value], colors_b[value])
-            self.assertEqual(colors_a[value], _occupancy_display_color(value))
-        self.assertEqual(colors_b[100], colors_b[137])
-        self.assertEqual("rgb(254,202,202)", colors_a[1])
-        self.assertNotEqual(colors_a[0], colors_a[1])
+            expected = _occupancy_display_color(value)
+            self.assertIn(
+                f'fill="{expected}" stroke="#e5e7eb"',
+                svg_a,
+            )
+            self.assertIn(
+                f'fill="{expected}" stroke="#e5e7eb"',
+                svg_b,
+            )
+        self.assertEqual(
+            _occupancy_display_color(100),
+            _occupancy_display_color(137),
+        )
+        self.assertEqual("rgb(254,202,202)", _occupancy_display_color(1))
+        self.assertNotIn(
+            'fill="rgb(255,255,255)" stroke="#e5e7eb"',
+            svg_a,
+        )
         self.assertEqual([run_a], occupancy_a)
         self.assertEqual([run_b], occupancy_b)
         self.assertIn("最大值 100", svg_a)

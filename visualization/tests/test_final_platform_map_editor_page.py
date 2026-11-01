@@ -237,6 +237,21 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
         self.assertIn("positions.set(String(person.person_id", self.page)
         self.assertNotIn("group_id) ===", self.page)
 
+    def test_exports_use_bounded_requests_and_delayed_blob_cleanup(self) -> None:
+        self.assertIn('fetchWithTimeout("/api/session/export", 180000', self.page)
+        self.assertIn('fetchWithTimeout("/api/session/lambda.csv", 30000', self.page)
+        self.assertIn("document.body.appendChild(link)", self.page)
+        self.assertIn("triggerBlobDownload(blob, responseFilename", self.page)
+        self.assertIn("setTimeout(() => URL.revokeObjectURL(url), 60000)", self.page)
+        self.assertNotIn("link.click();\n    URL.revokeObjectURL", self.page)
+
+    def test_analysis_splits_fast_base_from_academic_fields(self) -> None:
+        self.assertIn('fetchWithTimeout("/api/session/analysis-base", 30000', self.page)
+        self.assertIn('fetchWithTimeout("/api/session/academic-analysis", 180000', self.page)
+        self.assertIn("基础撤离曲线、占用热力图和出口指标已刷新", self.page)
+        self.assertIn("学术分析计算中", self.page)
+        self.assertIn("requestedRunId !== (snapshot && snapshot.run_id)", self.page)
+
 
 if __name__ == "__main__":
     unittest.main()

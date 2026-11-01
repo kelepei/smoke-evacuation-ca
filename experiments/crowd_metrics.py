@@ -246,10 +246,10 @@ def _physical_scale_value(physical_scale: Mapping[str, Any] | None) -> float | N
     )
 
 
-def _walkable_cells(
+def _walkable_row_runs(
     grid: Mapping[str, Any], *, roi_cells: Iterable[tuple[int, int]] | None = None
-) -> list[tuple[int, int]]:
-    """Return legal CA cells, optionally limited to an explicit grid ROI."""
+) -> list[tuple[int, int, int]]:
+    """Return legal row intervals ``(y, x_start, x_end_exclusive)``."""
 
     width, height = grid.get("width"), grid.get("height")
     cell_type = grid.get("cell_type")
@@ -263,16 +263,35 @@ def _walkable_cells(
             if not (isinstance(x, int) and isinstance(y, int) and 0 <= x < width and 0 <= y < height):
                 raise ValueError("ROI cell is outside the grid")
 
-    result: list[tuple[int, int]] = []
+    result: list[tuple[int, int, int]] = []
     for y, row in enumerate(cell_type):
         if not isinstance(row, list) or len(row) != width:
             raise ValueError("grid.cell_type row width does not match grid.width")
-        for x, raw_type in enumerate(row):
-            if requested is not None and (x, y) not in requested:
-                continue
-            if str(raw_type).strip().lower() not in IMPASSABLE_CELL_TYPES:
-                result.append((x, y))
+        run_start: int | None = None
+        for x in range(width + 1):
+            legal = (
+                x < width
+                and (requested is None or (x, y) in requested)
+                and str(row[x]).strip().lower() not in IMPASSABLE_CELL_TYPES
+            )
+            if legal and run_start is None:
+                run_start = x
+            elif not legal and run_start is not None:
+                result.append((y, run_start, x))
+                run_start = None
     return result
+
+
+def _walkable_cells(
+    grid: Mapping[str, Any], *, roi_cells: Iterable[tuple[int, int]] | None = None
+) -> list[tuple[int, int]]:
+    """Return legal CA cells, optionally limited to an explicit grid ROI."""
+
+    return [
+        (x, y)
+        for y, x_start, x_end in _walkable_row_runs(grid, roi_cells=roi_cells)
+        for x in range(x_start, x_end)
+    ]
 
 
 def _polygon_area(vertices: list[tuple[float, float]]) -> float:
@@ -319,6 +338,26 @@ def _cell_polygon(x: int, y: int, scale_m: float) -> list[tuple[float, float]]:
     return [(left, top), (right, top), (right, bottom), (left, bottom)]
 
 
+def _clip_to_rectangle(
+    polygon: list[tuple[float, float]],
+    *,
+    left: float,
+    top: float,
+    right: float,
+    bottom: float,
+) -> list[tuple[float, float]]:
+    for nx, ny, c in (
+        (1.0, 0.0, right),
+        (-1.0, 0.0, -left),
+        (0.0, 1.0, bottom),
+        (0.0, -1.0, -top),
+    ):
+        polygon = _clip_half_plane(polygon, nx=nx, ny=ny, c=c)
+        if not polygon:
+            break
+    return polygon
+
+
 def voronoi_density_for_frame(
     positions: Iterable[Mapping[str, Any]],
     *,
@@ -326,6 +365,8 @@ def voronoi_density_for_frame(
     physical_scale: Mapping[str, Any] | None,
     roi_cells: Iterable[tuple[int, int]] | None = None,
     time_s: float | None = None,
+    legal_row_runs: Iterable[tuple[int, int, int]] | None = None,
+    use_row_runs: bool = True,
 ) -> dict[str, Any]:
     """Compute clipped Voronoi local density for one observed CA frame.
 
@@ -347,10 +388,35 @@ def voronoi_density_for_frame(
             "samples": [],
             "warning": "formal persons/m² requires explicit physical_cell_size_m",
         }
-    legal_cells = _walkable_cells(grid, roi_cells=roi_cells)
-    if not legal_cells:
+    width, height = int(grid["width"]), int(grid["height"])
+    row_runs = (
+        list(legal_row_runs)
+        if legal_row_runs is not None
+        else _walkable_row_runs(grid, roi_cells=roi_cells)
+    )
+    runs_by_row: dict[int, list[tuple[int, int]]] = defaultdict(list)
+    for y, x_start, x_end in row_runs:
+        if not (
+            isinstance(y, int)
+            and isinstance(x_start, int)
+            and isinstance(x_end, int)
+            and 0 <= y < height
+            and 0 <= x_start < x_end <= width
+        ):
+            raise ValueError("legal row run is outside the grid")
+        runs_by_row[y].append((x_start, x_end))
+    for runs in runs_by_row.values():
+        runs.sort()
+        for previous, current in zip(runs, runs[1:]):
+            if previous[1] > current[0]:
+                raise ValueError("legal row runs overlap")
+    legal_cell_count = sum(x_end - x_start for _, x_start, x_end in row_runs)
+    if legal_cell_count <= 0:
         raise ValueError("Voronoi density ROI contains no legal pedestrian cells")
-    legal_set = set(legal_cells)
+
+    def legal_position(x: int, y: int) -> bool:
+        return any(x_start <= x < x_end for x_start, x_end in runs_by_row.get(y, ()))
+
     sites: list[tuple[int, int, int]] = []
     seen_ids: set[int] = set()
     seen_positions: set[tuple[int, int]] = set()
@@ -361,7 +427,7 @@ def voronoi_density_for_frame(
             raise ValueError("Voronoi frame contains duplicate person_id")
         if (x, y) in seen_positions:
             raise ValueError("Voronoi frame contains overlapping person positions")
-        if (x, y) not in legal_set:
+        if not legal_position(x, y):
             raise ValueError("Voronoi person position is outside the legal pedestrian domain")
         seen_ids.add(person_id)
         seen_positions.add((x, y))
@@ -372,7 +438,6 @@ def voronoi_density_for_frame(
         (person_id, (x + 0.5) * scale_m, (y + 0.5) * scale_m)
         for person_id, x, y in sites
     ]
-    width, height = int(grid["width"]), int(grid["height"])
     site_by_id = {person_id: (x, y) for person_id, x, y in sites}
     for person_id, px, py in physical_sites:
         # Clip the global rectangular extent once before considering legal
@@ -398,21 +463,42 @@ def voronoi_density_for_frame(
         min_y = max(0, math.floor(min(point[1] for point in voronoi_polygon) / scale_m))
         max_y = min(height - 1, math.ceil(max(point[1] for point in voronoi_polygon) / scale_m) - 1)
         area_m2 = 0.0
-        for cell_y in range(min_y, max_y + 1):
-            for cell_x in range(min_x, max_x + 1):
-                if (cell_x, cell_y) not in legal_set:
-                    continue
-                # The cell still needs an exact intersection.  Clip the
-                # already-computed Voronoi polygon against the four cell
-                # boundaries instead of reapplying every site half-plane.
-                left, top = cell_x * scale_m, cell_y * scale_m
-                right, bottom = left + scale_m, top + scale_m
-                polygon = voronoi_polygon
-                for nx, ny, c in ((1.0, 0.0, right), (-1.0, 0.0, -left), (0.0, 1.0, bottom), (0.0, -1.0, -top)):
-                    polygon = _clip_half_plane(polygon, nx=nx, ny=ny, c=c)
-                    if not polygon:
-                        break
-                area_m2 += _polygon_area(polygon)
+        if use_row_runs:
+            for cell_y in range(min_y, max_y + 1):
+                for run_start, run_end in runs_by_row.get(cell_y, ()):
+                    clipped_start = max(run_start, min_x)
+                    clipped_end = min(run_end, max_x + 1)
+                    if clipped_start >= clipped_end:
+                        continue
+                    left, top = clipped_start * scale_m, cell_y * scale_m
+                    right = clipped_end * scale_m
+                    bottom = top + scale_m
+                    polygon = _clip_to_rectangle(
+                        voronoi_polygon,
+                        left=left,
+                        top=top,
+                        right=right,
+                        bottom=bottom,
+                    )
+                    area_m2 += _polygon_area(polygon)
+        else:
+            # Original cell-by-cell exact path retained as a reference for
+            # small-scene equivalence tests and profiling.
+            for cell_y in range(min_y, max_y + 1):
+                for cell_x in range(min_x, max_x + 1):
+                    if not legal_position(cell_x, cell_y):
+                        continue
+                    left, top = cell_x * scale_m, cell_y * scale_m
+                    right = left + scale_m
+                    bottom = top + scale_m
+                    polygon = _clip_to_rectangle(
+                        voronoi_polygon,
+                        left=left,
+                        top=top,
+                        right=right,
+                        bottom=bottom,
+                    )
+                    area_m2 += _polygon_area(polygon)
         if area_m2 <= VORONOI_EPSILON:
             raise ValueError("Voronoi clipping produced a non-positive legal area")
         samples.append({
@@ -429,7 +515,8 @@ def voronoi_density_for_frame(
         "unit": "persons/m²",
         "time_s": time_s,
         "physical_cell_size_m": scale_m,
-        "legal_cell_count": len(legal_cells),
+        "legal_cell_count": legal_cell_count,
+        "legal_row_run_count": len(row_runs),
         "roi": "explicit_grid_cells" if roi_cells is not None else "all_legal_grid_cells",
         "samples": samples,
     }

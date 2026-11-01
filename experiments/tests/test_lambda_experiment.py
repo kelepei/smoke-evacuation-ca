@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from experiments.lambda_experiment import (
     LambdaExperimentError,
@@ -13,17 +15,20 @@ from experiments.week6_analysis import _exit_balance, _q95
 
 
 class LambdaExperimentContractTests(unittest.TestCase):
-    def test_current_b_runtime_waits_for_explicit_implementation_marker(self) -> None:
+    def test_current_b_runtime_reports_verified_feedback_support(self) -> None:
         capability = lambda_capability()
+        self.assertTrue(capability["supported"])
+        self.assertEqual("supported", capability["status"])
+        self.assertTrue(capability["implementation_verified"])
+        self.assertEqual([], capability["missing_fields"])
+
+    def test_missing_runtime_method_is_not_reported_as_supported(self) -> None:
+        from simulation.evac_simulation import EvacEngine
+
+        with patch.object(EvacEngine, "_apply_panic_risk_feedback", None):
+            capability = lambda_capability()
         self.assertFalse(capability["supported"])
-        self.assertEqual("unavailable", capability["status"])
         self.assertFalse(capability["implementation_verified"])
-        self.assertNotIn("panic_to_risk_gain", capability["missing_fields"])
-        self.assertNotIn("risk_feedback_cap", capability["missing_fields"])
-        self.assertIn(
-            "B implementation marker PANIC_RISK_FEEDBACK_IMPLEMENTED",
-            capability["missing_fields"],
-        )
 
     def test_normal_movement_override_is_preserved_without_lambda_mode(self) -> None:
         config = _control_runtime_config(
@@ -47,12 +52,48 @@ class LambdaExperimentContractTests(unittest.TestCase):
         self.assertEqual(3.0, settings["panic"]["risk_feedback_cap"])
         self.assertEqual(0.5, settings["exit_choice"]["exit_pressure_gain"])
 
-    def test_rejects_unsupported_or_invalid_lambda_request(self) -> None:
+    def test_rejects_invalid_lambda_request(self) -> None:
         with self.assertRaises(LambdaExperimentError):
             lambda_movement_settings(0.3, require_supported=False)
-        with self.assertRaises(WebRuntimeError):
-            _control_runtime_config({"lambda_experiment": True, "panic_to_risk_gain": 0.4})
+        config = _control_runtime_config(
+            {"lambda_experiment": True, "panic_to_risk_gain": 0.4}
+        )
+        self.assertEqual(0.4, config["movement"]["panic"]["panic_to_risk_gain"])
+        self.assertEqual(3.0, config["movement"]["panic"]["risk_feedback_cap"])
+        self.assertEqual(0.5, config["movement"]["exit_choice"]["exit_pressure_gain"])
         self.assertIsNone(lambda_request_config({"lambda_experiment": False, "panic_to_risk_gain": 0.4}))
+
+    def test_b_feedback_formula_zero_gain_and_cap(self) -> None:
+        from simulation.evac_simulation import EvacEngine
+
+        engine = EvacEngine.__new__(EvacEngine)
+        engine.person_map = {1: SimpleNamespace(panic=0.5)}
+        engine.movement = SimpleNamespace(
+            panic=SimpleNamespace(panic_to_risk_gain=0.4, risk_feedback_cap=3.0)
+        )
+        self.assertAlmostEqual(1.2, engine._apply_panic_risk_feedback({1: 1.0})[1])
+        self.assertEqual(3.0, engine._apply_panic_risk_feedback({1: 10.0})[1])
+        original = {1: 1.0}
+        engine.movement.panic.panic_to_risk_gain = 0.0
+        self.assertIs(original, engine._apply_panic_risk_feedback(original))
+
+    def test_real_b_step_applies_feedback_once_to_fresh_risk(self) -> None:
+        from scenarios.mock_data import build_base_scene
+        from simulation.evac_simulation import EvacEngine
+
+        observed = {}
+        for gain in (0.0, 0.4):
+            engine = EvacEngine(build_base_scene())
+            engine.movement.panic.panic_to_risk_gain = gain
+            engine.movement.panic.risk_feedback_cap = 3.0
+            for person in engine.person_map.values():
+                person.panic = 0.5
+            fresh = {pid: 1.0 for pid in engine.person_map}
+            with patch.object(engine.risk_engine, "batch_calc_all_risk", return_value=fresh):
+                engine.run_one_step({})
+            observed[gain] = engine.person_map[1].risk
+        self.assertEqual(1.0, observed[0.0])
+        self.assertAlmostEqual(1.2, observed[0.4])
 
     def test_exit_balance_includes_declared_zero_use_exit(self) -> None:
         entropy, gini = _exit_balance([36, 2, 0])

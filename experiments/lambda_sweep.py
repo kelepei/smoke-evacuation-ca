@@ -24,6 +24,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from experiments.integrated_runner import create_integrated_runner  # noqa: E402
+from experiments.lambda_experiment import lambda_movement_settings  # noqa: E402
+from experiments.metrics_registry import NA  # noqa: E402
+from experiments.week6_analysis import _exit_balance, _q95  # noqa: E402
+
+DEFAULT_LAMBDA_LEVELS = "0,0.2,0.4,0.6,0.8"
 
 
 def pick_free_cell(map_path: Path, near: tuple[int, int]) -> tuple[int, int]:
@@ -44,26 +49,24 @@ def inject_smoke(map_path: Path, out_path: Path, smoke_at: tuple[int, int]) -> P
     return out_path
 
 
-def entropy(counts):
-    total = sum(counts)
-    if total <= 0 or len(counts) <= 1:
-        return float("nan")
-    h = 0.0
-    for n in counts:
-        if n > 0:
-            p = n / total
-            h -= p * math.log(p)
-    return h / math.log(len(counts))
+def _verified_exit_results(snapshot):
+    """Use actual B usage over a verified currently-open exit universe."""
 
-
-def gini(counts):
-    n = len(counts)
-    total = sum(counts)
-    if n <= 1 or total <= 0:
-        return float("nan")
-    diff = sum(abs(a - b) for a in counts for b in counts)
-    mean = total / n
-    return diff / (2 * n * n * mean)
+    universe = snapshot.get("exit_universe")
+    metrics = snapshot.get("metrics")
+    if not isinstance(universe, dict) or universe.get("status") != "available":
+        return NA, NA, NA
+    valid_ids = universe.get("valid_exit_ids")
+    usage = metrics.get("exit_usage") if isinstance(metrics, dict) else None
+    if not isinstance(valid_ids, list) or not isinstance(usage, dict):
+        return NA, NA, NA
+    normalized = {
+        str(exit_id): int(usage.get(str(exit_id), 0) or 0)
+        for exit_id in valid_ids
+        if exit_id not in (None, "")
+    }
+    h_value, g_value = _exit_balance(list(normalized.values()))
+    return normalized, h_value, g_value
 
 
 def repair_positions(map_path: Path, people_path: Path, out_path: Path) -> tuple[Path, int]:
@@ -90,6 +93,8 @@ def repair_positions(map_path: Path, people_path: Path, out_path: Path) -> tuple
 
 
 def run_once(map_path, people_path, yaml_path, lam, seed, max_steps, pressure_gain):
+    movement_settings = lambda_movement_settings(lam)
+    movement_settings["exit_choice"]["exit_pressure_gain"] = float(pressure_gain)
     runner = create_integrated_runner(
         map_path=map_path,
         population_path=people_path,
@@ -99,16 +104,9 @@ def run_once(map_path, people_path, yaml_path, lam, seed, max_steps, pressure_ga
         run_id=f"lambda_{lam}_s{seed}_{int(time.time() * 1000) % 1000000}",
         random_seed=seed,
         time_step_s=0.5,
+        physical_cell_size_m=0.5,
         max_steps=max_steps,
-        c_runtime_config={
-            "movement": {
-                "panic": {
-                    "panic_to_risk_gain": float(lam),
-                    "risk_feedback_cap": 3.0,
-                },
-                "exit_choice": {"exit_pressure_gain": float(pressure_gain)},
-            }
-        },
+        c_runtime_config={"movement": movement_settings},
     )
     snap = runner.initialize()
     engine = runner.simulation
@@ -116,58 +114,72 @@ def run_once(map_path, people_path, yaml_path, lam, seed, max_steps, pressure_ga
     risk_sum = 0.0
     risk_n = 0
     steps = 0
+    population = len(snap.get("people", []))
+    t90_target = math.ceil(population * 0.9)
+    first_evacuation_time = {}
+    t90_s = NA
     for _ in range(max_steps):
         snap = runner.step()
         steps += 1
+        current_time = float(snap.get("time_s", steps * 0.5))
         for p in snap.get("people", []):
             if p.get("panic_level") is not None:
                 panic_peak = max(panic_peak, float(p["panic_level"]))
             if p.get("risk") is not None and not p.get("evacuated"):
                 risk_sum += float(p["risk"])
                 risk_n += 1
+            if p.get("evacuated"):
+                first_evacuation_time.setdefault(str(p.get("person_id")), current_time)
+        if t90_s == NA and population > 0 and len(first_evacuation_time) >= t90_target:
+            t90_s = current_time
         if getattr(runner, "finished", False):
             break
 
     people = snap.get("people", [])
     evacuated = [p for p in people if p.get("evacuated")]
-    usage = {}
-    for p in people:
-        exit_id = p.get("actual_exit") or p.get("target_exit_id")
-        if exit_id:
-            usage[str(exit_id)] = usage.get(str(exit_id), 0) + 1
-    counts = list(usage.values())
-
     metrics = snap.get("metrics") or {}
     stats = getattr(engine, "movement_stats", {}) or {}
     chooser = getattr(engine, "exit_chooser", None)
     switch_total = int(metrics.get("switch_total", getattr(chooser, "switch_total", 0)) or 0)
     conflict_total = int(metrics.get("conflict_total", stats.get("conflict_total", 0)) or 0)
     conflict_lost_total = int(metrics.get("conflict_lost_total", stats.get("conflict_lost_total", 0)) or 0)
-    if metrics.get("exit_usage"):
-        usage = {str(k): int(v) for k, v in metrics["exit_usage"].items()}
-        counts = list(usage.values())
+    usage, entropy_h, gini_g = _verified_exit_results(snap)
 
     doses = [float(p["dose"]) for p in people if p.get("dose") is not None]
-    doses.sort()
-    q95 = doses[min(len(doses) - 1, int(0.95 * (len(doses) - 1)))] if doses else 0.0
+    q95 = _q95(doses)
+    all_evacuated = population > 0 and len(evacuated) == population
+    total_evacuation_time = max(first_evacuation_time.values()) if all_evacuated else NA
 
     row = {
         "lambda": lam,
         "seed": seed,
-        "people": len(people),
+        "N": population,
+        "people": population,
         "steps": steps,
         "finished": bool(getattr(runner, "finished", False)),
-        "T_all_s": float(snap.get("time_s", steps * 0.5)) if getattr(runner, "finished", False) else "",
+        "all_evacuated": all_evacuated,
+        "T_all_s": total_evacuation_time,
+        "T_all": total_evacuation_time,
+        "T90_s": t90_s,
+        "T90": t90_s,
         "evacuated": len(evacuated),
         "switch_total": switch_total,
         "switch_per_person": switch_total / max(1, len(people)),
         "conflict_total": conflict_total,
         "conflict_lost_total": conflict_lost_total,
-        "H": entropy(counts) if counts else "",
-        "G": gini(counts) if counts else "",
+        "exit_usage": json.dumps(usage, ensure_ascii=False, sort_keys=True) if isinstance(usage, dict) else NA,
+        "H": entropy_h,
+        "G": gini_g,
         "panic_peak": panic_peak,
         "risk_mean": (risk_sum / risk_n) if risk_n else "",
         "q95_dose": q95,
+        "time_step_s": 0.5,
+        "physical_cell_size_m": 0.5,
+        "risk_feedback_cap": 3.0,
+        "exit_pressure_gain": float(pressure_gain),
+        "max_steps": max_steps,
+        "map_path": str(map_path),
+        "population_path": str(people_path),
     }
     runner.close()
     return row
@@ -178,7 +190,7 @@ def main():
     ap.add_argument("--map", default="scenarios/classroom_corridor.json")
     ap.add_argument("--people", default="docs/d_week3/examples/c_output_people.json")
     ap.add_argument("--yaml", default="control/config_template.yaml")
-    ap.add_argument("--lambdas", default="0,0.25,0.5,0.75")
+    ap.add_argument("--lambdas", default=DEFAULT_LAMBDA_LEVELS)
     ap.add_argument("--seeds", type=int, default=30)
     ap.add_argument("--seed-start", type=int, default=1)
     ap.add_argument("--max-steps", type=int, default=600)
@@ -186,6 +198,8 @@ def main():
     ap.add_argument("--pressure-gain", type=float, default=0.5, help="exit_pressure_gain g_D")
     ap.add_argument("--out", default="outputs/lambda_sweep.csv")
     args = ap.parse_args()
+    if not math.isclose(args.pressure_gain, 0.5, rel_tol=0.0, abs_tol=1e-12):
+        ap.error("formal lambda experiments require --pressure-gain 0.5")
 
     map_path = ROOT / args.map
     people_path = ROOT / args.people
@@ -228,7 +242,14 @@ def main():
     for lam in lambdas:
         subset = [r for r in rows if r["lambda"] == lam]
         def mean(key):
-            vals = [float(r[key]) for r in subset if r[key] != "" and r[key] is not None]
+            vals = []
+            for row in subset:
+                try:
+                    value = float(row[key])
+                except (TypeError, ValueError):
+                    continue
+                if math.isfinite(value):
+                    vals.append(value)
             return statistics.mean(vals) if vals else float("nan")
         print(f"λ={lam:<4} switch={mean('switch_total'):7.2f} conflict={mean('conflict_total'):7.2f} "
               f"H={mean('H'):.3f} G={mean('G'):.3f} T_all={mean('T_all_s'):7.1f}s panic={mean('panic_peak'):.3f}")

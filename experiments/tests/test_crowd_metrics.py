@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 
 from experiments.crowd_metrics import (
+    _walkable_cells,
+    _walkable_row_runs,
     resolve_analysis_contract,
     trajectory_kinematics,
     velocity_vector_field,
@@ -200,6 +202,131 @@ class CrowdMetricsTests(unittest.TestCase):
         by_id = {sample["person_id"]: sample for sample in result["samples"]}
         self.assertGreater(
             by_id[5]["density_persons_m2"], by_id[1]["density_persons_m2"]
+        )
+
+    def test_row_runs_preserve_obstacles_exits_and_boundaries(self) -> None:
+        grid = self.grid(
+            [
+                ["free", "free", "wall", "free", "obstacle", "free"],
+                ["free", "free", "wall", "free", "free", "exit"],
+                ["free", "obstacle", "free", "free", "wall", "free"],
+                ["wall", "wall", "free", "free", "free", "wall"],
+            ]
+        )
+        expected = [
+            (0, 0, 2),
+            (0, 3, 4),
+            (0, 5, 6),
+            (1, 0, 2),
+            (1, 3, 6),
+            (2, 0, 1),
+            (2, 2, 4),
+            (2, 5, 6),
+            (3, 2, 5),
+        ]
+        self.assertEqual(expected, _walkable_row_runs(grid))
+        self.assertEqual(
+            [
+                (x, y)
+                for y, x_start, x_end in expected
+                for x in range(x_start, x_end)
+            ],
+            _walkable_cells(grid),
+        )
+
+    def test_row_run_voronoi_matches_cell_reference_in_complex_domain(self) -> None:
+        grid = self.grid(
+            [
+                ["free", "free", "wall", "free", "obstacle", "free"],
+                ["free", "free", "wall", "free", "free", "exit"],
+                ["free", "obstacle", "free", "free", "wall", "free"],
+                ["wall", "wall", "free", "free", "free", "wall"],
+            ]
+        )
+        positions = [
+            {"person_id": 1, "x": 0, "y": 0},
+            {"person_id": 2, "x": 1, "y": 0},
+            {"person_id": 3, "x": 3, "y": 0},
+            {"person_id": 4, "x": 5, "y": 1},
+            {"person_id": 5, "x": 2, "y": 2},
+            {"person_id": 6, "x": 3, "y": 3},
+        ]
+        reference = voronoi_density_for_frame(
+            positions,
+            grid=grid,
+            physical_scale=self.explicit_scale(),
+            use_row_runs=False,
+        )
+        optimized = voronoi_density_for_frame(
+            positions,
+            grid=grid,
+            physical_scale=self.explicit_scale(),
+        )
+        self.assertEqual(reference["legal_cell_count"], optimized["legal_cell_count"])
+        reference_by_id = {sample["person_id"]: sample for sample in reference["samples"]}
+        optimized_by_id = {sample["person_id"]: sample for sample in optimized["samples"]}
+        self.assertEqual(reference_by_id.keys(), optimized_by_id.keys())
+        for person_id, sample in reference_by_id.items():
+            self.assertAlmostEqual(
+                sample["voronoi_area_m2"],
+                optimized_by_id[person_id]["voronoi_area_m2"],
+                places=10,
+            )
+            self.assertAlmostEqual(
+                sample["density_persons_m2"],
+                optimized_by_id[person_id]["density_persons_m2"],
+                places=9,
+            )
+        self.assertAlmostEqual(
+            sum(sample["voronoi_area_m2"] for sample in reference["samples"]),
+            sum(sample["voronoi_area_m2"] for sample in optimized["samples"]),
+            places=9,
+        )
+
+    def test_row_run_voronoi_matches_cell_reference_inside_roi(self) -> None:
+        grid = self.grid(
+            [
+                ["free", "free", "wall", "free", "free"],
+                ["free", "obstacle", "free", "free", "exit"],
+                ["wall", "free", "free", "wall", "free"],
+            ]
+        )
+        roi = {
+            (0, 0),
+            (0, 1),
+            (1, 1),
+            (2, 0),
+            (2, 2),
+            (3, 0),
+            (3, 1),
+            (3, 2),
+            (4, 1),
+        }
+        positions = [
+            {"person_id": 1, "x": 0, "y": 1},
+            {"person_id": 2, "x": 3, "y": 0},
+            {"person_id": 3, "x": 4, "y": 1},
+        ]
+        reference = voronoi_density_for_frame(
+            positions,
+            grid=grid,
+            physical_scale=self.explicit_scale(),
+            roi_cells=roi,
+            use_row_runs=False,
+        )
+        optimized = voronoi_density_for_frame(
+            positions,
+            grid=grid,
+            physical_scale=self.explicit_scale(),
+            roi_cells=roi,
+        )
+        self.assertEqual(6, optimized["legal_cell_count"])
+        self.assertEqual("explicit_grid_cells", optimized["roi"])
+        self.assertTrue(
+            all(
+                abs(left["voronoi_area_m2"] - right["voronoi_area_m2"]) < 1e-10
+                for left, right in zip(reference["samples"], optimized["samples"])
+            )
         )
 
     def test_velocity_field_parallel_unidirectional_samples_keep_direction(self) -> None:

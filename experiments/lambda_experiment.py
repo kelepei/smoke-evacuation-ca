@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import fields, is_dataclass
+from types import SimpleNamespace
 from typing import Any, Mapping
 
 
@@ -25,7 +26,7 @@ class LambdaExperimentError(ValueError):
 def lambda_capability() -> dict[str, Any]:
     """Inspect B's public config and report whether lambda can really be used."""
 
-    import simulation.movement_config as movement_config
+    from simulation.evac_simulation import EvacEngine
     from simulation.movement_config import ExitChoiceConfig, PanicConfig
 
     panic_fields = (
@@ -45,18 +46,29 @@ def lambda_capability() -> dict[str, Any]:
     ]
     if "exit_pressure_gain" not in exit_fields:
         missing.append("exit_pressure_gain")
-    implementation_verified = bool(
-        getattr(movement_config, "PANIC_RISK_FEEDBACK_IMPLEMENTED", False)
-    )
+    implementation_verified = False
+    feedback_method = getattr(EvacEngine, "_apply_panic_risk_feedback", None)
+    if callable(feedback_method) and not missing:
+        try:
+            probe = EvacEngine.__new__(EvacEngine)
+            probe.movement = SimpleNamespace(
+                panic=SimpleNamespace(panic_to_risk_gain=0.4, risk_feedback_cap=3.0)
+            )
+            probe.person_map = {1: SimpleNamespace(panic=0.5)}
+            ordinary = feedback_method(probe, {1: 1.0})[1]
+            capped = feedback_method(probe, {1: 10.0})[1]
+            implementation_verified = math.isclose(ordinary, 1.2) and math.isclose(capped, 3.0)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            implementation_verified = False
     if not implementation_verified:
-        missing.append("B implementation marker PANIC_RISK_FEEDBACK_IMPLEMENTED")
+        missing.append("EvacEngine._apply_panic_risk_feedback")
     supported = not missing
     return {
         "feature": "panic_to_risk_lambda",
         "supported": supported,
         "status": "supported" if supported else "unavailable",
         "reason": (
-            "B publishes the required fields and explicitly verifies runtime use"
+            "B publishes the required fields and the runtime feedback method"
             if supported
             else "B movement configuration is missing: " + ", ".join(missing)
         ),

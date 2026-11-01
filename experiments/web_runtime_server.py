@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import csv
 import gzip
 import json
 import mimetypes
@@ -31,6 +32,7 @@ from typing import Any, Mapping
 from urllib.parse import unquote, urlparse
 
 from experiments.auto_positioning import AutoPositioningError, allocate_map_data_positions
+from experiments.academic_crowd import academic_crowd_fields
 from experiments.scene_config_pipeline import (
     SceneConfigPipelineError,
     canonical_from_c_scene_config,
@@ -40,7 +42,13 @@ from experiments.scene_config_pipeline import (
 from experiments.experiment_history import ExperimentHistoryError, discover_experiments, load_experiment_detail
 from experiments.guidance_interface import warm_guidance_route_cache
 from experiments.integrated_runner import create_integrated_runner
-from experiments.result_package import ResultPackageError, build_result_package, build_runtime_analysis
+from experiments.lambda_experiment import lambda_capability
+from experiments.result_package import (
+    ResultPackageError,
+    build_lambda_experiment_csv,
+    build_result_package,
+    build_runtime_analysis,
+)
 from experiments.run_artifacts import write_run_artifacts
 from visualization.scene_input_adapter import grid_to_static_snapshot, load_map_grid
 
@@ -136,9 +144,11 @@ class DWebRuntimeServer(ThreadingHTTPServer):
         super().__init__(address, handler)
         self.root = root.resolve()
         self.session: RuntimeSession | None = None
+        self.academic_cache: dict[tuple[str, int, str], dict[str, Any]] = {}
         # A B step can be much slower than browser timer events.  Serialize
         # all mutations so reset/close cannot replace a live runner mid-step.
         self.session_lock = threading.RLock()
+        self.academic_cache_lock = threading.Lock()
 
     def close_session(self) -> None:
         with self.session_lock:
@@ -161,6 +171,14 @@ def _control_runtime_config(payload: Mapping[str, Any]) -> dict[str, Any]:
     # D only makes the runtime mode explicit instead of relying on an absent
     # optional payload key.
     config: dict[str, Any] = {"web_mode": True}
+    movement = payload.get("movement")
+    if movement is not None:
+        if not isinstance(movement, Mapping):
+            raise WebRuntimeError("movement must be an object")
+        config["movement"] = {
+            str(section): dict(values) if isinstance(values, Mapping) else values
+            for section, values in movement.items()
+        }
     information_mode = str(payload.get("information_mode", "broadcast") or "broadcast").strip().lower()
     if information_mode not in {"broadcast", "local"}:
         raise WebRuntimeError("information_mode must be 'broadcast' or 'local'")
@@ -204,6 +222,19 @@ def _control_runtime_config(payload: Mapping[str, Any]) -> dict[str, Any]:
             pass
     if "route_shift_ratio" in payload:
         config["route_shift_ratio"] = float(payload.get("route_shift_ratio") or 0.2)
+    from experiments.lambda_experiment import LambdaExperimentError, lambda_request_config
+
+    try:
+        lambda_movement = lambda_request_config(payload)
+    except LambdaExperimentError as exc:
+        raise WebRuntimeError(str(exc)) from exc
+    if lambda_movement is not None:
+        merged = dict(config.get("movement") or {})
+        for section, values in lambda_movement.items():
+            section_values = dict(merged.get(section) or {})
+            section_values.update(values)
+            merged[section] = section_values
+        config["movement"] = merged
     return config
 
 
@@ -350,6 +381,9 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         if path == "/api/health":
             self._send_json({"ok": True, "service": "d_web_runtime", "version": "0.1"})
             return
+        if path == "/api/capabilities":
+            self._send_json({"ok": True, "lambda_experiment": lambda_capability()})
+            return
         if path == "/api/experiments":
             self._send_json({"ok": True, "experiments": discover_experiments(self._history_roots())})
             return
@@ -362,28 +396,45 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             return
         if path == "/api/session/export":
             try:
-                with self.server.session_lock:
-                    self._export_session()
+                self._export_session()
             except WebRuntimeError as exc:
                 self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
             except Exception as exc:
                 self._send_error_json(HTTPStatus.INTERNAL_SERVER_ERROR, f"export error: {exc}")
             return
+        if path == "/api/session/lambda.csv":
+            try:
+                self._export_lambda_csv()
+            except WebRuntimeError as exc:
+                self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            except Exception as exc:
+                self._send_error_json(HTTPStatus.INTERNAL_SERVER_ERROR, f"lambda CSV error: {exc}")
+            return
+        if path == "/api/session/academic-analysis":
+            try:
+                self._send_json(self._academic_analysis())
+            except WebRuntimeError as exc:
+                self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            except Exception as exc:
+                self._send_error_json(HTTPStatus.INTERNAL_SERVER_ERROR, f"academic analysis error: {exc}")
+            return
         if path in {
+            "/api/session/analysis-base",
             "/api/session/metrics",
             "/api/session/analysis",
             "/api/session/layers",
         }:
             try:
-                with self.server.session_lock:
-                    self._send_json(
-                        self._runtime_analysis(
-                            include_figures=path.endswith("/analysis"),
-                            include_layers=path.endswith("/analysis")
-                            or path.endswith("/layers"),
-                            include_academic=path.endswith("/analysis"),
-                        )
+                self._send_json(
+                    self._runtime_analysis(
+                        include_figures=path.endswith("/analysis")
+                        or path.endswith("/analysis-base"),
+                        include_layers=path.endswith("/analysis")
+                        or path.endswith("/analysis-base")
+                        or path.endswith("/layers"),
+                        include_academic=path.endswith("/analysis"),
                     )
+                )
             except WebRuntimeError as exc:
                 self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
             except Exception as exc:
@@ -914,20 +965,36 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
     def _export_session(self) -> None:
         """Return a ZIP built from the active runner's actual CSV output."""
 
-        session = self._require_session()
-        snapshot = session.runner.current_snapshot
-        run_id = session.runner.current_run_id
-        if snapshot is None or not run_id:
-            raise WebRuntimeError("active session has no current snapshot to export")
+        # Capture immutable request inputs under the session lock, then release
+        # it before expensive log analysis.  Export must not block a fast CSV
+        # request or a step behind the full academic analysis.
+        with self.server.session_lock:
+            session = self._require_session()
+            runner = session.runner
+            snapshot = runner.current_snapshot
+            run_id = runner.current_run_id
+            if snapshot is None or not run_id:
+                raise WebRuntimeError("active session has no current snapshot to export")
+            output_dir = runner.output_root / run_id
+            input_files = dict(session.input_files)
+            max_steps = session.max_steps
+            cache_key = self._academic_cache_key(snapshot)
+            with self.server.academic_cache_lock:
+                cached_academic = self.server.academic_cache.get(cache_key)
         self._write_run_metadata(
-            session.runner, snapshot, session.input_files, save_frame=True
+            runner, snapshot, input_files, save_frame=False
         )
         try:
             package = build_result_package(
-                output_dir=session.runner.output_root / run_id,
+                output_dir=output_dir,
                 final_snapshot=snapshot,
-                input_files=session.input_files,
-                max_steps=session.max_steps,
+                input_files=input_files,
+                max_steps=max_steps,
+                precomputed_academic=(
+                    cached_academic.get("academic_crowd_fields")
+                    if cached_academic is not None
+                    else None
+                ),
             )
         except ResultPackageError as exc:
             raise WebRuntimeError(str(exc)) from exc
@@ -935,6 +1002,91 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             package.content,
             content_type="application/zip",
             filename=package.filename,
+        )
+
+    @staticmethod
+    def _academic_cache_key(snapshot: Mapping[str, Any]) -> tuple[str, int, str]:
+        contract = snapshot.get("analysis_contract")
+        return (
+            str(snapshot.get("run_id") or ""),
+            int(snapshot.get("step") or 0),
+            json.dumps(
+                contract if isinstance(contract, Mapping) else {},
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+        )
+
+    def _academic_analysis(self) -> dict[str, Any]:
+        with self.server.session_lock:
+            session = self._require_session()
+            snapshot = session.runner.current_snapshot
+            run_id = session.runner.current_run_id
+            if snapshot is None or not run_id:
+                raise WebRuntimeError(
+                    "active session has no current snapshot for academic analysis"
+                )
+            output_dir = session.runner.output_root / run_id
+            cache_key = self._academic_cache_key(snapshot)
+
+        with self.server.academic_cache_lock:
+            cached = self.server.academic_cache.get(cache_key)
+        if cached is not None:
+            return {
+                **cached,
+                "ok": True,
+                "cache_hit": True,
+            }
+
+        grid = snapshot.get("grid")
+        contract = snapshot.get("analysis_contract")
+        if not isinstance(grid, Mapping) or not isinstance(contract, Mapping):
+            raise WebRuntimeError(
+                "active snapshot has no grid or analysis contract for academic analysis"
+            )
+        started = perf_counter()
+        with (output_dir / "people_log.csv").open(
+            "r", encoding="utf-8-sig", newline=""
+        ) as stream:
+            field = academic_crowd_fields(
+                csv.DictReader(stream),
+                grid=grid,
+                analysis_contract=contract,
+            )
+        result = {
+            "run_id": run_id,
+            "academic_crowd_fields": field,
+            "diagnostics": {
+                "academic_compute_ms": round(
+                    (perf_counter() - started) * 1000.0, 3
+                )
+            },
+            "cache_hit": False,
+        }
+        with self.server.academic_cache_lock:
+            self.server.academic_cache = {
+                cache_key: result,
+            }
+        return {**result, "ok": True}
+
+    def _export_lambda_csv(self) -> None:
+        with self.server.session_lock:
+            session = self._require_session()
+            runner = session.runner
+            snapshot = runner.current_snapshot
+            run_id = runner.current_run_id
+            if snapshot is None or not run_id:
+                raise WebRuntimeError("active session has no current snapshot for lambda CSV")
+            output_dir = runner.output_root / run_id
+        csv_text = build_lambda_experiment_csv(
+            output_dir=output_dir,
+            final_snapshot=snapshot,
+        )
+        self._send_binary(
+            csv_text.encode("utf-8-sig"),
+            content_type="text/csv; charset=utf-8",
+            filename="lambda_experiment.csv",
         )
 
     def _runtime_analysis(
@@ -946,15 +1098,18 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
     ) -> dict[str, Any]:
         """Return only CSV-derived analysis for the active D run."""
 
-        session = self._require_session()
-        snapshot = session.runner.current_snapshot
-        run_id = session.runner.current_run_id
-        if snapshot is None or not run_id:
-            raise WebRuntimeError("active session has no current snapshot to analyze")
+        with self.server.session_lock:
+            session = self._require_session()
+            runner = session.runner
+            snapshot = runner.current_snapshot
+            run_id = runner.current_run_id
+            if snapshot is None or not run_id:
+                raise WebRuntimeError("active session has no current snapshot to analyze")
+            output_dir = runner.output_root / run_id
         analysis_started = perf_counter()
         try:
             result = build_runtime_analysis(
-                output_dir=session.runner.output_root / run_id,
+                output_dir=output_dir,
                 final_snapshot=snapshot,
                 include_figures=include_figures,
                 include_layers=include_layers,

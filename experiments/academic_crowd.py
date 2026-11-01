@@ -15,7 +15,11 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from experiments.congestion_level import congestion_level_field
-from experiments.crowd_metrics import trajectory_kinematics, voronoi_density_for_frame
+from experiments.crowd_metrics import (
+    _walkable_row_runs,
+    trajectory_kinematics,
+    voronoi_density_for_frame,
+)
 
 
 ACADEMIC_CROWD_FIELDS = [
@@ -102,6 +106,7 @@ def _density_by_analysis_cell(
     if state != "available" or mesh_m is None or window_s is None:
         return {}, {"status": state, "reason": "analysis_mesh_size_m and sampling_window_s are required"}
     frames: dict[tuple[int, float], list[dict[str, Any]]] = defaultdict(list)
+    legal_row_runs = _walkable_row_runs(grid)
     for raw in people_rows:
         step, time_s, person_id = _integer(raw.get("step")), _finite(raw.get("time_s")), _integer(raw.get("person_id"))
         x, y = _integer(raw.get("x")), _integer(raw.get("y"))
@@ -113,7 +118,11 @@ def _density_by_analysis_cell(
     for (_, time_s), positions in frames.items():
         try:
             frame = voronoi_density_for_frame(
-                positions, grid=grid, physical_scale=contract.get("physical_scale"), time_s=time_s
+                positions,
+                grid=grid,
+                physical_scale=contract.get("physical_scale"),
+                time_s=time_s,
+                legal_row_runs=legal_row_runs,
             )
         except ValueError:
             skipped_frames += 1
