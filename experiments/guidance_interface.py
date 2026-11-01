@@ -150,77 +150,60 @@ def _multi_source_shortest_paths(
     width: int,
     height: int,
     cell_types: tuple[str, ...],
+    passable: bytearray | None = None,
 ) -> tuple[array, array]:
     """Return distance and parent tables for every cell to the nearest goal.
 
-    A guidance pass compares each person against every physical exit.  Running
-    one single-source search per person/exit pair repeatedly scans the whole
-    building and made the first post-alarm snapshot appear to hang.  Searching
-    outward from all cells of one exit instead produces the same shortest-path
-    tree with one grid traversal per exit.  The result is cached by
-    ``_exit_route_tables`` because map geometry does not change between steps.
+    One traversal is built per physical exit and cached by
+    ``_exit_route_tables``.  The hot loop uses a flat passable mask and local
+    bindings so the first alarm step remains bounded on slower machines.
     """
 
     cell_count = width * height
+    if passable is None:
+        passable = bytearray(
+            1 if value not in _BLOCKED_CELL_TYPES else 0 for value in cell_types
+        )
     distances = array('d', [math.inf]) * cell_count
     previous = array('i', [-1]) * cell_count
     frontier: list[tuple[float, int, int]] = []
+    heappush = heapq.heappush
+    heappop = heapq.heappop
 
     for gx, gy in sorted(set(goals), key=lambda cell: (cell[1], cell[0])):
-        if not _is_traversable(gx, gy, width, height, cell_types):
+        if not (0 <= gx < width and 0 <= gy < height):
             continue
         goal_index = gy * width + gx
+        if not passable[goal_index]:
+            continue
         if distances[goal_index] != 0.0:
             distances[goal_index] = 0.0
-            heapq.heappush(frontier, (0.0, gx, gy))
+            heappush(frontier, (0.0, gx, gy))
 
     while frontier:
-        distance, x, y = heapq.heappop(frontier)
+        distance, x, y = heappop(frontier)
         current_index = y * width + x
         if distance != distances[current_index]:
             continue
         for dx, dy, cost in _NEIGHBORS:
             nx, ny = x + dx, y + dy
-            if not _is_traversable(nx, ny, width, height, cell_types):
+            if nx < 0 or nx >= width or ny < 0 or ny >= height:
+                continue
+            neighbor_index = ny * width + nx
+            if not passable[neighbor_index]:
                 continue
             # Do not let a diagonal move clip through two blocked orthogonal cells.
             if dx and dy and (
-                not _is_traversable(x + dx, y, width, height, cell_types)
-                or not _is_traversable(x, y + dy, width, height, cell_types)
+                not passable[y * width + x + dx]
+                or not passable[(y + dy) * width + x]
             ):
                 continue
-            neighbor_index = ny * width + nx
             candidate = distance + cost
             if candidate < distances[neighbor_index]:
                 distances[neighbor_index] = candidate
                 previous[neighbor_index] = current_index
-                heapq.heappush(frontier, (candidate, nx, ny))
+                heappush(frontier, (candidate, nx, ny))
     return distances, previous
-
-
-def prewarm_guidance(snapshot: Mapping[str, Any]) -> bool:
-    """Build the per-exit route tables early, before the first alarm frame.
-
-    The first post-alarm snapshot used to pay for four full-grid multi-source
-    searches inside the same step.  Warming them on an early (pre-alarm)
-    snapshot moves that one-off cost into initialization instead of freezing
-    the alarm step.  Returns True when the tables are ready.
-    """
-
-    try:
-        width, height, cell_types = _normalise_grid(snapshot)
-        entities = _entities(snapshot.get("exit_entities"), width, height)
-        if not entities:
-            return False
-        _exit_route_tables(
-            width,
-            height,
-            tuple(cell_types),
-            tuple(entities),
-        )
-        return True
-    except (GuidanceError, KeyError, TypeError, ValueError):
-        return False
 
 
 @lru_cache(maxsize=3)
@@ -233,12 +216,16 @@ def _exit_route_tables(
     """Build route trees once per map/exit topology, not once per person."""
 
     tables: list[tuple[str, array, array]] = []
+    passable = bytearray(
+        1 if value not in _BLOCKED_CELL_TYPES else 0 for value in cell_types
+    )
     for entity_id, member_cells in entities:
         distances, previous = _multi_source_shortest_paths(
             goals=member_cells,
             width=width,
             height=height,
             cell_types=cell_types,
+            passable=passable,
         )
         tables.append((entity_id, distances, previous))
     return tuple(tables)
@@ -269,6 +256,25 @@ def _normalise_costs(candidates: list[dict[str, Any]], key: str, target: str) ->
     span = maximum - minimum
     for candidate in candidates:
         candidate[target] = (float(candidate[key]) - minimum) / span
+
+
+def warm_guidance_route_cache(snapshot: Mapping[str, Any]) -> bool:
+    """Build static exit route trees before live stepping begins.
+
+    The first alarm otherwise pays the whole-map route construction cost inside
+    one browser step.  Moving that work to session initialization makes the
+    runtime cadence stable, especially on slower machines.
+    """
+
+    try:
+        width, height, cell_types = _normalise_grid(snapshot)
+    except GuidanceError:
+        return False
+    entities = _entities(snapshot.get("exit_entities"), width, height)
+    if not entities:
+        return False
+    _exit_route_tables(width, height, tuple(cell_types), tuple(entities))
+    return True
 
 
 def generate_guidance(
@@ -322,10 +328,6 @@ def generate_guidance(
         "recommendations": [],
         "unavailable_reason": None,
     }
-    # Warm the static per-exit route tables even when the alarm is not active.
-    # This keeps the first alarm frame from paying for four Dijkstra searches.
-    prewarm_guidance(snapshot)
-
     if trigger_mode == "alarm" and alarm is False:
         output.update({"status": "inactive", "reason_code": "ALARM_NOT_TRIGGERED"})
         return output
