@@ -97,6 +97,31 @@ class CWebRuntimeBridge:
             settings.get("alarm_enabled", self.information_mode == "broadcast")
         )
         self.guide_enabled = bool(settings.get("guide_enabled", True))
+        self.group_exit_max_detour_cells = max(
+            0.0, float(settings.get("group_exit_max_detour_cells", 6.0))
+        )
+        self.smoke_perception_radius = max(
+            0.0, float(settings.get("smoke_perception_radius", 3.0))
+        )
+        self.fire_awareness_radius_cells = max(
+            0.0, float(settings.get("fire_awareness_radius_cells", 3.0))
+        )
+        self.preference_bonus = max(
+            0.0,
+            min(
+                1.0,
+                float(
+                    settings.get(
+                        "preference_bonus",
+                        self.group.co_exit_params.get("preference_bonus", 0.3),
+                    )
+                ),
+            ),
+        )
+        self.group.co_exit_params = dict(self.group.co_exit_params)
+        self.group.co_exit_params["preference_bonus"] = self.preference_bonus
+        self.herd.exit_params = dict(self.herd.exit_params)
+        self.herd.exit_params["bonus"] = self.preference_bonus
         self.guide_share = float(settings.get("guide_share", 0.30))
         # 网页运行时采用真实烟源语义：烟源附近先知情，浓度达阈值后广播。
         self.web_mode = bool(settings.get("web_mode", "source" in settings))
@@ -105,6 +130,7 @@ class CWebRuntimeBridge:
             0.0, float(settings.get("smoke_exposure_threshold", 0.01))
         )
         self.info_diffusion.smoke_confirmation_threshold = self.smoke_exposure_threshold
+        self.info_diffusion.smoke_confirmation_radius = self.smoke_perception_radius
         self.smoke_ramp_steps = max(
             0, int(settings.get("smoke_ramp_steps", 3000 if self.web_mode else 0))
         )
@@ -134,6 +160,8 @@ class CWebRuntimeBridge:
         self._speed_stats = {"blocked_total": 0, "congested_total": 0, "same_cell_congested_total": 0}
         # 未获知险情人员行为：walk=正常速度随机行走（默认）/ freeze=原地 / evacuate=直接疏散
         self.unknown_behavior = str(settings.get("unknown_behavior", "walk") or "walk").strip().lower()
+        if hasattr(self.engine, "unknown_behavior"):
+            self.engine.unknown_behavior = self.unknown_behavior
         self.unknown_speed_factor = max(0.0, float(settings.get("unknown_speed_factor", 0.35)))
         self.informed_speed_factor = max(0.0, float(settings.get("informed_speed_factor", 1.15)))
         self.person_speed_variation = max(
@@ -177,8 +205,59 @@ class CWebRuntimeBridge:
         self._deploy_guides()
         self.has_hazard = self._detect_hazard()
         self._seed_initial_information()
+        self._apply_fire_room_awareness()
         self.sync_relations(force=True)
         self._publish_state()
+
+    def _apply_fire_room_awareness(self) -> None:
+        """People in the fire room or within a short radius know immediately."""
+
+        if not self.has_hazard:
+            return
+        grid = self.engine.grid
+        fire_rooms: set[str] = set()
+        source_cells: list[tuple[int, int]] = []
+        for source in self._smoke_sources():
+            sx, sy = int(source.x), int(source.y)
+            source_cells.append((sx, sy))
+            getter = getattr(grid, "get_cell", None)
+            cell = (
+                getter(sx, sy) if callable(getter)
+                else grid.cells[sy * int(grid.width) + sx]
+            )
+            room_id = str(getattr(cell, "room_id", "") or "").strip()
+            if room_id:
+                fire_rooms.add(room_id)
+        radius = max(0.0, float(self.fire_awareness_radius_cells))
+        step = int(getattr(self.engine, "current_step", 0))
+        for person in self._people():
+            person_id = int(person.id)
+            px, py = int(person.x), int(person.y)
+            getter = getattr(grid, "get_cell", None)
+            cell = (
+                getter(px, py) if callable(getter)
+                else grid.cells[py * int(grid.width) + px]
+            )
+            room_id = str(getattr(cell, "room_id", "") or "").strip()
+            in_fire_room = bool(room_id and room_id in fire_rooms)
+            near_fire = any(
+                math.hypot(int(person.x) - sx, int(person.y) - sy) <= radius
+                for sx, sy in source_cells
+            )
+            if not (in_fire_room or near_fire):
+                continue
+            state = self.info_state.get_state_value(person_id)
+            if state == "UNKNOWN":
+                self.info_state.transition_state(
+                    person_id, InfoState.ALERTED, step,
+                    source=-2, method="fire_room_awareness",
+                )
+                state = self.info_state.get_state_value(person_id)
+            if state == "ALERTED":
+                self.info_state.transition_state(
+                    person_id, InfoState.CONFIRMED, step,
+                    source=-2, method="fire_room_awareness",
+                )
 
     def _apply_individual_speed_variation(self) -> None:
         if self.person_speed_variation <= 0.0:
@@ -726,6 +805,22 @@ class CWebRuntimeBridge:
             self.guides_model.deactivate_guidance()
         self._publish_state()
 
+    def _group_exit_detour_ok(self, person: Any, group_exit: str) -> bool:
+        """Return whether a shared group exit is reasonably close to this member."""
+
+        floor_field = getattr(self.engine, "floor_field", None)
+        if floor_field is None:
+            return True
+        px, py = int(person.x), int(person.y)
+        group_distance = float(floor_field.distance_to(group_exit, px, py))
+        nearest_distance = min(
+            float(floor_field.distance_to(exit_id, px, py))
+            for exit_id, _x, _y in self._exits()
+        )
+        if not math.isfinite(group_distance) or group_distance >= 9998:
+            return False
+        return group_distance <= nearest_distance + self.group_exit_max_detour_cells
+
     def _far_exit(self) -> str | None:
         exits = self._exits()
         if self.control is not None and ControlStrategyType.EXIT_CLOSURE in self.control.active_strategies:
@@ -913,7 +1008,11 @@ class CWebRuntimeBridge:
             if group.get("group_split"):
                 person_target_exit = ""
             elif group.get("group_exit"):
-                person_target_exit = group["group_exit"]
+                group_exit = str(group["group_exit"])
+                # Keep group cohesion, but never force a member to make an
+                # excessive detour when a much nearer exit is available.
+                if self._group_exit_detour_ok(person, group_exit):
+                    person_target_exit = group_exit
             if self.control is not None and self.control.exit_closure_params.get("closed_exits"):
                 if person_target_exit and not self.control.is_exit_open(person_target_exit):
                     self.control._reassign_exit(person)
@@ -1060,6 +1159,7 @@ class CWebRuntimeBridge:
             self._speed_gate(self._people())
         self._restore_smoke_intensity()
         self._advance_smoke_ramp()
+        self._apply_fire_room_awareness()
         for person in self.engine.person_map.values():
             if getattr(person, "is_dead", False):
                 continue
@@ -1166,6 +1266,10 @@ class CWebRuntimeBridge:
             "smoke_target_intensity": next(iter(self._smoke_ramp_targets.values()), None),
             "smoke_ramp_steps": self.smoke_ramp_steps,
             "information_mode": self.information_mode,
+            "preference_bonus": self.preference_bonus,
+            "group_exit_max_detour_cells": self.group_exit_max_detour_cells,
+            "smoke_perception_radius": self.smoke_perception_radius,
+            "fire_awareness_radius_cells": self.fire_awareness_radius_cells,
             "alarm_enabled": self.alarm_enabled,
             "alarm_broadcast_step": self.info_diffusion.alarm_trigger_step,
             "broadcast_smoke_threshold": self.broadcast_smoke_threshold,
