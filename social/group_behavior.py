@@ -50,6 +50,7 @@ GROUP_PARAMS = {
     "wait": {
         "max_wait_steps": 10,           # 最大等待步数（10步 = 5秒）
         "wait_trigger_dist": 3.0,       # 同伴偏离超过3格触发等待
+        "min_wait_probability": 0.25,
         "wait_abandon_dist": 20.0,      # 同伴偏离超过20格放弃等待（家庭成员相距超过20格即各自疏散）
     },
 
@@ -280,6 +281,10 @@ class GroupBehaviorEngine:
             other_dist = self._distance(other, (center_x, center_y))
             # 同伴偏离超过放弃距离（默认 20 格）→ 不再等待
             if other_dist > self.wait_params["wait_abandon_dist"]:
+                continue
+            relation = self.graph.get_relation(pid, other.id)
+            wait_probability = float(relation.get("wait_probability", 0.0) or 0.0)
+            if wait_probability < float(self.wait_params.get("min_wait_probability", 0.25)):
                 continue
             # 如果同伴距离组中心超过平均值2倍且超过触发阈值
             if other_dist > avg_dist * 2.0 and other_dist > self.wait_params["wait_trigger_dist"]:
