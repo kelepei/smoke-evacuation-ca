@@ -181,7 +181,10 @@ class CWebRuntimeBridge:
         self._relations_revision = None
         self._panic_cache: dict[int, dict[str, float | bool]] = {}
         self._lockdown_saved: dict[tuple[int, int], object] = {}
-        self._blocked_signature: frozenset[tuple[int, int]] | None = None
+        # B already built its distance field for the unblocked grid.  Starting
+        # with the real empty signature avoids rebuilding every exit BFS on the
+        # first C step when no closure or lockdown is active.
+        self._blocked_signature: frozenset[tuple[int, int]] = frozenset()
         if self.unknown_behavior not in ("walk", "freeze", "evacuate"):
             self.unknown_behavior = "walk"
         self._walk_credit: dict[int, float] = {}

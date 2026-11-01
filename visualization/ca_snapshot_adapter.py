@@ -277,7 +277,11 @@ class CaSnapshotAdapter:
         for person in people:
             if not person.get("evacuated"):
                 continue
-            exit_id = person.get("actual_exit") or person.get("actual_exit_cell")
+            exit_id = (
+                person.get("actual_exit_entity")
+                or person.get("actual_exit_cell")
+                or person.get("actual_exit")
+            )
             if exit_id:
                 usage[str(exit_id)] = usage.get(str(exit_id), 0) + 1
         n = max(1, len(people))
@@ -512,14 +516,107 @@ class CaSnapshotAdapter:
                 }
             )
 
+        c_runtime_state = _optional_attr(simulation, "c_runtime_state")
+        control_state = (
+            c_runtime_state.get("control_strategy")
+            if isinstance(c_runtime_state, Mapping)
+            else None
+        )
+        raw_closed_exits = (
+            control_state.get("closed_exits")
+            if isinstance(control_state, Mapping)
+            else None
+        )
+        closure_state_available = isinstance(raw_closed_exits, (list, tuple, set))
+        closed_exit_ids = {
+            str(exit_id)
+            for exit_id in (raw_closed_exits or [])
+            if exit_id not in (None, "")
+        }
+        extra_meta = getattr(simulation, "d_adapter_meta", None)
+        exit_topology = (
+            extra_meta.get("exit_topology")
+            if isinstance(extra_meta, Mapping)
+            else None
+        )
+        raw_cell_to_entity = (
+            exit_topology.get("cell_to_entity")
+            if isinstance(exit_topology, Mapping)
+            else None
+        )
+        cell_to_entity = {
+            str(cell_id): str(entity_id)
+            for cell_id, entity_id in (raw_cell_to_entity or {}).items()
+            if cell_id not in (None, "") and entity_id not in (None, "")
+        } if isinstance(raw_cell_to_entity, Mapping) else {}
+
         exits: list[dict[str, Any]] = []
         for exit_obj in getattr(config, "exits", []) if config is not None else []:
+            exit_id = _optional_attr(exit_obj, "id", "exit_id")
             exits.append(
                 {
-                    "exit_id": _optional_attr(exit_obj, "id", "exit_id"),
+                    "exit_id": exit_id,
+                    "exit_entity_id": cell_to_entity.get(str(exit_id)),
+                    "is_open": (
+                        str(exit_id) not in closed_exit_ids
+                        if closure_state_available
+                        else None
+                    ),
                     "queue_length": _optional_attr(exit_obj, "queue_length"),
                 }
             )
+
+        exit_entities: list[dict[str, Any]] = []
+        raw_exit_entities = list(_optional_attr(simulation, "exit_entities") or [])
+        cells_by_entity: dict[str, set[str]] = {}
+        for cell_id, entity_id in cell_to_entity.items():
+            cells_by_entity.setdefault(entity_id, set()).add(cell_id)
+        for raw_entity in raw_exit_entities:
+            if not isinstance(raw_entity, Mapping):
+                continue
+            entity = dict(raw_entity)
+            entity_id = str(entity.get("exit_entity_id", ""))
+            member_ids = cells_by_entity.get(entity_id, set())
+            entity["is_open"] = (
+                entity_id not in closed_exit_ids
+                and (not member_ids or not member_ids.issubset(closed_exit_ids))
+                if closure_state_available
+                else None
+            )
+            exit_entities.append(entity)
+
+        if closure_state_available:
+            if exit_entities:
+                valid_exit_ids = [
+                    str(entity["exit_entity_id"])
+                    for entity in exit_entities
+                    if entity.get("exit_entity_id") not in (None, "")
+                    and entity.get("is_open") is True
+                ]
+                representation = "entity"
+            else:
+                valid_exit_ids = [
+                    str(exit_item["exit_id"])
+                    for exit_item in exits
+                    if exit_item.get("exit_id") not in (None, "")
+                    and exit_item.get("is_open") is True
+                ]
+                representation = "cell"
+            exit_universe = {
+                "status": "available",
+                "representation": representation,
+                "valid_exit_ids": valid_exit_ids,
+                "closed_exit_ids": sorted(closed_exit_ids),
+                "source": "C control_strategy.closed_exits + D exit topology",
+            }
+        else:
+            exit_universe = {
+                "status": "unavailable",
+                "representation": "entity" if exit_entities else "cell",
+                "valid_exit_ids": [],
+                "closed_exit_ids": [],
+                "source": "NA: current exit closure state was not published",
+            }
 
         relations: list[dict[str, Any]] = []
         for index, relation in enumerate(
@@ -580,7 +677,6 @@ class CaSnapshotAdapter:
             "smoke_source_input": "B runtime smoke_sources; coordinates use (x, y)",
             "physical_scale_warning": analysis_contract["physical_scale"].get("warning"),
         }
-        extra_meta = getattr(simulation, "d_adapter_meta", None)
         if isinstance(extra_meta, Mapping):
             adapter_meta.update(dict(extra_meta))
 
@@ -620,9 +716,10 @@ class CaSnapshotAdapter:
             "alarm_cells": self._static_grid["alarm_cells"],
             "people": people,
             "exits": exits,
-            "exit_entities": list(_optional_attr(simulation, "exit_entities") or []),
+            "exit_entities": exit_entities,
+            "exit_universe": exit_universe,
             "guides": list(_optional_attr(simulation, "guides") or []),
-            "c_runtime": _optional_attr(simulation, "c_runtime_state"),
+            "c_runtime": c_runtime_state,
             "runtime_metrics": movement_stats,
             "capabilities": {"lambda_experiment": lambda_capability()},
             "experiment_config": {

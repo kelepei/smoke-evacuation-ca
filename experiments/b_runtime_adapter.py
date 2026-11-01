@@ -123,6 +123,7 @@ class EvacEngineRuntimeAdapter:
 
             setattr(grid, "get_cell", get_cell)
             initialized_fields.append("grid.get_cell(x,y) from existing cells")
+
         for person in self._engine.person_map.values():
             # B's current EvacEngine reads these fields but the current shared
             # Person constructor does not create them.  Add only the explicit
@@ -142,11 +143,7 @@ class EvacEngineRuntimeAdapter:
                 else "EvacEngine.step()"
             ),
             "behavior_input": "empty mapping; C behavior output not provided",
-            # B currently calculates a local risk dictionary for movement but
-            # does not publish that dictionary or write it to ``person.risk``.
-            # Tell D views not to present the schema's default ``risk`` value
-            # as a measured risk result.
-            "risk_source": "B risk_engine result is not exposed per person",
+            "risk_source": "B risk_engine result written to person.risk",
             "dose_source": "B SmokeDoseRecorder person.dose",
             "upstream_animation": (
                 "enabled"
@@ -168,6 +165,18 @@ class EvacEngineRuntimeAdapter:
         }
         if adapter_meta:
             self.d_adapter_meta.update(dict(adapter_meta))
+
+    @property
+    def exit_chooser(self) -> Any:
+        """Expose B's read-only exit-choice statistics to the snapshot adapter."""
+
+        return getattr(self._engine, "exit_chooser", None)
+
+    @property
+    def movement_stats(self) -> Mapping[str, Any]:
+        """Expose B's published movement counters without recomputing them in D."""
+
+        return getattr(self._engine, "movement_stats", {}) or {}
 
     @property
     def config(self) -> Any:

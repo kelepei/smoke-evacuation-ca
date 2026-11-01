@@ -13,6 +13,48 @@ from experiments.result_package import _heatmap_svg, _occupancy_display_color, b
 
 
 class ResultPackageTests(unittest.TestCase):
+    def test_analysis_uses_snapshot_metrics_and_verified_open_exit_universe(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "people_log.csv").write_text(
+                "step,time_s,person_id,x,y,evacuated,actual_exit_entity\n"
+                "0,0,1,1,1,false,\n"
+                "1,0.5,1,2,1,true,exit_entity_01\n",
+                encoding="utf-8",
+            )
+            analysis = build_runtime_analysis(
+                output_dir=root,
+                final_snapshot={
+                    "grid": {"width": 4, "height": 3},
+                    "exit_entities": [
+                        {"exit_entity_id": "exit_entity_01"},
+                        {"exit_entity_id": "exit_entity_02"},
+                        {"exit_entity_id": "exit_entity_03"},
+                    ],
+                    "exit_universe": {
+                        "status": "available",
+                        "representation": "entity",
+                        "valid_exit_ids": ["exit_entity_01", "exit_entity_02"],
+                        "closed_exit_ids": ["exit_entity_03"],
+                    },
+                    "metrics": {
+                        "switch_total": 2,
+                        "switch_counts": {"1": 2},
+                        "conflict_total": 4,
+                        "conflict_lost_total": 1,
+                        "exit_usage": {"exit_entity_01": 1},
+                    },
+                },
+            )
+        metrics = analysis["week6_metrics"]
+        self.assertEqual({"exit_entity_01": 1, "exit_entity_02": 0}, metrics["exit_usage"])
+        self.assertEqual(0.0, metrics["exit_entropy_h"])
+        self.assertEqual(0.5, metrics["exit_gini_g"])
+        self.assertEqual(2, metrics["switch_total"])
+        self.assertEqual({"1": 2}, metrics["switch_counts"])
+        self.assertEqual(4, metrics["conflict_total"])
+        self.assertEqual(1, metrics["conflict_lost_total"])
+
     def test_occupancy_heatmap_uses_fixed_absolute_scale_without_changing_raw_counts(self) -> None:
         run_a = [0, 1, 5, 10, 25, 50, 100]
         run_b = [0, 1, 5, 10, 25, 50, 100, 137]

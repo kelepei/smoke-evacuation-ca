@@ -84,6 +84,7 @@ class ExitChooser:
         self._prev_best: dict[int, float] = {}
         self._last_switch: dict[int, int] = {}
         self.switch_total = 0
+        self.switch_counts: dict[int, int] = {}
 
         # 出口区域半径（元胞）与容量（元胞数）
         self._radius_cells = max(1.0, float(self.cfg.region_radius_m) / self.cell_size)
@@ -239,6 +240,7 @@ class ExitChooser:
                     self._target[pid] = best_exit
                     self._last_switch[pid] = int(step)
                     self.switch_total += 1
+                    self.switch_counts[pid] = self.switch_counts.get(pid, 0) + 1
             self._prev_probs[pid] = probs
             result[pid] = self._target[pid]
         return result

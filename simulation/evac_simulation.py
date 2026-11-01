@@ -209,6 +209,21 @@ class EvacEngine:
         return sum(1 for p in self.person_map.values() if getattr(p, "is_dead", False))
 
     # ------------------------------------------------------------------ 主循环
+    def _apply_panic_risk_feedback(self, risk_map: dict) -> dict:
+        """Apply B's lambda feedback once to this step's fresh risk values."""
+
+        cfg = getattr(getattr(self, "movement", None), "panic", None)
+        gain = float(getattr(cfg, "panic_to_risk_gain", 0.0) or 0.0)
+        if gain <= 0.0:
+            return risk_map
+        cap = float(getattr(cfg, "risk_feedback_cap", 3.0) or 3.0)
+        adjusted: dict = {}
+        for pid, value in risk_map.items():
+            person = self.person_map.get(pid)
+            panic = float(getattr(person, "panic", 0.0) or 0.0) if person is not None else 0.0
+            adjusted[pid] = min(cap, max(0.0, float(value) * (1.0 + gain * panic)))
+        return adjusted
+
     def run_one_step(self, c_step_data: dict = None, signage_model=None):
         if c_step_data is None:
             c_step_data = {}
@@ -265,6 +280,11 @@ class EvacEngine:
             smoke_mat,
             time_step_s=self.time_step_s
         )
+        risk_dict = self._apply_panic_risk_feedback(risk_dict)
+        for pid, risk_value in risk_dict.items():
+            person = self.person_map.get(pid)
+            if person is not None:
+                person.risk = float(risk_value)
 
         # 3. 更新烟雾累积剂量
         self.dose_recorder.update_all_dose(list(self.person_map.values()), smoke_mat)

@@ -40,7 +40,13 @@ from experiments.scene_config_pipeline import (
 from experiments.experiment_history import ExperimentHistoryError, discover_experiments, load_experiment_detail
 from experiments.guidance_interface import warm_guidance_route_cache
 from experiments.integrated_runner import create_integrated_runner
-from experiments.result_package import ResultPackageError, build_result_package, build_runtime_analysis
+from experiments.lambda_experiment import lambda_capability
+from experiments.result_package import (
+    ResultPackageError,
+    build_lambda_experiment_csv,
+    build_result_package,
+    build_runtime_analysis,
+)
 from experiments.run_artifacts import write_run_artifacts
 from visualization.scene_input_adapter import grid_to_static_snapshot, load_map_grid
 
@@ -161,6 +167,14 @@ def _control_runtime_config(payload: Mapping[str, Any]) -> dict[str, Any]:
     # D only makes the runtime mode explicit instead of relying on an absent
     # optional payload key.
     config: dict[str, Any] = {"web_mode": True}
+    movement = payload.get("movement")
+    if movement is not None:
+        if not isinstance(movement, Mapping):
+            raise WebRuntimeError("movement must be an object")
+        config["movement"] = {
+            str(section): dict(values) if isinstance(values, Mapping) else values
+            for section, values in movement.items()
+        }
     information_mode = str(payload.get("information_mode", "broadcast") or "broadcast").strip().lower()
     if information_mode not in {"broadcast", "local"}:
         raise WebRuntimeError("information_mode must be 'broadcast' or 'local'")
@@ -204,6 +218,19 @@ def _control_runtime_config(payload: Mapping[str, Any]) -> dict[str, Any]:
             pass
     if "route_shift_ratio" in payload:
         config["route_shift_ratio"] = float(payload.get("route_shift_ratio") or 0.2)
+    from experiments.lambda_experiment import LambdaExperimentError, lambda_request_config
+
+    try:
+        lambda_movement = lambda_request_config(payload)
+    except LambdaExperimentError as exc:
+        raise WebRuntimeError(str(exc)) from exc
+    if lambda_movement is not None:
+        merged = dict(config.get("movement") or {})
+        for section, values in lambda_movement.items():
+            section_values = dict(merged.get(section) or {})
+            section_values.update(values)
+            merged[section] = section_values
+        config["movement"] = merged
     return config
 
 
@@ -350,6 +377,9 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         if path == "/api/health":
             self._send_json({"ok": True, "service": "d_web_runtime", "version": "0.1"})
             return
+        if path == "/api/capabilities":
+            self._send_json({"ok": True, "lambda_experiment": lambda_capability()})
+            return
         if path == "/api/experiments":
             self._send_json({"ok": True, "experiments": discover_experiments(self._history_roots())})
             return
@@ -368,6 +398,15 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
             except Exception as exc:
                 self._send_error_json(HTTPStatus.INTERNAL_SERVER_ERROR, f"export error: {exc}")
+            return
+        if path == "/api/session/lambda.csv":
+            try:
+                with self.server.session_lock:
+                    self._export_lambda_csv()
+            except WebRuntimeError as exc:
+                self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            except Exception as exc:
+                self._send_error_json(HTTPStatus.INTERNAL_SERVER_ERROR, f"lambda CSV error: {exc}")
             return
         if path in {
             "/api/session/metrics",
@@ -935,6 +974,22 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             package.content,
             content_type="application/zip",
             filename=package.filename,
+        )
+
+    def _export_lambda_csv(self) -> None:
+        session = self._require_session()
+        snapshot = session.runner.current_snapshot
+        run_id = session.runner.current_run_id
+        if snapshot is None or not run_id:
+            raise WebRuntimeError("active session has no current snapshot for lambda CSV")
+        csv_text = build_lambda_experiment_csv(
+            output_dir=session.runner.output_root / run_id,
+            final_snapshot=snapshot,
+        )
+        self._send_binary(
+            csv_text.encode("utf-8-sig"),
+            content_type="text/csv; charset=utf-8",
+            filename="lambda_experiment.csv",
         )
 
     def _runtime_analysis(

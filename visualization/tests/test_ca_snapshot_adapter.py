@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from core.schema import Cell, CellType, Relation
+from core.schema import Cell, CellType, Exit, Relation
 from experiments.b_runtime_adapter import EvacEngineRuntimeAdapter
 from scenarios.mock_data import build_base_scene
 from simulation.evac_simulation import EvacEngine
@@ -194,6 +194,27 @@ class CaSnapshotAdapterTests(unittest.TestCase):
         self.assertEqual(4, snapshot["runtime_metrics"]["conflict_total"])
         self.assertIn("capabilities", snapshot)
         self.assertIn("experiment_config", snapshot)
+
+    def test_exit_universe_keeps_open_zero_use_exit_and_excludes_closed_exit(self) -> None:
+        self.simulation.config.exits = [
+            Exit(id="open_exit", x=4, y=4),
+            Exit(id="closed_exit", x=6, y=4),
+        ]
+        self.simulation._engine.c_runtime_state = {
+            "control_strategy": {"closed_exits": ["closed_exit"]}
+        }
+
+        snapshot = self.adapter.capture(self.simulation)
+
+        self.assertEqual({}, snapshot["metrics"]["exit_usage"])
+        self.assertEqual("available", snapshot["exit_universe"]["status"])
+        self.assertEqual("cell", snapshot["exit_universe"]["representation"])
+        self.assertEqual(["open_exit"], snapshot["exit_universe"]["valid_exit_ids"])
+        self.assertEqual(["closed_exit"], snapshot["exit_universe"]["closed_exit_ids"])
+        self.assertEqual(
+            {"open_exit": True, "closed_exit": False},
+            {item["exit_id"]: item["is_open"] for item in snapshot["exits"]},
+        )
 
     def test_missing_values_remain_null_and_public_evacuation_is_preserved(self) -> None:
         self.simulation.persons[1].evacuated = True

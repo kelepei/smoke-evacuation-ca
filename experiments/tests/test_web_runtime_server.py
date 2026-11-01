@@ -272,6 +272,84 @@ class WebRuntimeServerTests(unittest.TestCase):
                 server.server_close()
                 worker.join(timeout=5)
 
+    def test_lambda_zero_and_point_four_reach_b_snapshot_and_csv(self) -> None:
+        server = DWebRuntimeServer(("127.0.0.1", 0), RuntimeRequestHandler, root=Path.cwd())
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        base_url = f"http://127.0.0.1:{server.server_port}"
+
+        def post(route: str, body: dict[str, object]) -> dict[str, object]:
+            request = Request(
+                base_url + route,
+                data=json.dumps(body).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            with urlopen(request, timeout=15) as response:
+                return json.loads(response.read().decode("utf-8"))
+
+        try:
+            with tempfile.TemporaryDirectory() as raw:
+                map_path, population_path = self._write_inputs(Path(raw))
+                with urlopen(base_url + "/api/capabilities", timeout=15) as response:
+                    capabilities = json.loads(response.read().decode("utf-8"))
+                self.assertEqual("supported", capabilities["lambda_experiment"]["status"])
+                initial_positions = None
+                for lambda_value in (0.0, 0.4):
+                    initial = post(
+                        "/api/session",
+                        {
+                            "map_file": {"name": map_path.name, "text": map_path.read_text(encoding="utf-8")},
+                            "population_file": {"name": population_path.name, "text": population_path.read_text(encoding="utf-8")},
+                            "lambda_experiment": True,
+                            "panic_to_risk_gain": lambda_value,
+                            "random_seed": 42,
+                            "max_steps": 5,
+                            "time_step_s": 0.5,
+                            "physical_cell_size_m": 0.5,
+                        },
+                    )
+                    engine = server.session.runner.simulation._engine
+                    self.assertEqual(lambda_value, engine.movement.panic.panic_to_risk_gain)
+                    self.assertEqual(3.0, engine.movement.panic.risk_feedback_cap)
+                    self.assertEqual(0.5, engine.movement.exit_choice.exit_pressure_gain)
+                    positions = [(p["person_id"], p["x"], p["y"]) for p in initial["snapshot"]["people"]]
+                    if initial_positions is None:
+                        initial_positions = positions
+                    else:
+                        self.assertEqual(initial_positions, positions)
+                    stepped = post("/api/session/step", {})["snapshot"]
+                    self.assertEqual(lambda_value, stepped["experiment_config"]["lambda"])
+                    self.assertEqual("supported", stepped["capabilities"]["lambda_experiment"]["status"])
+                    self.assertIn("switch_counts", stepped["metrics"])
+                    self.assertEqual("available", stepped["exit_universe"]["status"])
+                    with urlopen(base_url + "/api/session/lambda.csv", timeout=15) as response:
+                        row = next(csv.DictReader(io.StringIO(response.read().decode("utf-8-sig"))))
+                    self.assertEqual(str(lambda_value), row["lambda"])
+                    self.assertEqual(str(stepped["metrics"]["switch_total"]), row["switch_total"])
+                normal = post(
+                    "/api/session",
+                    {
+                        "map_file": {"name": map_path.name, "text": map_path.read_text(encoding="utf-8")},
+                        "population_file": {"name": population_path.name, "text": population_path.read_text(encoding="utf-8")},
+                        "random_seed": 42,
+                        "max_steps": 5,
+                        "time_step_s": 0.5,
+                        "physical_cell_size_m": 0.5,
+                    },
+                )
+                normal_engine = server.session.runner.simulation._engine
+                self.assertIsNone(normal["snapshot"]["experiment_config"]["lambda"])
+                self.assertEqual(0.0, normal_engine.movement.panic.panic_to_risk_gain)
+                self.assertEqual(0.0, normal_engine.movement.exit_choice.exit_pressure_gain)
+        finally:
+            try:
+                post("/api/session/close", {})
+            finally:
+                server.shutdown()
+                server.close_session()
+                server.server_close()
+                worker.join(timeout=5)
+
     def test_map_preview_uses_a_grid_before_session_start(self) -> None:
         server = DWebRuntimeServer(("127.0.0.1", 0), RuntimeRequestHandler, root=Path.cwd())
         worker = threading.Thread(target=server.serve_forever, daemon=True)

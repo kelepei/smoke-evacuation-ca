@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
 from typing import Any, Mapping
 
 from map_import.spawn_area import generate_spawn_mask
@@ -34,7 +33,13 @@ def prepare_spawn_area_map(map_data: Mapping[str, Any]) -> tuple[dict[str, Any],
     if not isinstance(cells, list):
         raise ValueError("map_data.cells must be a list")
 
-    prepared = deepcopy(dict(map_data))
+    # Only top-level cell dictionaries receive ``spawn_area`` below.  A full
+    # deepcopy recursively walked the entire 480x270 JSON object (including
+    # immutable scalar values) and dominated large-map population generation.
+    # Copy the container and each cell mapping instead, preserving the source
+    # map while keeping every nested, read-only metadata object unchanged.
+    prepared = dict(map_data)
+    prepared["cells"] = [dict(cell) if isinstance(cell, Mapping) else cell for cell in cells]
     if _has_explicit_spawn_area(prepared):
         return prepared, {"source": "explicit_map_spawn_area", "generated": False}
 

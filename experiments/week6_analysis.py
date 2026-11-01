@@ -96,6 +96,7 @@ def analyze_run(
     run_dir: str | Path,
     *,
     valid_exit_ids: Iterable[str] | None = None,
+    snapshot_metrics: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Analyze D's ``people_log.csv`` and optional event/config files."""
 
@@ -162,7 +163,20 @@ def analyze_run(
     final_evacuated = sum(1 for row in final_rows if _bool(row.get("evacuated")) is True)
     evacuation_times = list(evacuated_by_person.values())
     total_time = max((_float(row.get("time_s")) or 0.0 for row in final_rows), default=0.0)
-    exit_distribution = Counter(latest_exit_by_person.values())
+    runtime_metrics = snapshot_metrics if isinstance(snapshot_metrics, Mapping) else {}
+    raw_metric_usage = runtime_metrics.get("exit_usage")
+    metric_usage = (
+        {
+            str(exit_id): int(count)
+            for exit_id, count in raw_metric_usage.items()
+            if exit_id not in (None, "") and _int(count) is not None
+        }
+        if isinstance(raw_metric_usage, Mapping)
+        else None
+    )
+    exit_distribution = Counter(
+        metric_usage if metric_usage is not None else latest_exit_by_person.values()
+    )
     declared_exits = tuple(dict.fromkeys(str(item) for item in (valid_exit_ids or ()) if str(item)))
     exit_usage = (
         {exit_id: int(exit_distribution.get(exit_id, 0)) for exit_id in declared_exits}
@@ -175,9 +189,25 @@ def analyze_run(
         else (NA, NA)
     )
     final_runtime_row = final_rows[0] if final_rows else {}
-    switch_total = _int(final_runtime_row.get("movement_switch_total"))
-    conflict_total = _int(final_runtime_row.get("movement_conflict_total"))
-    conflict_lost_total = _int(final_runtime_row.get("movement_conflict_lost_total"))
+    switch_total = _int(runtime_metrics.get("switch_total"))
+    if switch_total is None:
+        switch_total = _int(final_runtime_row.get("movement_switch_total"))
+    raw_switch_counts = runtime_metrics.get("switch_counts")
+    switch_counts = (
+        {
+            str(person_id): int(count)
+            for person_id, count in raw_switch_counts.items()
+            if _int(count) is not None
+        }
+        if isinstance(raw_switch_counts, Mapping)
+        else None
+    )
+    conflict_total = _int(runtime_metrics.get("conflict_total"))
+    if conflict_total is None:
+        conflict_total = _int(final_runtime_row.get("movement_conflict_total"))
+    conflict_lost_total = _int(runtime_metrics.get("conflict_lost_total"))
+    if conflict_lost_total is None:
+        conflict_lost_total = _int(final_runtime_row.get("movement_conflict_lost_total"))
     active_positions = Counter(
         (x, y)
         for row in final_rows
@@ -242,8 +272,12 @@ def analyze_run(
             if switch_total is not None and population > 0
             else NA
         ),
-        "switch_counts": NA,
-        "switch_counts_note": "NA: B does not publish per-person exit switch counts",
+        "switch_counts": switch_counts if switch_counts is not None else NA,
+        "switch_counts_note": (
+            "B snapshot.metrics switch_counts"
+            if switch_counts is not None
+            else "NA: snapshot.metrics did not publish per-person exit switch counts"
+        ),
         "conflict_total": conflict_total if conflict_total is not None else NA,
         "conflict_lost_total": conflict_lost_total if conflict_lost_total is not None else NA,
         "exit_usage": exit_usage,

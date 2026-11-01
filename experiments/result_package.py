@@ -384,13 +384,27 @@ def build_runtime_analysis(
         height=height,
     )
     exit_entities = final_snapshot.get("exit_entities", []) if isinstance(final_snapshot, Mapping) else []
-    entity_level = isinstance(exit_entities, list) and len(exit_entities) > 0
-    valid_exit_ids = [
-        str(item.get("exit_entity_id"))
-        for item in exit_entities
-        if isinstance(item, Mapping) and item.get("exit_entity_id") not in (None, "")
-    ] if entity_level else []
-    week6_metrics = analyze_run(base, valid_exit_ids=valid_exit_ids or None)
+    exit_universe = final_snapshot.get("exit_universe", {}) if isinstance(final_snapshot, Mapping) else {}
+    universe_available = (
+        isinstance(exit_universe, Mapping)
+        and exit_universe.get("status") == "available"
+        and isinstance(exit_universe.get("valid_exit_ids"), list)
+    )
+    valid_exit_ids = (
+        [str(exit_id) for exit_id in exit_universe["valid_exit_ids"] if exit_id not in (None, "")]
+        if universe_available
+        else []
+    )
+    representation = exit_universe.get("representation") if universe_available else None
+    entity_level = representation == "entity" or (
+        representation is None and isinstance(exit_entities, list) and len(exit_entities) > 0
+    )
+    snapshot_metrics = final_snapshot.get("metrics") if isinstance(final_snapshot, Mapping) else None
+    week6_metrics = analyze_run(
+        base,
+        valid_exit_ids=valid_exit_ids if universe_available else None,
+        snapshot_metrics=snapshot_metrics if isinstance(snapshot_metrics, Mapping) else None,
+    )
     summary = {
         "initial_population": week6_metrics["total_persons"],
         "evacuated_count": week6_metrics["evacuated_count"],
@@ -414,6 +428,7 @@ def build_runtime_analysis(
         "exit_utilization_contract": {
             "representation": "entity" if entity_level else "legacy_cell",
             "source": "actual_exit_entity" if entity_level else "actual_exit",
+            "valid_exit_universe": "verified" if universe_available else "unavailable",
         },
     }
     if include_academic:
