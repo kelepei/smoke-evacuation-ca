@@ -209,24 +209,6 @@ class EvacEngine:
         return sum(1 for p in self.person_map.values() if getattr(p, "is_dead", False))
 
     # ------------------------------------------------------------------ 主循环
-    def _apply_panic_risk_feedback(self, risk_map: dict) -> dict:
-        """恐慌 → 风险感知反馈：R' = R · (1 + λ·P)。
-
-        λ = movement.panic.panic_to_risk_gain，默认 0 时原样返回（旧结果不变）。
-        只对 P>0 的人生效，结果按 risk_feedback_cap 截断。
-        """
-        cfg = getattr(getattr(self, "movement", None), "panic", None)
-        lam = float(getattr(cfg, "panic_to_risk_gain", 0.0) or 0.0) if cfg is not None else 0.0
-        if lam <= 0.0:
-            return risk_map
-        cap = float(getattr(cfg, "risk_feedback_cap", 3.0) or 3.0)
-        out: dict = {}
-        for pid, value in risk_map.items():
-            person = self.person_map.get(pid) if getattr(self, "person_map", None) else None
-            panic = float(getattr(person, "panic", 0.0) or 0.0) if person is not None else 0.0
-            out[pid] = min(cap, max(0.0, float(value) * (1.0 + lam * panic)))
-        return out
-
     def run_one_step(self, c_step_data: dict = None, signage_model=None):
         if c_step_data is None:
             c_step_data = {}
@@ -283,12 +265,6 @@ class EvacEngine:
             smoke_mat,
             time_step_s=self.time_step_s
         )
-        risk_dict = self._apply_panic_risk_feedback(risk_dict)
-        # 把风险写回 person，供快照/可视化/分析读取（此前只在内部字典里传递）
-        for _pid, _risk_value in risk_dict.items():
-            _person = self.person_map.get(_pid)
-            if _person is not None:
-                _person.risk = float(_risk_value)
 
         # 3. 更新烟雾累积剂量
         self.dose_recorder.update_all_dose(list(self.person_map.values()), smoke_mat)
@@ -408,8 +384,6 @@ class EvacEngine:
         ca_weights = dict(self.scene.parameters.get("ca_weights", {}) or {})
         ca_weights.setdefault("w_lateral", self.movement.danger.lateral_bonus)
         ca_weights.setdefault("smoke_avoid_threshold", self.movement.smoke_avoid_threshold)
-        ca_weights.setdefault("w_s", self.movement.smoke_penalty_weight)
-        ca_weights.setdefault("w_dS", self.movement.smoke_delta_weight)
         for person in alive:
             pid = int(person.id)
             single_behavior = c_step_data.get(pid, {}) or {}
