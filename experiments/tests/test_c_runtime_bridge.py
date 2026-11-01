@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import unittest
 
+import numpy as np
+
 from core.schema import CellType, Exit
 from experiments.b_runtime_adapter import EvacEngineRuntimeAdapter
 from experiments.c_runtime_bridge import CWebRuntimeBridge
@@ -91,6 +93,29 @@ class CWebRuntimeBridgeTests(unittest.TestCase):
         self.assertEqual("near", behavior[1]["target_exit"])
         self.assertEqual("near", behavior[2]["target_exit"])
         self.assertGreater(behavior[1]["guide_influence"], 0.0)
+
+    def test_fire_room_neighborhood_is_informed_immediately(self) -> None:
+        engine, bridge, _runtime = self._runtime(ratio=0.0)
+        person = engine.person_map[1]
+        self.assertLessEqual(((person.x - 3) ** 2 + (person.y - 3) ** 2) ** 0.5, 3.0)
+        self.assertNotEqual("UNKNOWN", bridge.info_state.get_state_value(person.id))
+
+    def test_smoke_within_three_cells_triggers_local_perception(self) -> None:
+        engine, bridge, _runtime = self._runtime(ratio=0.0)
+        # Person 3 is outside the immediate fire-room radius in the fixture.
+        person = engine.person_map[3]
+        smoke = np.zeros((engine.grid.height, engine.grid.width), dtype=np.float32)
+        smoke[person.y, person.x + 3] = 0.5
+        bridge.smoke_exposure_threshold = 0.01
+        bridge.info_diffusion.smoke_confirmation_threshold = 0.01
+
+        bridge.info_diffusion.smoke_confirmation_radius = 2
+        bridge.info_diffusion.apply_smoke_exposure([person], smoke, 1)
+        self.assertEqual("UNKNOWN", bridge.info_state.get_state_value(person.id))
+
+        bridge.info_diffusion.smoke_confirmation_radius = 3
+        bridge.info_diffusion.apply_smoke_exposure([person], smoke, 2)
+        self.assertNotEqual("UNKNOWN", bridge.info_state.get_state_value(person.id))
 
     def test_broadcast_toggle_updates_runtime_state(self) -> None:
         scene = build_base_scene()
