@@ -100,6 +100,7 @@ class ResultPackageTests(unittest.TestCase):
                         "run_01/people_log.csv", "run_01/event_log.csv", "run_01/metrics.csv",
                         "run_01/evacuation_curve.svg", "run_01/occupancy_heatmap.svg",
                         "run_01/week6_metrics.json", "run_01/week6_metrics_summary.csv",
+                        "run_01/lambda_experiment.csv",
                         "run_01/trajectory_kinematics.csv",
                         "run_01/velocity_vector_field.json", "run_01/velocity_vector_field.csv",
                         "run_01/congestion_level_field.json", "run_01/congestion_level_field.csv",
@@ -111,6 +112,13 @@ class ResultPackageTests(unittest.TestCase):
                 )
                 metadata = json.loads(archive.read("run_01/metadata.json"))
                 configuration = json.loads(archive.read("run_01/config.json"))
+                lambda_rows = list(
+                    csv.DictReader(
+                        io.StringIO(
+                            archive.read("run_01/lambda_experiment.csv").decode("utf-8")
+                        )
+                    )
+                )
                 people_log = archive.read("run_01/people_log.csv").decode("utf-8")
                 heatmap_svg = archive.read("run_01/occupancy_heatmap.svg").decode("utf-8")
                 self.assertIn("累计占用热力图", heatmap_svg)
@@ -121,6 +129,8 @@ class ResultPackageTests(unittest.TestCase):
                 self.assertIn("exit_entity_01", people_log)
                 self.assertEqual("unavailable", metadata["analysis_contract"]["physical_scale"]["source"])
                 self.assertEqual("unavailable", metadata["person_id_mapping"]["status"])
+                self.assertEqual("NA", lambda_rows[0]["lambda"])
+                self.assertEqual("not_requested", lambda_rows[0]["status"])
                 self.assertIn("speed_m_s", archive.read("run_01/trajectory_kinematics.csv").decode("utf-8"))
         self.assertEqual(metadata["summary"]["evacuated_count"], 1)
         self.assertEqual(metadata["summary"]["last_successful_exit_time"], 0.5)

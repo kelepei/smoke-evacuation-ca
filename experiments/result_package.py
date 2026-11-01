@@ -363,6 +363,7 @@ def build_runtime_analysis(
     final_snapshot: Mapping[str, Any] | None = None,
     include_figures: bool = False,
     include_layers: bool = False,
+    include_academic: bool = True,
 ) -> dict[str, Any]:
     """Read one completed D log stream into metrics and optional SVG figures.
 
@@ -382,9 +383,14 @@ def build_runtime_analysis(
         width=width,
         height=height,
     )
-    week6_metrics = analyze_run(base)
     exit_entities = final_snapshot.get("exit_entities", []) if isinstance(final_snapshot, Mapping) else []
     entity_level = isinstance(exit_entities, list) and len(exit_entities) > 0
+    valid_exit_ids = [
+        str(item.get("exit_entity_id"))
+        for item in exit_entities
+        if isinstance(item, Mapping) and item.get("exit_entity_id") not in (None, "")
+    ] if entity_level else []
+    week6_metrics = analyze_run(base, valid_exit_ids=valid_exit_ids or None)
     summary = {
         "initial_population": week6_metrics["total_persons"],
         "evacuated_count": week6_metrics["evacuated_count"],
@@ -403,7 +409,6 @@ def build_runtime_analysis(
         "metrics": metric_rows(week6_metrics),
         "summary": summary,
         "week6_metrics": week6_metrics,
-        "academic_crowd_fields": academic_crowd_fields(people_rows, grid=snapshot_grid, analysis_contract=analysis_contract),
         # A live run decides this once from its normalized topology, rather
         # than switching display representation as partial snapshots arrive.
         "exit_utilization_contract": {
@@ -411,6 +416,12 @@ def build_runtime_analysis(
             "source": "actual_exit_entity" if entity_level else "actual_exit",
         },
     }
+    if include_academic:
+        result["academic_crowd_fields"] = academic_crowd_fields(
+            people_rows,
+            grid=snapshot_grid,
+            analysis_contract=analysis_contract,
+        )
     if include_figures:
         result["evacuation_curve_svg"] = _curve_svg(
             visual["curve"], summary["initial_population"]
@@ -424,6 +435,70 @@ def build_runtime_analysis(
             "source": "people_log.csv",
         }
     return result
+
+
+def _lambda_experiment_record(
+    metrics: Mapping[str, Any], final_snapshot: Mapping[str, Any]
+) -> dict[str, Any]:
+    experiment_config = final_snapshot.get("experiment_config")
+    if not isinstance(experiment_config, Mapping):
+        experiment_config = {}
+    capabilities = final_snapshot.get("capabilities")
+    lambda_capability = (
+        capabilities.get("lambda_experiment")
+        if isinstance(capabilities, Mapping)
+        else None
+    )
+    if not isinstance(lambda_capability, Mapping):
+        lambda_capability = {}
+    physical_scale = final_snapshot.get("analysis_contract", {}).get("physical_scale", {})
+    physical_value = physical_scale.get("value") if isinstance(physical_scale, Mapping) else None
+    lambda_value = experiment_config.get("lambda")
+    return {
+        "lambda": lambda_value if lambda_value is not None else "NA",
+        "seed": final_snapshot.get("random_seed", "NA"),
+        "N": metrics.get("total_persons", "NA"),
+        "switch_total": metrics.get("switch_total", "NA"),
+        "switch_per_person": metrics.get("switch_per_person", "NA"),
+        "conflict_total": metrics.get("conflict_total", "NA"),
+        "conflict_lost_total": metrics.get("conflict_lost_total", "NA"),
+        "H": metrics.get("exit_entropy_h", "NA"),
+        "G": metrics.get("exit_gini_g", "NA"),
+        "T_all": metrics.get("total_evacuation_time_s", "NA"),
+        "T90": metrics.get("t90_time_s", "NA"),
+        "panic_peak": metrics.get("panic_peak", "NA"),
+        "urgent_peak": metrics.get("urgent_peak", "NA"),
+        "q95_dose": metrics.get("q95_dose", "NA"),
+        "status": "enabled" if lambda_value is not None else "not_requested",
+        "capability": lambda_capability.get("status", "unavailable"),
+        "capability_reason": lambda_capability.get("reason", "capability was not published"),
+        "dt_s": final_snapshot.get("time_step", "NA"),
+        "physical_cell_size_m": physical_value if physical_value is not None else "NA",
+    }
+
+
+def _lambda_experiment_csv_text(record: Mapping[str, Any]) -> str:
+    stream = io.StringIO(newline="")
+    writer = csv.DictWriter(stream, fieldnames=list(record))
+    writer.writeheader()
+    writer.writerow(record)
+    return stream.getvalue()
+
+
+def build_lambda_experiment_csv(
+    *, output_dir: str | Path, final_snapshot: Mapping[str, Any]
+) -> str:
+    """Build the one-run lambda CSV from the same log-backed analysis as ZIP."""
+
+    analysis = build_runtime_analysis(
+        output_dir=output_dir,
+        final_snapshot=final_snapshot,
+        include_figures=False,
+        include_layers=False,
+        include_academic=False,
+    )
+    record = _lambda_experiment_record(analysis["week6_metrics"], final_snapshot)
+    return _lambda_experiment_csv_text(record)
 
 
 def build_result_package(
@@ -447,9 +522,11 @@ def build_result_package(
         output_dir=base,
         final_snapshot=final_snapshot,
         include_figures=True,
+        include_academic=False,
     )
     metrics = analysis["metrics"]
     summary = analysis["summary"]
+    lambda_record = _lambda_experiment_record(analysis["week6_metrics"], final_snapshot)
     analysis_contract = final_snapshot.get("analysis_contract")
     if not isinstance(analysis_contract, Mapping):
         analysis_contract = {}
@@ -487,6 +564,7 @@ def build_result_package(
             "strategy_controls": "not connected to B movement decisions in this package",
         },
         "summary": summary,
+        "lambda_experiment": lambda_record,
     }
     configuration = {
         "run_id": run_id,
@@ -496,6 +574,7 @@ def build_result_package(
         "analysis_contract": analysis_contract,
         "max_steps": max_steps,
         "input_files": {key: path.name for key, path in input_files.items() if path.is_file()},
+        "lambda_experiment": lambda_record,
     }
 
     archive = io.BytesIO()
@@ -508,6 +587,7 @@ def build_result_package(
         bundle.writestr(prefix + "occupancy_heatmap.svg", analysis["occupancy_heatmap_svg"])
         bundle.writestr(prefix + "week6_metrics.json", json.dumps(analysis["week6_metrics"], ensure_ascii=False, indent=2))
         bundle.writestr(prefix + "week6_metrics_summary.csv", analysis_summary_csv(analysis["week6_metrics"]))
+        bundle.writestr(prefix + "lambda_experiment.csv", _lambda_experiment_csv_text(lambda_record))
         bundle.writestr(prefix + "trajectory_kinematics.csv", _trajectory_csv_text(kinematics))
         bundle.writestr(prefix + "velocity_vector_field.json", json.dumps(velocity_field, ensure_ascii=False, indent=2))
         bundle.writestr(prefix + "velocity_vector_field.csv", _velocity_field_csv_text(velocity_field["records"]))

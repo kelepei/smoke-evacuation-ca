@@ -38,7 +38,17 @@ from experiments.scene_config_pipeline import (
 )
 from experiments.experiment_history import ExperimentHistoryError, discover_experiments, load_experiment_detail
 from experiments.integrated_runner import create_integrated_runner
-from experiments.result_package import ResultPackageError, build_result_package, build_runtime_analysis
+from experiments.lambda_experiment import (
+    LambdaExperimentError,
+    lambda_capability,
+    lambda_request_config,
+)
+from experiments.result_package import (
+    ResultPackageError,
+    build_lambda_experiment_csv,
+    build_result_package,
+    build_runtime_analysis,
+)
 from experiments.run_artifacts import write_run_artifacts
 from visualization.scene_input_adapter import grid_to_static_snapshot, load_map_grid
 
@@ -140,6 +150,12 @@ def _control_runtime_config(payload: Mapping[str, Any]) -> dict[str, Any]:
             pass
     if "route_shift_ratio" in payload:
         config["route_shift_ratio"] = float(payload.get("route_shift_ratio") or 0.2)
+    try:
+        movement = lambda_request_config(payload)
+    except LambdaExperimentError as exc:
+        raise WebRuntimeError(str(exc)) from exc
+    if movement is not None:
+        config["movement"] = movement
     return config
 
 
@@ -244,6 +260,17 @@ def _optional_physical_cell_size(value: Any) -> float | None:
     return normalized
 
 
+def _platform_physical_cell_size(value: Any) -> float:
+    """Enforce the platform-wide 0.5 m/cell research assumption."""
+
+    normalized = _optional_physical_cell_size(value)
+    if normalized is None:
+        return 0.5
+    if not math.isclose(normalized, 0.5, rel_tol=0.0, abs_tol=1e-12):
+        raise WebRuntimeError("physical_cell_size_m is fixed at 0.5 for this platform")
+    return 0.5
+
+
 def _optional_positive_analysis_value(value: Any, field: str) -> float | None:
     if value in (None, ""):
         return None
@@ -286,6 +313,9 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         if path == "/api/health":
             self._send_json({"ok": True, "service": "d_web_runtime", "version": "0.1"})
             return
+        if path == "/api/capabilities":
+            self._send_json({"ok": True, "lambda_experiment": lambda_capability()})
+            return
         if path == "/api/experiments":
             self._send_json({"ok": True, "experiments": discover_experiments(self._history_roots())})
             return
@@ -305,6 +335,28 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             except Exception as exc:
                 self._send_error_json(HTTPStatus.INTERNAL_SERVER_ERROR, f"export error: {exc}")
             return
+        if path == "/api/session/lambda.csv":
+            try:
+                with self.server.session_lock:
+                    session = self._require_session()
+                    snapshot = session.runner.current_snapshot
+                    run_id = session.runner.current_run_id
+                    if snapshot is None or not run_id:
+                        raise WebRuntimeError("active session has no current snapshot")
+                    content = build_lambda_experiment_csv(
+                        output_dir=session.runner.output_root / run_id,
+                        final_snapshot=snapshot,
+                    ).encode("utf-8-sig")
+                    self._send_binary(
+                        content,
+                        content_type="text/csv; charset=utf-8",
+                        filename=f"{run_id}_lambda_experiment.csv",
+                    )
+            except WebRuntimeError as exc:
+                self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            except Exception as exc:
+                self._send_error_json(HTTPStatus.INTERNAL_SERVER_ERROR, f"lambda CSV error: {exc}")
+            return
         if path in {
             "/api/session/metrics",
             "/api/session/analysis",
@@ -317,6 +369,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                             include_figures=path.endswith("/analysis"),
                             include_layers=path.endswith("/analysis")
                             or path.endswith("/layers"),
+                            include_academic=path.endswith("/analysis"),
                         )
                     )
             except WebRuntimeError as exc:
@@ -401,7 +454,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 max_steps=_positive_steps(payload.get("max_steps")),
                 random_seed=_optional_seed(payload.get("random_seed")),
                 time_step_s=_positive_time_step(payload.get("time_step_s")),
-                physical_cell_size_m=_optional_physical_cell_size(payload.get("physical_cell_size_m")),
+                physical_cell_size_m=_platform_physical_cell_size(payload.get("physical_cell_size_m")),
                 sampling_window_s=_optional_positive_analysis_value(payload.get("sampling_window_s"), "sampling_window_s"),
                 analysis_mesh_size_m=_optional_positive_analysis_value(payload.get("analysis_mesh_size_m"), "analysis_mesh_size_m"),
                 roi_radius_m=_optional_positive_analysis_value(payload.get("roi_radius_m"), "roi_radius_m"),
@@ -446,7 +499,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 max_steps=_positive_steps(payload.get("max_steps")),
                 random_seed=canonical["random_seed"],
                 time_step_s=_positive_time_step(payload.get("time_step_s")),
-                physical_cell_size_m=_optional_physical_cell_size(payload.get("physical_cell_size_m")),
+                physical_cell_size_m=_platform_physical_cell_size(payload.get("physical_cell_size_m")),
                 sampling_window_s=_optional_positive_analysis_value(payload.get("sampling_window_s"), "sampling_window_s"),
                 analysis_mesh_size_m=_optional_positive_analysis_value(payload.get("analysis_mesh_size_m"), "analysis_mesh_size_m"),
                 roi_radius_m=_optional_positive_analysis_value(payload.get("roi_radius_m"), "roi_radius_m"),
@@ -503,7 +556,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 max_steps=_positive_steps(payload.get("max_steps")),
                 random_seed=random_seed,
                 time_step_s=_positive_time_step(payload.get("time_step_s")),
-                physical_cell_size_m=_optional_physical_cell_size(payload.get("physical_cell_size_m")),
+                physical_cell_size_m=_platform_physical_cell_size(payload.get("physical_cell_size_m")),
                 sampling_window_s=_optional_positive_analysis_value(payload.get("sampling_window_s"), "sampling_window_s"),
                 analysis_mesh_size_m=_optional_positive_analysis_value(payload.get("analysis_mesh_size_m"), "analysis_mesh_size_m"),
                 roi_radius_m=_optional_positive_analysis_value(payload.get("roi_radius_m"), "roi_radius_m"),
@@ -620,7 +673,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 max_steps=_positive_steps(payload.get("max_steps")),
                 random_seed=_optional_seed(payload.get("random_seed")),
                 time_step_s=_positive_time_step(payload.get("time_step_s")),
-                physical_cell_size_m=_optional_physical_cell_size(payload.get("physical_cell_size_m")),
+                physical_cell_size_m=_platform_physical_cell_size(payload.get("physical_cell_size_m")),
                 sampling_window_s=_optional_positive_analysis_value(payload.get("sampling_window_s"), "sampling_window_s"),
                 analysis_mesh_size_m=_optional_positive_analysis_value(payload.get("analysis_mesh_size_m"), "analysis_mesh_size_m"),
                 roi_radius_m=_optional_positive_analysis_value(payload.get("roi_radius_m"), "roi_radius_m"),
@@ -653,7 +706,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                     max_steps=_positive_steps(payload.get("max_steps")),
                     random_seed=_optional_seed(payload.get("random_seed")),
                     time_step_s=_positive_time_step(payload.get("time_step_s")),
-                    physical_cell_size_m=_optional_physical_cell_size(payload.get("physical_cell_size_m")),
+                    physical_cell_size_m=_platform_physical_cell_size(payload.get("physical_cell_size_m")),
                     sampling_window_s=_optional_positive_analysis_value(payload.get("sampling_window_s"), "sampling_window_s"),
                     analysis_mesh_size_m=_optional_positive_analysis_value(payload.get("analysis_mesh_size_m"), "analysis_mesh_size_m"),
                     roi_radius_m=_optional_positive_analysis_value(payload.get("roi_radius_m"), "roi_radius_m"),
@@ -736,7 +789,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 "max_steps": max_steps,
                 **({
                     "physical_cell_size_m": physical_cell_size_m,
-                    "physical_scale_kind": "assumption_demo",
+                    "physical_scale_kind": "platform_fixed_assumption",
                 } if physical_cell_size_m is not None else {}),
             },
         }
@@ -752,18 +805,10 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         snapshot = session.runner.step()
         runtime_step_ms = (perf_counter() - request_started) * 1000.0
         artifact_write_ms = 0.0
-        # The CSV logger already persists every step.  Rebuilding every
-        # derived artifact here rereads the whole log and makes one click cost
-        # O(steps-so-far); defer it to completion or the explicit analysis API.
-        if session.runner.finished:
-            artifacts_started = perf_counter()
-            self._write_run_metadata(
-                session.runner,
-                snapshot,
-                session.input_files,
-                save_frame=True,
-            )
-            artifact_write_ms = (perf_counter() - artifacts_started) * 1000.0
+        # The CSV logger has already persisted the completed step.  Derived
+        # fields and the large PNG are intentionally left to the explicit
+        # analysis/export routes: generating them synchronously here made the
+        # final Web step block for tens of seconds on a 480 x 270 map.
         # 增量返回：grid / relations 是静态数据，初始化时已经下发过，
         # 每步不再重复发送（可减少约 57% 的响应体积，明显改善动画流畅度）。
         slim_snapshot = dict(snapshot)
@@ -846,9 +891,6 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         run_id = session.runner.current_run_id
         if snapshot is None or not run_id:
             raise WebRuntimeError("active session has no current snapshot to export")
-        self._write_run_metadata(
-            session.runner, snapshot, session.input_files, save_frame=True
-        )
         try:
             package = build_result_package(
                 output_dir=session.runner.output_root / run_id,
@@ -865,7 +907,11 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         )
 
     def _runtime_analysis(
-        self, *, include_figures: bool, include_layers: bool
+        self,
+        *,
+        include_figures: bool,
+        include_layers: bool,
+        include_academic: bool,
     ) -> dict[str, Any]:
         """Return only CSV-derived analysis for the active D run."""
 
@@ -881,6 +927,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 final_snapshot=snapshot,
                 include_figures=include_figures,
                 include_layers=include_layers,
+                include_academic=include_academic,
             )
         except ResultPackageError as exc:
             raise WebRuntimeError(str(exc)) from exc
