@@ -150,12 +150,21 @@ def _control_runtime_config(payload: Mapping[str, Any]) -> dict[str, Any]:
             pass
     if "route_shift_ratio" in payload:
         config["route_shift_ratio"] = float(payload.get("route_shift_ratio") or 0.2)
+    raw_movement = payload.get("movement")
+    movement = dict(raw_movement) if isinstance(raw_movement, Mapping) else None
     try:
-        movement = lambda_request_config(payload)
+        lambda_movement = lambda_request_config(payload)
     except LambdaExperimentError as exc:
         raise WebRuntimeError(str(exc)) from exc
+    if lambda_movement is not None:
+        movement = movement or {}
+        for section, settings in lambda_movement.items():
+            existing = movement.get(section)
+            merged = dict(existing) if isinstance(existing, Mapping) else {}
+            merged.update(settings)
+            movement[section] = merged
     if movement is not None:
-        config["movement"] = movement
+        config["movement"] = dict(movement)
     return config
 
 

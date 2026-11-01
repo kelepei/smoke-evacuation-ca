@@ -13,17 +13,33 @@ from experiments.week6_analysis import _exit_balance, _q95
 
 
 class LambdaExperimentContractTests(unittest.TestCase):
-    def test_current_b_runtime_is_explicitly_unavailable(self) -> None:
+    def test_current_b_runtime_waits_for_explicit_implementation_marker(self) -> None:
         capability = lambda_capability()
         self.assertFalse(capability["supported"])
         self.assertEqual("unavailable", capability["status"])
         self.assertFalse(capability["implementation_verified"])
-        self.assertIn("panic_to_risk_gain", capability["missing_fields"])
-        self.assertIn("risk_feedback_cap", capability["missing_fields"])
+        self.assertNotIn("panic_to_risk_gain", capability["missing_fields"])
+        self.assertNotIn("risk_feedback_cap", capability["missing_fields"])
         self.assertIn(
             "B implementation marker PANIC_RISK_FEEDBACK_IMPLEMENTED",
             capability["missing_fields"],
         )
+
+    def test_normal_movement_override_is_preserved_without_lambda_mode(self) -> None:
+        config = _control_runtime_config(
+            {
+                "movement": {
+                    "panic": {
+                        "threshold": 0.33,
+                        "panic_to_risk_gain": 0.4,
+                    },
+                    "exit_choice": {"exit_pressure_gain": 0.7},
+                }
+            }
+        )
+        self.assertEqual(0.33, config["movement"]["panic"]["threshold"])
+        self.assertEqual(0.4, config["movement"]["panic"]["panic_to_risk_gain"])
+        self.assertEqual(0.7, config["movement"]["exit_choice"]["exit_pressure_gain"])
 
     def test_contract_builds_documented_mapping_without_applying_formula(self) -> None:
         settings = lambda_movement_settings(0.4, require_supported=False)

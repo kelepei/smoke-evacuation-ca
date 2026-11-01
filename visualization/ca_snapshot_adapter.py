@@ -258,6 +258,39 @@ class CaSnapshotAdapter:
         # rebuilding 100k+ static cell types on every D snapshot.
         self._static_grid: dict[str, Any] | None = None
 
+    def _movement_metrics(self, simulation: Any, people: list[dict[str, Any]]) -> dict[str, Any]:
+        """D 侧行为指标：换出口 / 冲突 / 出口使用。
+
+        群体级：switch_total、conflict_total、conflict_lost_total、exit_usage
+        个体级：switch_counts（pid -> 次数）
+        """
+        chooser = getattr(simulation, "exit_chooser", None)
+        stats = dict(getattr(simulation, "movement_stats", {}) or {})
+        switch_total = int(
+            getattr(chooser, "switch_total", stats.get("switch_total", 0)) or 0
+        )
+        switch_counts = {
+            str(pid): int(count)
+            for pid, count in (getattr(chooser, "switch_counts", {}) or {}).items()
+        }
+        usage: dict[str, int] = {}
+        for person in people:
+            if not person.get("evacuated"):
+                continue
+            exit_id = person.get("actual_exit") or person.get("actual_exit_cell")
+            if exit_id:
+                usage[str(exit_id)] = usage.get(str(exit_id), 0) + 1
+        n = max(1, len(people))
+        return {
+            "switch_total": switch_total,
+            "switch_per_person": switch_total / n,
+            "switch_counts": switch_counts,
+            "conflict_total": int(stats.get("conflict_total", 0) or 0),
+            "conflict_lost_total": int(stats.get("conflict_lost_total", 0) or 0),
+            "movement_stats": stats,
+            "exit_usage": usage,
+        }
+
     def capture(self, simulation: Any) -> dict[str, Any]:
         """Capture one immutable-by-convention D snapshot.
 
@@ -612,6 +645,7 @@ class CaSnapshotAdapter:
                 "risk_field": risk_field,
                 "congestion_field": congestion_field,
             },
+            "metrics": self._movement_metrics(simulation, people),
             "relations": relations,
             "events": [],
             "strategy_state": {},

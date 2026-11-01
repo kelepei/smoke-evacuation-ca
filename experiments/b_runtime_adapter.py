@@ -275,6 +275,12 @@ class EvacEngineRuntimeAdapter:
         return dict(value) if isinstance(value, Mapping) else {}
 
     @property
+    def exit_chooser(self) -> Any:
+        """Expose B's chooser so snapshots retain its real per-person counters."""
+
+        return getattr(self._engine, "exit_chooser", None)
+
+    @property
     def exit_entities(self) -> list[dict[str, Any]]:
         """D-only physical-exit metadata; B still uses individual exit cells."""
 
