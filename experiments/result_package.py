@@ -270,6 +270,8 @@ def _heatmap_svg(occupancy: list[list[int]]) -> str:
     cells: list[str] = []
     for y, row in enumerate(occupancy):
         for x, value in enumerate(row):
+            if value <= 0:
+                continue
             # This affects only SVG colour; ``occupancy`` remains raw counts.
             cells.append(
                 f'<rect x="{margin + x * cell}" y="{title_h + y * cell}" width="{cell}" height="{cell}" fill="{_occupancy_display_color(value)}" stroke="#e5e7eb" stroke-width="0.4"/>'
@@ -378,10 +380,14 @@ def build_runtime_analysis(
     if not isinstance(analysis_contract, Mapping): analysis_contract = {}
     if not isinstance(snapshot_grid, Mapping): snapshot_grid = {}
     width, height = _snapshot_grid_dimensions(final_snapshot)
-    visual = _log_visual_data(
-        people_rows,
-        width=width,
-        height=height,
+    visual = (
+        _log_visual_data(
+            people_rows,
+            width=width,
+            height=height,
+        )
+        if include_figures or include_layers
+        else None
     )
     exit_entities = final_snapshot.get("exit_entities", []) if isinstance(final_snapshot, Mapping) else []
     exit_universe = final_snapshot.get("exit_universe", {}) if isinstance(final_snapshot, Mapping) else {}
@@ -438,11 +444,13 @@ def build_runtime_analysis(
             analysis_contract=analysis_contract,
         )
     if include_figures:
+        assert visual is not None
         result["evacuation_curve_svg"] = _curve_svg(
             visual["curve"], summary["initial_population"]
         )
         result["occupancy_heatmap_svg"] = _heatmap_svg(visual["occupancy"])
     if include_layers:
+        assert visual is not None
         result["layers"] = {
             "grid": visual["grid"],
             "cumulative_occupancy": visual["occupancy"],
@@ -522,6 +530,7 @@ def build_result_package(
     final_snapshot: Mapping[str, Any],
     input_files: Mapping[str, Path],
     max_steps: int,
+    precomputed_academic: Mapping[str, Any] | None = None,
 ) -> ResultPackage:
     """Create a ZIP result package from one active D runtime session."""
 
@@ -558,7 +567,16 @@ def build_result_package(
         physical_scale=analysis_contract.get("physical_scale"),
     )
     congestion_level = congestion_level_field(kinematics, grid=snapshot_grid if isinstance(snapshot_grid, Mapping) else {}, analysis_contract=analysis_contract)
-    academic_crowd = academic_crowd_fields(people_rows, grid=snapshot_grid if isinstance(snapshot_grid, Mapping) else {}, analysis_contract=analysis_contract, kinematic_rows=kinematics)
+    academic_crowd = (
+        dict(precomputed_academic)
+        if isinstance(precomputed_academic, Mapping)
+        else academic_crowd_fields(
+            people_rows,
+            grid=snapshot_grid if isinstance(snapshot_grid, Mapping) else {},
+            analysis_contract=analysis_contract,
+            kinematic_rows=kinematics,
+        )
+    )
 
     metadata = {
         "run_id": run_id,

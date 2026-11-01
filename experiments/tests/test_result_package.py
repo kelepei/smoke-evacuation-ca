@@ -61,14 +61,25 @@ class ResultPackageTests(unittest.TestCase):
 
         occupancy_a, occupancy_b = [run_a.copy()], [run_b.copy()]
         svg_a, svg_b = _heatmap_svg(occupancy_a), _heatmap_svg(occupancy_b)
-        colors_a = dict(zip(run_a, re.findall(r'<rect[^>]+fill="([^"]+)" stroke="#e5e7eb"', svg_a)))
-        colors_b = dict(zip(run_b, re.findall(r'<rect[^>]+fill="([^"]+)" stroke="#e5e7eb"', svg_b)))
         for value in (1, 5, 10, 25, 50, 100):
-            self.assertEqual(colors_a[value], colors_b[value])
-            self.assertEqual(colors_a[value], _occupancy_display_color(value))
-        self.assertEqual(colors_b[100], colors_b[137])
-        self.assertEqual("rgb(254,202,202)", colors_a[1])
-        self.assertNotEqual(colors_a[0], colors_a[1])
+            expected = _occupancy_display_color(value)
+            self.assertIn(
+                f'fill="{expected}" stroke="#e5e7eb"',
+                svg_a,
+            )
+            self.assertIn(
+                f'fill="{expected}" stroke="#e5e7eb"',
+                svg_b,
+            )
+        self.assertEqual(
+            _occupancy_display_color(100),
+            _occupancy_display_color(137),
+        )
+        self.assertEqual("rgb(254,202,202)", _occupancy_display_color(1))
+        self.assertNotIn(
+            'fill="rgb(255,255,255)" stroke="#e5e7eb"',
+            svg_a,
+        )
         self.assertEqual([run_a], occupancy_a)
         self.assertEqual([run_b], occupancy_b)
         self.assertIn("最大值 100", svg_a)

@@ -6,14 +6,17 @@ import json
 import io
 import tempfile
 import threading
+import time
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from PIL import Image, ImageDraw
 
+from experiments import web_runtime_server as web_runtime_server_module
 from experiments.web_runtime_server import (
     DWebRuntimeServer,
     RuntimeRequestHandler,
@@ -70,6 +73,31 @@ class WebRuntimeServerTests(unittest.TestCase):
 
     def test_enhanced_web_runtime_enables_documented_source_smoke_semantics(self) -> None:
         self.assertTrue(_control_runtime_config({})["web_mode"])
+
+    def test_academic_cache_key_tracks_run_step_and_contract(self) -> None:
+        base = {
+            "run_id": "run_01",
+            "step": 10,
+            "analysis_contract": {"sampling_window_s": {"value": 4.5}},
+        }
+        key = RuntimeRequestHandler._academic_cache_key(base)
+        self.assertEqual(
+            key,
+            RuntimeRequestHandler._academic_cache_key(dict(base)),
+        )
+        self.assertNotEqual(
+            key,
+            RuntimeRequestHandler._academic_cache_key({**base, "step": 11}),
+        )
+        self.assertNotEqual(
+            key,
+            RuntimeRequestHandler._academic_cache_key(
+                {
+                    **base,
+                    "analysis_contract": {"sampling_window_s": {"value": 5.0}},
+                }
+            ),
+        )
 
     def test_information_mode_selects_real_c_alarm_broadcast_policy(self) -> None:
         broadcast = _control_runtime_config({"information_mode": "broadcast"})
@@ -210,6 +238,23 @@ class WebRuntimeServerTests(unittest.TestCase):
                     metrics = json.loads(response.read().decode("utf-8"))
                 self.assertTrue(metrics["ok"])
                 self.assertNotIn("academic_crowd_fields", metrics)
+                with urlopen(base_url + "/api/session/analysis-base", timeout=10) as response:
+                    base_analysis = json.loads(response.read().decode("utf-8"))
+                self.assertTrue(base_analysis["ok"])
+                self.assertIn("evacuation_curve_svg", base_analysis)
+                self.assertIn("occupancy_heatmap_svg", base_analysis)
+                self.assertNotIn("academic_crowd_fields", base_analysis)
+                with urlopen(base_url + "/api/session/academic-analysis", timeout=10) as response:
+                    academic_analysis = json.loads(response.read().decode("utf-8"))
+                self.assertTrue(academic_analysis["ok"])
+                self.assertFalse(academic_analysis["cache_hit"])
+                self.assertEqual(
+                    "available",
+                    academic_analysis["academic_crowd_fields"]["status"],
+                )
+                with urlopen(base_url + "/api/session/academic-analysis", timeout=10) as response:
+                    cached_academic = json.loads(response.read().decode("utf-8"))
+                self.assertTrue(cached_academic["cache_hit"])
                 with urlopen(base_url + "/api/session/analysis", timeout=10) as response:
                     analysis = json.loads(response.read().decode("utf-8"))
                 self.assertTrue(analysis["ok"])
@@ -240,9 +285,13 @@ class WebRuntimeServerTests(unittest.TestCase):
                 self.assertEqual("people_log.csv", layers["layers"]["source"])
                 self.assertNotIn("evacuation_curve_svg", layers)
                 self.assertNotIn("academic_crowd_fields", layers)
-                with urlopen(base_url + "/api/session/export", timeout=10) as response:
-                    self.assertEqual("application/zip", response.headers.get_content_type())
-                    package = zipfile.ZipFile(io.BytesIO(response.read()))
+                with patch(
+                    "experiments.result_package.academic_crowd_fields",
+                    side_effect=AssertionError("ZIP should reuse cached academic analysis"),
+                ):
+                    with urlopen(base_url + "/api/session/export", timeout=10) as response:
+                        self.assertEqual("application/zip", response.headers.get_content_type())
+                        package = zipfile.ZipFile(io.BytesIO(response.read()))
                 names = set(package.namelist())
                 prefix = initial["run_id"] + "/"
                 self.assertIn(prefix + "people_log.csv", names)
@@ -263,6 +312,56 @@ class WebRuntimeServerTests(unittest.TestCase):
                 )
                 self.assertEqual(4, len(packaged_people))
                 self.assertEqual({"0", "1"}, {row["step"] for row in packaged_people})
+                entered_analysis = threading.Event()
+                release_analysis = threading.Event()
+                original_analysis = web_runtime_server_module.build_runtime_analysis
+                analysis_result: dict[str, object] = {}
+
+                def slow_analysis(**kwargs):
+                    if kwargs.get("include_academic"):
+                        entered_analysis.set()
+                        release_analysis.wait(timeout=5)
+                    return original_analysis(**kwargs)
+
+                def request_analysis() -> None:
+                    try:
+                        with urlopen(base_url + "/api/session/analysis", timeout=10) as response:
+                            analysis_result["status"] = response.status
+                    except Exception as exc:  # pragma: no cover - surfaced below
+                        analysis_result["error"] = repr(exc)
+
+                with patch.object(
+                    web_runtime_server_module,
+                    "build_runtime_analysis",
+                    side_effect=slow_analysis,
+                ):
+                    analysis_thread = threading.Thread(target=request_analysis)
+                    analysis_thread.start()
+                    self.assertTrue(entered_analysis.wait(timeout=2))
+                    started = time.perf_counter()
+                    try:
+                        with urlopen(base_url + "/api/session/lambda.csv", timeout=1.5) as response:
+                            csv_payload = response.read()
+                            self.assertEqual("text/csv", response.headers.get_content_type())
+                        self.assertLess(time.perf_counter() - started, 1.25)
+                        with urlopen(base_url + "/api/session/export", timeout=5) as response:
+                            concurrent_zip = zipfile.ZipFile(io.BytesIO(response.read()))
+                        self.assertIn(
+                            initial["run_id"] + "/metadata.json",
+                            concurrent_zip.namelist(),
+                        )
+                    finally:
+                        release_analysis.set()
+                    analysis_thread.join(timeout=5)
+                self.assertFalse(analysis_thread.is_alive())
+                self.assertEqual(200, analysis_result.get("status"))
+                self.assertNotIn("error", analysis_result)
+                lambda_row = next(
+                    csv.DictReader(io.StringIO(csv_payload.decode("utf-8-sig")))
+                )
+                self.assertEqual("2", lambda_row["N"])
+                self.assertEqual("NA", lambda_row["lambda"])
+                self.assertEqual("not_requested", lambda_row["status"])
         finally:
             try:
                 post("/api/session/close", {})
