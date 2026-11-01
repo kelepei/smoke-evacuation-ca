@@ -305,6 +305,35 @@ class ExitChoiceTests(unittest.TestCase):
         )
         self.assertEqual("E_far", preferred[1])
 
+    def test_evacuated_people_do_not_count_as_exit_congestion(self) -> None:
+        scene, persons = self._scene()
+        import random
+
+        smoke = np.zeros((scene.grid.height, scene.grid.width), dtype=np.float32)
+        evacuated_crowd = [
+            Person(id=100 + i, x=9 + (i % 2), y=1 + (i % 3), evacuated=True)
+            for i in range(40)
+        ]
+        chooser = ExitChooser(scene, random.Random(3), self.floor)
+
+        chosen = chooser.update_all(persons + evacuated_crowd, 0, smoke, {})
+
+        self.assertEqual("E_near", chosen[1])
+
+    def test_smoke_free_exit_is_preferred_over_smoky_near_exit(self) -> None:
+        scene, persons = self._scene()
+        import random
+
+        cfg = MovementConfig().exit_choice
+        cfg.region_radius_m = 1.0
+        smoke = np.zeros((scene.grid.height, scene.grid.width), dtype=np.float32)
+        smoke[2, 10] = 1.0
+        chooser = ExitChooser(scene, random.Random(3), self.floor, cfg, 0.5)
+
+        chosen = chooser.update_all(persons, 0, smoke, {})
+
+        self.assertEqual("E_far", chosen[1])
+
     def test_crowding_near_exit_triggers_switch(self) -> None:
         scene, persons = self._scene()
         import random
