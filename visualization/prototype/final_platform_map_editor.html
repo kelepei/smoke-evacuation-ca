@@ -94,6 +94,7 @@
   .editor-modal{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(15,23,42,.55)}.editor-modal.open{display:flex}.editor-dialog{width:min(1440px,96vw);height:min(900px,92vh);display:flex;flex-direction:column;overflow:hidden;border-radius:10px;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.28)}.editor-dialog header{height:auto;min-height:50px;padding:8px 12px;background:#fff;color:var(--ink);box-shadow:none;border-bottom:1px solid var(--line)}.editor-dialog header strong{margin-right:auto}.editor-dialog iframe{width:100%;min-height:0;flex:1;border:0}.editor-actions{display:flex;justify-content:flex-end;gap:8px;padding:8px 12px;border-top:1px solid var(--line)}
   .choice-dialog{width:min(520px,92vw);overflow:hidden;border-radius:10px;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.28)}.choice-dialog header{height:auto;min-height:50px;padding:12px 16px;background:#fff;color:var(--ink);box-shadow:none;border-bottom:1px solid var(--line)}.choice-dialog-content{padding:16px;color:#475569;line-height:1.7}.choice-dialog-content strong{color:#1e3a5f}.choice-actions{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid var(--line)}.choice-actions button{height:auto;min-height:34px;padding:7px 12px}
   @media(max-width:1640px){.toolbar-primary{gap:4px}}
+  @media(max-width:1400px){main{grid-template-columns:260px minmax(0,1fr) 300px;gap:8px;padding:8px}.toolbar-primary .good,.toolbar-primary .primary:not(.run-control){padding-left:6px;padding-right:6px;font-size:12px}.toolbar{padding:6px}.run-controls{gap:2px}}
   @media(max-width:1320px){.toolbar-time{flex-basis:108px;width:108px}.run-control{flex-basis:54px;min-width:54px}.init-control{flex-basis:84px;min-width:84px}.toolbar-options select{width:72px!important}}
   @media(max-width:1180px){body{overflow:auto}.top-nav{display:none}main{height:auto;min-height:calc(100vh - 56px);grid-template-columns:280px minmax(420px,1fr);grid-template-rows:minmax(560px,70vh) auto auto}.config-side{grid-column:1;grid-row:1}.canvas-wrap{grid-column:2;grid-row:1}.runtime-side{grid-column:1 / 3;grid-row:2}.insights{grid-column:1 / 3;grid-row:3;grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media(max-width:760px){main{grid-template-columns:1fr;grid-template-rows:auto}.config-side,.canvas-wrap,.runtime-side,.insights{grid-column:1;grid-row:auto}.insights{grid-template-columns:1fr}.canvas-wrap{height:70vh}}
@@ -129,7 +130,7 @@
 
     <hr>
     <div class="section-kicker">RUNTIME PARAMETERS</div>
-    <div class="title">本次运行参数 <span class="pill">直传 runtime</span></div>
+    <div class="title">本次运行参数 <span class="pill">仿真配置</span></div>
     <label>总人数 <input id="totalPersons" type="number" min="1" step="1" value="40"></label>
     <label>random_seed（留空为随机）<input id="randomSeed" type="number" value="42"></label>
     <label title="0 表示关系最弱，1 表示关系最紧密">关系紧密程度（0–1）<input id="relationIntensity" type="number" min="0" max="1" step="0.01" value="0.6"></label>
@@ -148,7 +149,7 @@
     <div class="row"><label>student <input id="ratioStudent" type="number" min="0" step="0.01" value="0.8"></label><label>teacher <input id="ratioTeacher" type="number" min="0" step="0.01" value="0.1"></label><label>staff <input id="ratioStaff" type="number" min="0" step="0.01" value="0.1"></label></div>
     <button id="generatePeopleBtn" class="primary" disabled>生成 / 初始化人员</button>
     <div class="row"><label>time_step / s<input id="timeStep" type="number" min="0.01" max="60" step="0.01" value="0.5"></label><label>最大步数<input id="maxSteps" type="number" min="1" max="5000" value="500"></label></div>
-    <div class="hint">time_step 真实决定模拟时间与日志时间轴；最大步数真实决定 runtime 停止上限。</div>
+    <div class="hint">时间步长决定模拟时间与日志时间轴；最大步数决定仿真停止上限。物理比例固定为 0.5 m/格。</div>
     <div class="hint success" id="physicalScaleLabel">物理标定：0.5 m/格（平台统一仿真假设，不等同于地图显示像素或实地测量）</div>
     <div class="title" style="margin-top:12px">λ 恐慌—风险实验 <span class="pill" id="lambdaCapabilityPill">检测中</span></div>
     <label>panic_to_risk_gain（λ）
@@ -172,21 +173,21 @@
     <div class="row"><label>自动解除封锁<select id="controlLockdownAutoUnlock"><option value="true">是</option><option value="false">否</option></select></label><label>分区软偏好/m<input id="controlZoneBiasM" type="number" min="0" step="0.5" value="4"></label></div>
     <div class="row"><label>A*重规划/s<input id="visionReplanIntervalS" type="number" min="1" step="1" value="30"></label><label>双目标风险权重<input id="dualRiskWeight" type="number" min="0" max="1" step="0.05" value="0.5" title="0=最短时间，1=最低风险"></label></div>
     <div class="row"><label>双目标重规划/s<input id="dualReplanIntervalS" type="number" min="1" step="1" value="30"></label></div>
-    <div class="hint">fire_aware 是四合一综合策略：出口关闭、区域封锁、分区疏散、火灾感知路线管控同时生效；none 为对照组。vision_astar 只使用所选 A 地图，区域速度随烟雾浓度折减。dual_objective_aco 依据杨天鹏论文的时间—风险双目标模型，比较所有可达出口的完整路径，风险权重 0=最短时间、1=最低风险；两种路线型策略的路径都显示在“规划路线”图层。</div>
-    <div class="title" style="margin-top:12px">C 配置文件 <span class="pill">部分字段生效</span></div>
+    <div class="hint">综合策略同时考虑出口关闭、区域封锁、分区疏散和火灾感知路线；“地图时间型 A*”使用当前场景地图并按烟雾区域折减速度；时间—风险双目标策略在最短时间与最低风险之间权衡。路线会显示在“规划路线”图层。</div>
+    <div class="title" style="margin-top:12px">人员配置文件 <span class="pill">部分字段生效</span></div>
     <div class="row">
       <button id="yamlBtn">导入 YAML</button>
       <button id="clearYaml">清除 YAML</button>
     </div>
     <input id="yamlFile" type="file" accept=".yaml,.yml,text/yaml,application/x-yaml" hidden>
     <div class="hint" id="configHint">未选择 YAML；仓库样例固定读取正式 config_template.yaml。</div>
-    <div class="hint" id="peopleInitHint">默认直接设置参数；YAML 为可选高级导入，二者进入同一 C 生成与 A 自动定位链路。</div>
+    <div class="hint" id="peopleInitHint">默认直接设置参数；YAML 为可选高级导入。生成人员后会自动分配到合法位置。</div>
 
     <details class="diagnostics">
       <summary>待接入参数与 C 静态字段</summary>
-      <div class="hint">scene、profile、relation_intensity 与 group_config 由 YAML/人员文件记录；网页 C 信息采用“烟源附近先知情 → 烟雾阈值广播 → 口头/关系/引导传播”，不再随机选择初始知情者。C 每步行为真实传入 B runtime。</div>
+      <div class="hint">YAML 和人员文件用于记录场景、人员构成、关系强度及群体配置。信息传播遵循：烟源附近先获知 → 烟雾达到阈值后广播 → 口头、关系和引导传播。</div>
       <label>profile_ratios / group_config <input value="使用 C 正式生成器；高级群体参数可由 YAML 提供" disabled></label>
-      <label>C 每步策略 <input value="信息、结伴、从众与引导员由 C runtime bridge 传入" disabled></label>
+      <label>人员每步策略 <input value="信息、结伴、从众与引导员策略随仿真步更新" disabled></label>
     </details>
 
     <details class="diagnostics">
@@ -288,9 +289,9 @@
     <details class="diagnostics">
       <summary>数据契约与参数效力</summary>
       <div class="kv"><span>生效参数</span><b id="effectiveParams">等待初始化</b></div>
-      <div class="kv"><span>C 配置来源</span><b id="configSourceValue">NA</b></div>
-      <div class="kv"><span>B runtime API</span><b id="runtimeApi">NA</b></div>
-      <div class="kv"><span>C 每步行为</span><b id="behaviorStatus">待接入</b></div>
+      <div class="kv"><span>配置来源</span><b id="configSourceValue">NA</b></div>
+      <div class="kv"><span>仿真引擎</span><b id="runtimeApi">NA</b></div>
+      <div class="kv"><span>人员每步行为</span><b id="behaviorStatus">待接入</b></div>
       <div class="kv"><span>actual_exit</span><b id="actualExitStatus">NA · 上游未提供</b></div>
       <div class="kv"><span>risk</span><b id="riskStatus">NA · 上游未提供</b></div>
     </details>
@@ -354,7 +355,7 @@
 <div class="editor-modal" id="editorModal" role="dialog" aria-modal="true" aria-label="地图编辑器">
   <div class="editor-dialog">
     <header><strong>实验性地图编辑</strong><span class="hint">确认后才替换本次运行的地图</span></header>
-    <iframe id="mapEditorFrame" title="A 地图编辑器集成版" src="/visualization/prototype/map_editor_integrated.html"></iframe>
+    <iframe id="mapEditorFrame" title="场景地图编辑器" src="/visualization/prototype/map_editor_integrated.html"></iframe>
     <div class="editor-actions"><button id="cancelMapEdit">取消编辑</button><button id="confirmMapEdit" class="primary">确认编辑</button></div>
   </div>
 </div>
@@ -985,7 +986,7 @@
       ctx.fillStyle = "#64748b";
       ctx.font = "700 18px Microsoft YaHei";
       ctx.textAlign = "center";
-      ctx.fillText("等待 A 地图导入", w/2, h/2);
+      ctx.fillText("等待导入地图", w/2, h/2);
       ctx = previousCtx;
       return;
     }
@@ -1674,7 +1675,7 @@
 
   function renderSelectedHeatmap(){
     const kind=$("academicHeatmapSelect").value;
-    const labels={occupancy:["累计占用热力图","累计占用：人员停留频度；颜色采用固定累计次数色标，便于不同实验直接比较；原始累计次数不变。"],density:["Density 热力图","Density：真实 academic artifact。"],cl:["CL 热力图","CL：真实 academic artifact。"],cn:["CN 热力图","CN：真实 academic artifact。"],crowd_danger:["Crowd Danger 热力图","Crowd Danger：真实 academic artifact。"]};
+    const labels={occupancy:["累计占用热力图","累计占用：人员停留频度；颜色采用固定累计次数色标，便于不同实验直接比较；原始累计次数不变。"],density:["Density 热力图","Density：单位面积人数，基于当前运行日志和平台 0.5 m/格仿真假设。"],cl:["CL 热力图","CL：拥堵水平，综合局部速度变化与平均速度；单位 1/m。"],cn:["CN 热力图","CN：由 CL、分析网格尺寸和公式换算的无量纲拥堵数。"],crowd_danger:["Crowd Danger 热力图","Crowd Danger：CL 与局部密度的乘积，表示人群危险程度。"]};
     $("heatmapTitle").textContent=labels[kind][0]; $("academicHeatmapNote").textContent=labels[kind][1];
     if(kind==="occupancy"){setAnalysisFigure("heatmapFigure",latestAnalysis&&latestAnalysis.occupancy_heatmap_svg,"暂无可用于绘图的真实日志。");return;}
     const academic=latestAnalysis&&latestAnalysis.academic_crowd_fields;
@@ -1698,7 +1699,7 @@
     $("effectiveParams").textContent = `seed=${seed} · dt=${params.time_step_s ?? "NA"}s · max=${params.max_steps ?? "NA"}`;
     $("configSourceValue").textContent = configSource;
     const meta = result.snapshot && result.snapshot.adapter_meta || {};
-    $("runtimeApi").textContent = meta.b_runtime_api || "run_one_step(c_step_data)";
+    $("runtimeApi").textContent = "疏散仿真引擎已接入";
     $("behaviorStatus").textContent = String(meta.behavior_input || "未提供").startsWith("empty mapping")
       ? "待接入 · 当前空映射"
       : String(meta.behavior_input || "未提供");
@@ -1757,7 +1758,7 @@
     applySnapshot(result.snapshot, {resetHistory:true});
     const meta = result.map_meta || {};
     const smokeSources = Number((meta.cell_counts || {}).smoke_source || 0);
-    $("mapEditorHint").textContent = `当前 JSON 地图：${currentMapName}；已编辑内容将直接用于自动分配与 runtime。烟源 ${smokeSources} 个。`;
+    $("mapEditorHint").textContent = `当前 JSON 地图：${currentMapName}；已编辑内容将直接用于人员分配与仿真。烟源 ${smokeSources} 个。`;
     $("editMapBtn").disabled = false;
     $("autoPositionBtn").disabled = false;
     $("generatePeopleBtn").disabled = false;
@@ -1799,7 +1800,7 @@
         ? `；封锁区域已写入并会在当前策略下生效：${editorLockdown.join(",")}`
         : `；封锁区域已写入 ${editorLockdown.join(",")}，当前策略为 ${strategy}，只有选择综合管控才生效`)
       : "";
-    $("mapEditorHint").textContent = `地图已编辑：${currentMapName}；确认后的同一份地图将进入自动分配和 runtime${lockdownNote}`;
+    $("mapEditorHint").textContent = `地图已编辑：${currentMapName}；确认后的同一份地图将进入人员分配和仿真${lockdownNote}`;
     log("地图编辑已确认，currentMapData 已替换" + lockdownNote);
   }
 
@@ -1814,7 +1815,7 @@
       return;
     }
     const mapFile = await readFilePayload($("mapFile"));
-    if(!mapFile){ setStatus("请选择 A 地图文件。", "等待地图"); return; }
+    if(!mapFile){ setStatus("请选择地图文件。", "等待地图"); return; }
     if(String(mapFile.name || "").toLowerCase().endsWith(".json")){
       try{
         const parsed = JSON.parse(mapFile.text);
@@ -1874,7 +1875,7 @@
     applySnapshot(result.snapshot, {resetHistory:true});
     const meta = result.map_meta || {};
     const smokeSources = Number((meta.cell_counts || {}).smoke_source || 0);
-    setStatus(`地图已显示。\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\n烟源: ${smokeSources}${smokeSources ? " 个；启动联调后显示 B 烟雾" : " 个；当前地图无 smoke_source，因此不会产生烟雾"}\ncell_type: ${JSON.stringify(meta.cell_counts || {})}${currentMapData ? "\n下一步：可直接生成人员" : ""}`, "地图预览");
+    setStatus(`地图已显示。\n地图解析：${meta.loader}\n网格：${meta.width} × ${meta.height}\n烟源：${smokeSources}${smokeSources ? " 个；开始仿真后显示烟雾" : " 个；当前地图没有烟源，因此不会产生烟雾"}${currentMapData ? "\n下一步：可生成人员" : ""}`, "地图预览");
     log(`地图预览成功：${mapFile.name}`);
   }
 
@@ -1901,10 +1902,10 @@
     const meta = result.map_meta || {};
     const smokeSources = Number((meta.cell_counts || {}).smoke_source || 0);
     $("templateHint").textContent = currentMapData
-      ? `已选择 ${templateId} 模板；可直接点击“生成 / 初始化人员”，也可上传已有人员文件后启动联调。`
+      ? `已选择 ${templateId} 模板；可直接生成人员，也可上传已有人员文件后启动仿真。`
       : `已选择 ${templateId} 模板，但未返回可编辑地图 JSON。`;
-    setStatus(`A 标准模板已显示：${templateId}\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\n地图烟源: ${smokeSources} 个\n下一步：点击“生成 / 初始化人员”，或上传 C 人员文件后启动联调。`, "模板预览");
-    log(`A 标准模板预览成功：${templateId}`);
+    setStatus(`标准模板已显示：${templateId}\n地图解析：${meta.loader}\n网格：${meta.width} × ${meta.height}\n地图烟源：${smokeSources} 个\n下一步：生成人员，或上传人员文件后启动仿真。`, "模板预览");
+    log(`标准模板预览成功：${templateId}`);
   }
 
   function syncBroadcastToggle(enabled, notify = false){
@@ -2013,11 +2014,11 @@
       activeSession = true; sessionFinished = false; pauseRequested = false; lastAnalysisStep = -1;
       stopTimer(); resetDerivedAnalysis("正在读取新生成人员的初始化日志。");
       applySnapshot(result.snapshot, {output_dir:result.output_dir, resetHistory:true});
-      showEffectiveRuntime(result, result.initialization?.config_source === "yaml" ? "YAML → canonical config" : "UI → canonical config");
+      showEffectiveRuntime(result, result.initialization?.config_source === "yaml" ? "YAML 配置" : "页面配置");
       const init = result.initialization || {};
       $("mapEditorHint").textContent = "已生成并定位 " + (init.person_count ?? "NA") + " 人；profile 分布：" + JSON.stringify(init.profile_counts || {});
-      setStatus("人员已由 C 正式生成器创建，并由 A 自动分配初始位置\n实际人数：" + (init.person_count ?? "NA") + "\n配置来源：" + (init.config_source || "NA") + "\n同一 canonical config 可复现", "初始化成功");
-      log("UI canonical config → C profile/social → A position allocator → B runtime");
+      setStatus("人员已生成并自动分配初始合法位置\n实际人数：" + (init.person_count ?? "NA") + "\n配置来源：" + (init.config_source || "NA") + "\n相同配置与随机种子可复现", "初始化成功");
+      log("仿真配置 → 人员与关系 → 位置分配 → 仿真初始化");
     }catch(error){
       if(!showSpawnCapacityError(error, "人员生成")){
         setStatus(error.message || String(error), "初始化失败");
@@ -2033,7 +2034,7 @@
   async function initSession(){
     if(pending){ log("当前单步正在计算，请等待完成后再初始化。"); return; }
     if(location.protocol === "file:"){
-      setStatus("真实联调需要本地服务：python -m experiments.web_runtime_server", "需要启动服务");
+      setStatus("启动仿真需要本地服务：python -m experiments.web_runtime_server", "需要启动服务");
       return;
     }
     const [mapFile, populationFile, uploadedYaml] = await Promise.all([
@@ -2042,7 +2043,7 @@
       readFilePayload($("yamlFile"))
     ]);
     if((!mapFile && !currentMapData && !selectedTemplate) || !populationFile){
-      setStatus("启动 A+B+C 联调需要 A 地图或标准模板，以及 C 人群输出。", "缺少输入");
+      setStatus("启动仿真需要场景地图或标准模板，以及人员数据。", "缺少输入");
       return;
     }
     const yaml = uploadedYaml;
@@ -2065,19 +2066,17 @@
     refreshRealAnalysis().catch(error => log(`初始化后分析未刷新：${error.message}`));
     const meta = result.snapshot.adapter_meta || {};
     const behaviorStatus = String(meta.behavior_input || "未提供").startsWith("empty mapping")
-      ? "未接入（空映射）"
-      : String(meta.behavior_input || "未提供");
-    const drawingStatus = String(meta.upstream_animation || "").startsWith("suppressed")
-      ? "D Canvas（B 重复绘图已关闭）"
-      : String(meta.upstream_animation || "D Canvas");
+      ? "未提供每步行为"
+      : "已按仿真步更新";
+    const drawingStatus = "页面可视化已启用";
     const observed = inspectSnapshot();
     const smokeStatus = observed.runtimeSmokeSourceCount
-      ? `烟雾: 已接入 B 运行时烟源 ${observed.runtimeSmokeSourceCount} 个；${observed.smokeActive ? "已显示" : "等待 B 首步更新"}`
+      ? `烟雾：已接入 ${observed.runtimeSmokeSourceCount} 个烟源；${observed.smokeActive ? "已显示" : "等待首步更新"}`
       : (observed.smokeSourceCount
-        ? `烟雾: ${observed.smokeActive ? "已显示" : "已接入，等待 B 首步更新"}`
-        : "烟雾: 当前场景无 smoke_source，烟雾图层已禁用");
-    setStatus(`A+B+C 文件联调已初始化\nB: ${meta.b_runtime_api || "run_one_step(c_step_data)"}\nC 人员: 已接入\nC 配置: ${configSource}\nC 每步行为: ${behaviorStatus}\nC 信息传播: 烟源附近先知情；烟雾达阈值后广播；其余靠口头/关系/引导\nC10: ${((result.snapshot.c_runtime || {}).control_strategy || {}).active_strategies || "none"} 关闭出口=${(((result.snapshot.c_runtime || {}).control_strategy || {}).closed_exits || []).join(",")||"无"}\n烟雾: normalize=${(result.snapshot.c_runtime || {}).smoke_normalize} grow=${(result.snapshot.c_runtime || {}).smoke_sigma_grow} target=${(result.snapshot.c_runtime || {}).smoke_target_intensity} ramp=${(result.snapshot.c_runtime || {}).smoke_ramp_steps} 报警步=${(result.snapshot.c_runtime || {}).alarm_broadcast_step ?? "未触发"}\n速度: 未知情 x0.35；知情 x1.15；个体速度差 ±30%；拥堵处继续减速\nB字段: is_panicked、panic_level、speed_multiplier 已随每步行为传入\n颜色: 红色=已知火情，紫色=引导员\n${smokeStatus}\n绘图: ${drawingStatus}`, "真实联调");
-    log("A+B+C 联调初始化成功");
+        ? `烟雾：${observed.smokeActive ? "已显示" : "已接入，等待首步更新"}`
+        : "烟雾：当前场景没有烟源，烟雾图层已禁用");
+    setStatus(`仿真已初始化\n人员配置：${configSource}\n每步行为：${behaviorStatus}\n信息传播：烟源附近人员先获得信息；烟雾达到阈值后广播；其余通过口头传播、关系或引导传播\n控制策略：${((result.snapshot.c_runtime || {}).control_strategy || {}).active_strategies || "none"}；关闭出口：${(((result.snapshot.c_runtime || {}).control_strategy || {}).closed_exits || []).join(",")||"无"}\n速度：未知情人员为常规速度的 0.35；知情人员为 1.15；个体速度存在 ±30% 差异；拥堵处继续减速\n颜色：红色表示已知火情，紫色表示引导员\n${smokeStatus}\n绘图：${drawingStatus}`, "仿真运行");
+    log("仿真初始化成功");
   }
 
   async function initAutoPositionSession(){
@@ -2105,9 +2104,9 @@
     applySnapshot(result.snapshot, {output_dir:result.output_dir, resetHistory:true});
     showEffectiveRuntime(result, uploadedYaml ? `外部 YAML (${uploadedYaml.name})` : "未提供 YAML");
     const allocation = result.auto_positioning || {};
-    $("mapEditorHint").textContent = `已由 A 自动分配 ${allocation.person_count ?? "NA"} 人；编辑后的 currentMapData 已进入 runtime。`;
-    setStatus(`人员位置已由 A 自动分配并完成 runtime 初始化\n人数：${allocation.person_count ?? "NA"}\n来源：${allocation.source || "allocate_positions"}`, "自动分配已初始化");
-    log("编辑后地图已用于 A 自动位置分配和 B runtime 初始化");
+    $("mapEditorHint").textContent = `已自动分配 ${allocation.person_count ?? "NA"} 人；编辑后的地图已进入仿真。`;
+    setStatus(`人员位置已自动分配并完成仿真初始化\n人数：${allocation.person_count ?? "NA"}\n来源：${allocation.source || "allocate_positions"}`, "自动分配已初始化");
+    log("编辑后地图已用于人员位置分配和仿真初始化");
   }
 
   async function loadSample(){
@@ -2134,9 +2133,9 @@
     refreshRealAnalysis().catch(error => log(`样例分析未刷新：${error.message}`));
     const meta = result.snapshot.adapter_meta || {};
     const behaviorStatus = String(meta.behavior_input || "未提供").startsWith("empty mapping")
-      ? "未接入（空映射）"
-      : String(meta.behavior_input || "未提供");
-    setStatus(`仓库样例已加载\nB: ${meta.b_runtime_api || "run_one_step(c_step_data)"}\nC 人员 + 配置: 已接入\nC 每步行为: ${behaviorStatus}\n烟雾: 当前样例无烟源`, "仓库样例");
+      ? "未提供每步行为"
+      : "已按仿真步更新";
+    setStatus(`仓库样例已加载\n人员与配置已接入\n每步行为：${behaviorStatus}\n烟雾：当前样例无烟源`, "仓库样例");
     log("仓库样例初始化成功");
   }
 
@@ -2280,7 +2279,7 @@
     showEffectiveRuntime(result, $("configSourceValue").textContent);
     refreshRealAnalysis().catch(error => log(`重置后分析未刷新：${error.message}`));
     setStatus(`已重置。新的输出目录：${result.output_dir}`, "已重置");
-    log("联调会话已重置");
+    log("仿真会话已重置");
   }
 
   function responseFilename(response, fallback){
@@ -2323,7 +2322,7 @@
 
   async function exportPackage(){
     if(pending){ log("当前单步正在计算，请等待完成后再导出。 "); return; }
-    if(!activeSession){ log("没有活动联调会话，暂不能导出结果包。"); return; }
+    if(!activeSession){ log("没有活动仿真会话，暂不能导出结果包。"); return; }
     setStatus("正在生成结果包；完整分析可能需要较长时间，请勿重复点击。", "导出中");
     const response = await fetchWithTimeout("/api/session/export", 180000, "结果包生成超时，请检查后端状态后重试");
     if(!response.ok){
@@ -2339,7 +2338,7 @@
 
   async function exportLambdaCsv(){
     if(pending){ log("当前单步正在计算，请等待完成后再导出。 "); return; }
-    if(!activeSession){ log("没有活动联调会话，暂不能导出 λ CSV。"); return; }
+    if(!activeSession){ log("没有活动仿真会话，暂不能导出 λ CSV。"); return; }
     setStatus("正在生成 λ CSV，请稍候。", "导出中");
     const response = await fetchWithTimeout("/api/session/lambda.csv", 30000, "λ CSV 导出超时");
     if(!response.ok){
@@ -2419,7 +2418,7 @@
       }
     }
   };
-  $("initBtn").onclick = () => initSession().catch(error => setStatus(`联调初始化失败：${error.message}`, "初始化失败"));
+  $("initBtn").onclick = () => initSession().catch(error => setStatus(`仿真初始化失败：${error.message}`, "初始化失败"));
   $("sampleBtn").onclick = () => loadSample().catch(error => setStatus(`仓库样例失败：${error.message}`, "样例失败"));
   $("startBtn").onclick = startTimer;
   $("pauseBtn").onclick = pauseRun;

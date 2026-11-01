@@ -93,15 +93,19 @@ class CrowdMetricsTests(unittest.TestCase):
         self.assertEqual("excluded_post_evacuation", samples[2]["validity"])
         self.assertEqual("NA", samples[2]["speed_cells_s"])
 
-    def test_unavailable_physical_scale_keeps_metre_rates_na(self) -> None:
+    def test_default_platform_scale_produces_metre_rates(self) -> None:
         contract = resolve_analysis_contract()
         samples = trajectory_kinematics(
             [row(0, 0.0, 0, 0), row(1, 1.0, 1, 0)],
             physical_scale=contract["physical_scale"],
         )
-        self.assertEqual("unavailable", contract["physical_scale"]["source"])
-        self.assertEqual("NA", samples[1]["vx_m_s"])
-        self.assertEqual("NA", samples[1]["speed_m_s"])
+        self.assertEqual(
+            "platform_simulation_assumption",
+            contract["physical_scale"]["source"],
+        )
+        self.assertEqual(0.5, contract["physical_scale"]["value"])
+        self.assertEqual(0.5, samples[1]["vx_m_s"])
+        self.assertEqual(0.5, samples[1]["speed_m_s"])
 
     def test_teleport_and_impassable_position_are_reported_not_corrected(self) -> None:
         teleport = trajectory_kinematics([
@@ -130,10 +134,10 @@ class CrowdMetricsTests(unittest.TestCase):
             with (root / "trajectory_kinematics.csv").open(newline="", encoding="utf-8") as stream:
                 rows = list(csv.DictReader(stream))
             self.assertEqual(2, summary["row_count"])
-            self.assertEqual("NA", rows[1]["speed_m_s"])
+            self.assertEqual("1.0", rows[1]["speed_m_s"])
             self.assertEqual("valid", rows[1]["validity"])
 
-    def test_explicit_map_and_runtime_contracts_are_distinguished(self) -> None:
+    def test_platform_scale_preserves_map_calibration_and_rejects_override(self) -> None:
         map_contract = resolve_analysis_contract(
             map_analysis={
                 "physical_cell_size_m": 0.4,
@@ -142,30 +146,44 @@ class CrowdMetricsTests(unittest.TestCase):
             }
         )
         runtime_contract = resolve_analysis_contract(
-            runtime_physical_cell_size_m=0.4, runtime_sampling_window_s=1.5
+            runtime_physical_cell_size_m=0.5, runtime_sampling_window_s=1.5
         )
-        self.assertEqual("explicit_map", map_contract["physical_scale"]["source"])
+        self.assertEqual(
+            "platform_simulation_assumption",
+            map_contract["physical_scale"]["source"],
+        )
+        self.assertEqual(0.5, map_contract["physical_scale"]["value"])
+        self.assertEqual(
+            {
+                "physical_cell_size_m": 0.4,
+                "unit": "m",
+                "source": "explicit_map",
+                "differs_from_platform_assumption": True,
+            },
+            map_contract["physical_scale"]["map_declared"],
+        )
         self.assertEqual("explicit_map", map_contract["sampling_window_s"]["source"])
-        self.assertEqual("runtime_config", runtime_contract["physical_scale"]["source"])
+        self.assertEqual(
+            "platform_simulation_assumption",
+            runtime_contract["physical_scale"]["source"],
+        )
         self.assertEqual("runtime_config", runtime_contract["sampling_window_s"]["source"])
         self.assertEqual(
             "literature_default", resolve_analysis_contract()["sampling_window_s"]["source"]
         )
-        with self.assertRaisesRegex(ValueError, "disagree"):
-            resolve_analysis_contract(
-                map_analysis={"physical_cell_size_m": 0.4},
-                runtime_physical_cell_size_m=0.5,
-            )
+        with self.assertRaisesRegex(ValueError, "fixed at 0.5"):
+            resolve_analysis_contract(runtime_physical_cell_size_m=0.4)
 
-    def test_voronoi_density_requires_explicit_physical_scale(self) -> None:
+    def test_voronoi_density_uses_platform_physical_scale(self) -> None:
         result = voronoi_density_for_frame(
             [{"person_id": 1, "x": 0, "y": 0}],
             grid=self.grid([["free"]]),
             physical_scale=resolve_analysis_contract()["physical_scale"],
         )
-        self.assertEqual("unavailable_physical_scale", result["status"])
-        self.assertEqual([], result["samples"])
-        self.assertIsNone(result["unit"])
+        self.assertEqual("available", result["status"])
+        self.assertAlmostEqual(0.25, result["samples"][0]["voronoi_area_m2"])
+        self.assertAlmostEqual(4.0, result["samples"][0]["density_persons_m2"])
+        self.assertEqual("persons/m²", result["unit"])
 
     def test_voronoi_density_clips_to_legal_domain_not_walls_or_exterior(self) -> None:
         result = voronoi_density_for_frame(
@@ -350,14 +368,14 @@ class CrowdMetricsTests(unittest.TestCase):
         self.assertEqual(0.0, by_cell[(2, 0)]["speed_cells_s"])
         self.assertNotIn((3, 0), by_cell)
 
-    def test_velocity_field_keeps_unavailable_scale_grid_only_and_does_not_fill_gaps(self) -> None:
+    def test_velocity_field_uses_platform_scale_and_does_not_fill_gaps(self) -> None:
         field = velocity_vector_field([
             {"time_s": 5.1, "x": 2, "y": 3, "vx_cells_s": 1.0, "vy_cells_s": 0.0, "validity": "valid_step_gap"},
         ], sampling_window_s=2.5, physical_scale=resolve_analysis_contract()["physical_scale"])
-        self.assertEqual("diagnostic_grid_space_only", field["status"])
+        self.assertEqual("available", field["status"])
         self.assertEqual(1, len(field["records"]))
         self.assertEqual(2, field["records"][0]["window_index"])
-        self.assertEqual("NA", field["records"][0]["speed_m_s"])
+        self.assertEqual(0.5, field["records"][0]["speed_m_s"])
 
     def test_stationary_people_have_zero_speed_while_voronoi_density_still_exists(self) -> None:
         density = voronoi_density_for_frame(
@@ -388,7 +406,7 @@ class CrowdMetricsTests(unittest.TestCase):
                 output_path=root / "velocity_vector_field.json",
                 analysis_contract=resolve_analysis_contract(),
             )
-            self.assertEqual("diagnostic_grid_space_only", summary["status"])
+            self.assertEqual("available", summary["status"])
             self.assertTrue((root / "velocity_vector_field.json").is_file())
             self.assertTrue((root / "velocity_vector_field.csv").is_file())
 

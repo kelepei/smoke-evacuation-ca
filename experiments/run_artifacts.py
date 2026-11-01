@@ -14,7 +14,11 @@ from typing import Any, Mapping
 
 from experiments.academic_crowd import write_academic_crowd_fields
 from experiments.congestion_level import write_congestion_level_field
-from experiments.crowd_metrics import resolve_analysis_contract, write_trajectory_kinematics, write_velocity_vector_field
+from experiments.crowd_metrics import (
+    normalize_analysis_contract,
+    write_trajectory_kinematics,
+    write_velocity_vector_field,
+)
 from experiments.guidance_interface import unavailable_guidance, write_guidance_artifacts
 from experiments.week6_analysis import analyze_run
 
@@ -112,13 +116,17 @@ def write_run_artifacts(
 
     destination = Path(output_dir)
     destination.mkdir(parents=True, exist_ok=True)
+    raw_contract = snapshot.get("analysis_contract")
+    analysis_contract = normalize_analysis_contract(
+        raw_contract if isinstance(raw_contract, Mapping) else None
+    )
     config_used = {
         "run_id": snapshot.get("run_id"),
         "scenario_id": snapshot.get("scenario_id"),
         "schema_version": snapshot.get("schema_version"),
         "random_seed": snapshot.get("random_seed"),
         "time_step_s": snapshot.get("time_step"),
-        "analysis_contract": snapshot.get("analysis_contract", {}),
+        "analysis_contract": analysis_contract,
         "grid": {
             "width": snapshot.get("grid", {}).get("width")
             if isinstance(snapshot.get("grid"), Mapping)
@@ -131,7 +139,7 @@ def write_run_artifacts(
         "c_runtime": snapshot.get("c_runtime"),
         "guides": snapshot.get("guides", []),
         "input_files": {key: str(path) for key, path in input_files.items()},
-        "runtime_contract": "A Grid + C population/config + B EvacEngine through D adapters",
+        "runtime_contract": "场景地图 + 人员数据 + 疏散仿真引擎",
         "missing_upstream_fields": "CSV logger leaves unprovided upstream fields empty; D does not fabricate values.",
     }
     scene_config_path = input_files.get("scene_config")
@@ -152,8 +160,6 @@ def write_run_artifacts(
             analysis_contract=(snapshot.get("analysis_contract") if isinstance(snapshot.get("analysis_contract"), Mapping) else None),
             grid=grid if isinstance(grid, Mapping) else None,
         )
-        raw_contract = snapshot.get("analysis_contract")
-        analysis_contract = raw_contract if isinstance(raw_contract, Mapping) and isinstance(raw_contract.get("sampling_window_s"), Mapping) else resolve_analysis_contract()
         velocity_field = write_velocity_vector_field(
             kinematics_path=destination / "trajectory_kinematics.csv",
             output_path=destination / "velocity_vector_field.json",

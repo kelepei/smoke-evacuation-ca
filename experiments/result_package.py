@@ -21,7 +21,14 @@ from typing import Any, Iterable, Mapping
 
 from experiments.academic_crowd import ACADEMIC_CROWD_FIELDS, academic_crowd_fields
 from experiments.congestion_level import CONGESTION_LEVEL_FIELDS, congestion_level_field
-from experiments.crowd_metrics import DEFAULT_SAMPLING_WINDOW_S, KINEMATICS_FIELDS, VELOCITY_FIELD_FIELDS, trajectory_kinematics, velocity_vector_field
+from experiments.crowd_metrics import (
+    DEFAULT_SAMPLING_WINDOW_S,
+    KINEMATICS_FIELDS,
+    VELOCITY_FIELD_FIELDS,
+    normalize_analysis_contract,
+    trajectory_kinematics,
+    velocity_vector_field,
+)
 from experiments.metrics_registry import metric_rows
 from experiments.week6_analysis import analysis_summary_csv, analyze_run
 
@@ -375,7 +382,14 @@ def build_runtime_analysis(
 
     base = Path(output_dir)
     people_rows = _read_csv(base / "people_log.csv")
-    analysis_contract = final_snapshot.get("analysis_contract", {}) if isinstance(final_snapshot, Mapping) else {}
+    raw_contract = (
+        final_snapshot.get("analysis_contract")
+        if isinstance(final_snapshot, Mapping)
+        else None
+    )
+    analysis_contract = normalize_analysis_contract(
+        raw_contract if isinstance(raw_contract, Mapping) else None
+    )
     snapshot_grid = final_snapshot.get("grid", {}) if isinstance(final_snapshot, Mapping) else {}
     if not isinstance(analysis_contract, Mapping): analysis_contract = {}
     if not isinstance(snapshot_grid, Mapping): snapshot_grid = {}
@@ -474,7 +488,11 @@ def _lambda_experiment_record(
     )
     if not isinstance(lambda_capability, Mapping):
         lambda_capability = {}
-    physical_scale = final_snapshot.get("analysis_contract", {}).get("physical_scale", {})
+    raw_contract = final_snapshot.get("analysis_contract")
+    analysis_contract = normalize_analysis_contract(
+        raw_contract if isinstance(raw_contract, Mapping) else None
+    )
+    physical_scale = analysis_contract.get("physical_scale", {})
     physical_value = physical_scale.get("value") if isinstance(physical_scale, Mapping) else None
     lambda_value = experiment_config.get("lambda")
     return {
@@ -551,9 +569,10 @@ def build_result_package(
     metrics = analysis["metrics"]
     summary = analysis["summary"]
     lambda_record = _lambda_experiment_record(analysis["week6_metrics"], final_snapshot)
-    analysis_contract = final_snapshot.get("analysis_contract")
-    if not isinstance(analysis_contract, Mapping):
-        analysis_contract = {}
+    raw_contract = final_snapshot.get("analysis_contract")
+    analysis_contract = normalize_analysis_contract(
+        raw_contract if isinstance(raw_contract, Mapping) else None
+    )
     snapshot_grid = final_snapshot.get("grid")
     kinematics = trajectory_kinematics(
         people_rows,
@@ -589,7 +608,7 @@ def build_result_package(
         "last_step": final_snapshot.get("step"),
         "max_steps": max_steps,
         "exported_at_utc": datetime.now(timezone.utc).isoformat(),
-        "data_source": "A map + C population + B CA via D integration boundary",
+        "data_source": "场景地图 + 人员数据 + 疏散仿真引擎",
         "person_id_mapping": person_id_mapping_metadata,
         "limitations": {
             "missing_upstream_fields_remain_empty": ["heading", "risk", "conflict", "exit_switch"],

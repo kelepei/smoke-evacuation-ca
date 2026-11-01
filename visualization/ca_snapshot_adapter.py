@@ -375,6 +375,9 @@ class CaSnapshotAdapter:
             )
         except ValueError as exc:
             raise SnapshotAdapterError("invalid D analysis contract") from exc
+        self._static_grid["physical_cell_size_m"] = analysis_contract[
+            "physical_scale"
+        ]["value"]
 
         smoke_sim = getattr(simulation, "smoke_sim", None)
         public_smoke_matrix = _optional_attr(simulation, "smoke_matrix")

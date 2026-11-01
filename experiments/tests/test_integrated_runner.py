@@ -151,17 +151,33 @@ class IntegratedRuntimeTests(unittest.TestCase):
         self.assertEqual("exit_entity_01", scenario.exit_entity_by_cell_id["exit_30"])
         self.assertEqual("exit_entity_01", scenario.exit_entity_by_cell_id["exit_40"])
 
-    def test_explicit_physical_scale_never_infers_legacy_cell_size(self) -> None:
+    def test_platform_physical_scale_is_fixed_and_never_infers_legacy_cell_size(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             map_path, people_path = self._write_inputs(Path(raw))
-            unavailable = build_integrated_scenario(map_path=map_path, population_path=people_path)
-            self.assertEqual("unavailable", unavailable.config.parameters["d_analysis_contract"]["physical_scale"]["source"])
+            default_scale = build_integrated_scenario(map_path=map_path, population_path=people_path)
+            self.assertEqual(
+                "platform_simulation_assumption",
+                default_scale.config.parameters["d_analysis_contract"]["physical_scale"]["source"],
+            )
+            self.assertEqual(
+                0.5,
+                default_scale.config.parameters["d_analysis_contract"]["physical_scale"]["value"],
+            )
             payload = json.loads(map_path.read_text(encoding="utf-8"))
             payload["analysis"] = {"physical_cell_size_m": 0.4}
             map_path.write_text(json.dumps(payload), encoding="utf-8")
-            explicit = build_integrated_scenario(map_path=map_path, population_path=people_path)
-            self.assertEqual("explicit_map", explicit.config.parameters["d_analysis_contract"]["physical_scale"]["source"])
-            self.assertEqual(0.4, explicit.config.parameters["d_analysis_contract"]["physical_scale"]["value"])
+            mapped = build_integrated_scenario(map_path=map_path, population_path=people_path)
+            scale = mapped.config.parameters["d_analysis_contract"]["physical_scale"]
+            self.assertEqual("platform_simulation_assumption", scale["source"])
+            self.assertEqual(0.5, scale["value"])
+            self.assertEqual(0.4, scale["map_declared"]["physical_cell_size_m"])
+            self.assertTrue(scale["map_declared"]["differs_from_platform_assumption"])
+            with self.assertRaisesRegex(ValueError, "fixed at 0.5"):
+                build_integrated_scenario(
+                    map_path=map_path,
+                    population_path=people_path,
+                    physical_cell_size_m=0.4,
+                )
 
     def test_runner_uses_current_b_evac_engine_without_writing_b_code(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -181,7 +197,10 @@ class IntegratedRuntimeTests(unittest.TestCase):
                 self.assertEqual(4, len(initial["people"]))
                 self.assertEqual(0.25, initial["time_step"])
                 self.assertEqual(1, len(initial["relations"]))
-                self.assertEqual("A map + C population + B EvacEngine", initial["adapter_meta"]["input_mode"])
+                self.assertEqual(
+                    "场景地图 + 人员数据 + 疏散仿真引擎",
+                    initial["adapter_meta"]["input_mode"],
+                )
                 final = runner.run_until_finished()
                 self.assertGreater(final["step"], 0)
                 self.assertLessEqual(final["step"], 8)

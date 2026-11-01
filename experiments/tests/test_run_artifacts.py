@@ -53,7 +53,7 @@ class RunArtifactTests(unittest.TestCase):
                 "artifact-test",
             )
 
-    def test_guidance_and_kinematics_artifacts_coexist_when_scale_is_unavailable(self) -> None:
+    def test_legacy_contract_is_upgraded_to_platform_scale_for_artifacts(self) -> None:
         snapshot = {
             "run_id": "combined", "scenario_id": "test", "time_step": 0.5,
             "grid": {"width": 3, "height": 1, "cell_type": [["free", "free", "exit"]]},
@@ -69,9 +69,19 @@ class RunArtifactTests(unittest.TestCase):
             write_run_artifacts(snapshot, output_dir, input_files={}, save_frame=False)
             self.assertTrue((output_dir / "guidance_recommendations.json").is_file())
             self.assertTrue((output_dir / "guidance_events.csv").is_file())
-            self.assertIn("NA", (output_dir / "trajectory_kinematics.csv").read_text(encoding="utf-8"))
+            self.assertIn(
+                "0.5",
+                (output_dir / "trajectory_kinematics.csv").read_text(encoding="utf-8"),
+            )
             config = json.loads((output_dir / "config_used.json").read_text(encoding="utf-8"))
-            self.assertEqual("unavailable", config["analysis_contract"]["physical_scale"]["source"])
+            self.assertEqual(
+                "platform_simulation_assumption",
+                config["analysis_contract"]["physical_scale"]["source"],
+            )
+            self.assertEqual(
+                0.5,
+                config["analysis_contract"]["physical_scale"]["value"],
+            )
 
 
 if __name__ == "__main__":

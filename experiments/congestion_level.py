@@ -19,6 +19,7 @@ from experiments.crowd_metrics import (
     IMPASSABLE_CELL_TYPES,
     VALID_VELOCITY_SAMPLES,
 )
+from experiments.platform_physics import PLATFORM_PHYSICAL_SCALE_SOURCE
 
 
 CONGESTION_LEVEL_FIELDS = [
@@ -78,7 +79,11 @@ def _physical_scale(analysis_contract: Mapping[str, Any]) -> float | None:
     physical = analysis_contract.get("physical_scale")
     if not isinstance(physical, Mapping):
         return None
-    if physical.get("source") not in {"explicit_map", "runtime_config"}:
+    if physical.get("source") not in {
+        "explicit_map",
+        "runtime_config",
+        PLATFORM_PHYSICAL_SCALE_SOURCE,
+    }:
         return None
     value = physical.get("value")
     return None if value in (None, "") else _positive(value, name="physical_cell_size_m")

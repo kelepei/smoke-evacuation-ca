@@ -180,10 +180,14 @@ class ResultPackageTests(unittest.TestCase):
                 self.assertIn(_occupancy_display_color(1), heatmap_svg)
                 self.assertIn("actual_exit_entity", people_log)
                 self.assertIn("exit_entity_01", people_log)
-                self.assertEqual("unavailable", metadata["analysis_contract"]["physical_scale"]["source"])
+                self.assertEqual(
+                    "platform_simulation_assumption",
+                    metadata["analysis_contract"]["physical_scale"]["source"],
+                )
                 self.assertEqual("unavailable", metadata["person_id_mapping"]["status"])
                 self.assertEqual("NA", lambda_rows[0]["lambda"])
                 self.assertEqual("not_requested", lambda_rows[0]["status"])
+                self.assertEqual("0.5", lambda_rows[0]["physical_cell_size_m"])
                 self.assertIn("speed_m_s", archive.read("run_01/trajectory_kinematics.csv").decode("utf-8"))
         self.assertEqual(metadata["summary"]["evacuated_count"], 1)
         self.assertEqual(metadata["summary"]["last_successful_exit_time"], 0.5)

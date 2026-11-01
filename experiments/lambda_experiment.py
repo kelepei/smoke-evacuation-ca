@@ -12,11 +12,13 @@ from dataclasses import fields, is_dataclass
 from types import SimpleNamespace
 from typing import Any, Mapping
 
+from experiments.platform_physics import PLATFORM_PHYSICAL_CELL_SIZE_M
+
 
 LAMBDA_VALUES = (0.0, 0.2, 0.4, 0.6, 0.8)
 RISK_FEEDBACK_CAP = 3.0
 LAMBDA_EXIT_PRESSURE_GAIN = 0.5
-PHYSICAL_CELL_SIZE_M = 0.5
+PHYSICAL_CELL_SIZE_M = PLATFORM_PHYSICAL_CELL_SIZE_M
 
 
 class LambdaExperimentError(ValueError):

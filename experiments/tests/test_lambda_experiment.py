@@ -15,6 +15,15 @@ from experiments.week6_analysis import _exit_balance, _q95
 
 
 class LambdaExperimentContractTests(unittest.TestCase):
+    def test_supported_lambda_values_and_formal_pressure_gain(self) -> None:
+        capability = lambda_capability()
+        self.assertEqual(
+            [0.0, 0.2, 0.4, 0.6, 0.8],
+            capability["allowed_lambda_values"],
+        )
+        self.assertEqual(3.0, capability["risk_feedback_cap"])
+        self.assertEqual(0.5, capability["lambda_exit_pressure_gain"])
+
     def test_current_b_runtime_reports_verified_feedback_support(self) -> None:
         capability = lambda_capability()
         self.assertTrue(capability["supported"])

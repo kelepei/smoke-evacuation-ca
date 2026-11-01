@@ -43,6 +43,11 @@ from experiments.experiment_history import ExperimentHistoryError, discover_expe
 from experiments.guidance_interface import warm_guidance_route_cache
 from experiments.integrated_runner import create_integrated_runner
 from experiments.lambda_experiment import lambda_capability
+from experiments.platform_physics import (
+    PLATFORM_PHYSICAL_CELL_SIZE_M,
+    PLATFORM_PHYSICAL_SCALE_SOURCE,
+    platform_physical_cell_size,
+)
 from experiments.result_package import (
     ResultPackageError,
     build_lambda_experiment_csv,
@@ -328,15 +333,15 @@ def _positive_time_step(value: Any) -> float:
     return normalized
 
 
-def _optional_physical_cell_size(value: Any) -> float | None:
-    if value in (None, ""):
-        return None
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise WebRuntimeError("physical_cell_size_m must be numeric or empty")
-    normalized = float(value)
-    if not math.isfinite(normalized) or normalized <= 0:
-        raise WebRuntimeError("physical_cell_size_m must be greater than 0")
-    return normalized
+def _platform_physical_cell_size(value: Any) -> float:
+    try:
+        return platform_physical_cell_size(value)
+    except ValueError as exc:
+        raise WebRuntimeError(str(exc)) from exc
+
+
+# Compatibility name used by existing callers; the value is now always fixed.
+_optional_physical_cell_size = _platform_physical_cell_size
 
 
 def _optional_positive_analysis_value(value: Any, field: str) -> float | None:
@@ -759,7 +764,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             people_path = _uploaded_file(payload, "population_file", {".json"}, root)
             yaml_path = _uploaded_file(payload, "yaml_file", ALLOWED_YAML_SUFFIXES, root)
             if people_path is None:
-                raise WebRuntimeError("C population_file is required for a standard template")
+                raise WebRuntimeError("population_file 是标准模板仿真所必需的人员数据")
             try:
                 return self._start_runner(
                     temporary_directory,
@@ -807,6 +812,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
     ) -> dict[str, Any]:
         run_id = _new_run_id()
         output_root = self.server.root / "outputs" / "experiments"
+        physical_cell_size_m = _platform_physical_cell_size(physical_cell_size_m)
         _force_headless_matplotlib()
         runner = create_integrated_runner(
             map_path=map_path,
@@ -854,14 +860,14 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 "max_steps": max_steps,
                 **({
                     "physical_cell_size_m": physical_cell_size_m,
-                    "physical_scale_kind": "assumption_demo",
+                    "physical_scale_kind": PLATFORM_PHYSICAL_SCALE_SOURCE,
                 } if physical_cell_size_m is not None else {}),
             },
         }
 
     def _require_session(self) -> RuntimeSession:
         if self.server.session is None:
-            raise WebRuntimeError("no active session; import A map and C population first")
+            raise WebRuntimeError("当前没有活动仿真，请先导入场景地图和人员数据")
         return self.server.session
 
     def _step_session(self) -> dict[str, Any]:

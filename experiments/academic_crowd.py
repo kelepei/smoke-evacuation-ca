@@ -20,6 +20,7 @@ from experiments.crowd_metrics import (
     trajectory_kinematics,
     voronoi_density_for_frame,
 )
+from experiments.platform_physics import PLATFORM_PHYSICAL_SCALE_SOURCE
 
 
 ACADEMIC_CROWD_FIELDS = [
@@ -57,7 +58,11 @@ def _truthy(value: Any) -> bool:
 
 def _physical_scale(contract: Mapping[str, Any]) -> float | None:
     scale = contract.get("physical_scale")
-    if not isinstance(scale, Mapping) or scale.get("source") not in {"explicit_map", "runtime_config"}:
+    if not isinstance(scale, Mapping) or scale.get("source") not in {
+        "explicit_map",
+        "runtime_config",
+        PLATFORM_PHYSICAL_SCALE_SOURCE,
+    }:
         return None
     value = _finite(scale.get("value"))
     return value if value is not None and value > 0 else None
