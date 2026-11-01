@@ -119,6 +119,7 @@ class InformationDiffusionEngine:
         # 初始知情比例 / 警报状态（新增）
         self.initial_informed_ratio = 0.0
         self.smoke_confirmation_threshold = 0.1
+        self.smoke_confirmation_radius = 1
         self.alarm_triggered = False
         self.alarm_trigger_step: Optional[int] = None
 
@@ -696,7 +697,12 @@ class InformationDiffusionEngine:
             x = int(person.x)
             y = int(person.y)
             if 0 <= x < smoke_grid.shape[1] and 0 <= y < smoke_grid.shape[0]:
-                smoke_level = float(smoke_grid[y, x])
+                radius = max(0, int(round(float(getattr(
+                    self, "smoke_confirmation_radius", 1
+                )))))
+                x0, x1 = max(0, x - radius), min(smoke_grid.shape[1], x + radius + 1)
+                y0, y1 = max(0, y - radius), min(smoke_grid.shape[0], y + radius + 1)
+                smoke_level = float(smoke_grid[y0:y1, x0:x1].max()) if x1 > x0 and y1 > y0 else 0.0
                 if smoke_level > smoke_threshold:
                     if state == "UNKNOWN":
                         if self.info_engine.transition_state(
