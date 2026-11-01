@@ -198,6 +198,31 @@ def _multi_source_shortest_paths(
     return distances, previous
 
 
+def prewarm_guidance(snapshot: Mapping[str, Any]) -> bool:
+    """Build the per-exit route tables early, before the first alarm frame.
+
+    The first post-alarm snapshot used to pay for four full-grid multi-source
+    searches inside the same step.  Warming them on an early (pre-alarm)
+    snapshot moves that one-off cost into initialization instead of freezing
+    the alarm step.  Returns True when the tables are ready.
+    """
+
+    try:
+        width, height, cell_types = _normalise_grid(snapshot)
+        entities = _entities(snapshot.get("exit_entities"), width, height)
+        if not entities:
+            return False
+        _exit_route_tables(
+            width,
+            height,
+            tuple(cell_types),
+            tuple(entities),
+        )
+        return True
+    except (GuidanceError, KeyError, TypeError, ValueError):
+        return False
+
+
 @lru_cache(maxsize=3)
 def _exit_route_tables(
     width: int,
@@ -297,6 +322,10 @@ def generate_guidance(
         "recommendations": [],
         "unavailable_reason": None,
     }
+    # Warm the static per-exit route tables even when the alarm is not active.
+    # This keeps the first alarm frame from paying for four Dijkstra searches.
+    prewarm_guidance(snapshot)
+
     if trigger_mode == "alarm" and alarm is False:
         output.update({"status": "inactive", "reason_code": "ALARM_NOT_TRIGGERED"})
         return output

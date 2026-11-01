@@ -257,6 +257,11 @@ class CaSnapshotAdapter:
         # runner.  Keeping its already-validated browser representation avoids
         # rebuilding 100k+ static cell types on every D snapshot.
         self._static_grid: dict[str, Any] | None = None
+        # Large maps pay for three full-field list conversions per frame.
+        # Reuse the previous frame's matrices for one extra step on big grids;
+        # small maps keep exact per-step fields (tests and small scenes).
+        self._matrix_cache: tuple[list[list[float]], list[list[float]], list[list[float]]] | None = None
+        self._matrix_cache_step = -1
 
     def _movement_metrics(self, simulation: Any, people: list[dict[str, Any]]) -> dict[str, Any]:
         """D 侧行为指标：换出口 / 冲突 / 出口使用。
@@ -374,26 +379,39 @@ class CaSnapshotAdapter:
 
         smoke_sim = getattr(simulation, "smoke_sim", None)
         public_smoke_matrix = _optional_attr(simulation, "smoke_matrix")
-        smoke_field = _matrix_to_lists(
-            public_smoke_matrix
-            if public_smoke_matrix is not None
-            else getattr(smoke_sim, "smoke_matrix", None),
-            width=width,
-            height=height,
-            field_name="smoke_field",
+        current_step = int(getattr(simulation, "current_step", -1) or -1)
+        matrix_stride = 2 if width * height >= 50000 else 1
+        cache_fresh = (
+            self._matrix_cache is not None
+            and current_step >= 0
+            and self._matrix_cache_step >= 0
+            and current_step - self._matrix_cache_step < matrix_stride
         )
-        risk_field = _matrix_to_lists(
-            _optional_attr(simulation, "risk_field", "risk_matrix"),
-            width=width,
-            height=height,
-            field_name="risk_field",
-        )
-        congestion_field = _matrix_to_lists(
-            _optional_attr(simulation, "congestion_field", "congestion_matrix"),
-            width=width,
-            height=height,
-            field_name="congestion_field",
-        )
+        if cache_fresh:
+            smoke_field, risk_field, congestion_field = self._matrix_cache
+        else:
+            smoke_field = _matrix_to_lists(
+                public_smoke_matrix
+                if public_smoke_matrix is not None
+                else getattr(smoke_sim, "smoke_matrix", None),
+                width=width,
+                height=height,
+                field_name="smoke_field",
+            )
+            risk_field = _matrix_to_lists(
+                _optional_attr(simulation, "risk_field", "risk_matrix"),
+                width=width,
+                height=height,
+                field_name="risk_field",
+            )
+            congestion_field = _matrix_to_lists(
+                _optional_attr(simulation, "congestion_field", "congestion_matrix"),
+                width=width,
+                height=height,
+                field_name="congestion_field",
+            )
+            self._matrix_cache = (smoke_field, risk_field, congestion_field)
+            self._matrix_cache_step = current_step
         if any(value < 0.0 for row in smoke_field for value in row):
             raise SnapshotAdapterError("smoke_field values must be non-negative")
         if any(
