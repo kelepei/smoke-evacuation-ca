@@ -334,7 +334,7 @@ class SocialGraphBuilder:
         if k >= 1.0:
             return params
         result = dict(params)
-        for key in ('strength', 'trust'):
+        for key in ('strength', 'trust', 'follow_probability', 'wait_probability'):
             if key in result:
                 try:
                     result[key] = max(0.0, min(1.0, float(result[key]) * k))
