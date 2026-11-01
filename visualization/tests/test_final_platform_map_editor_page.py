@@ -128,17 +128,12 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
             self.assertIn(marker, self.page)
         self.assertNotIn('id="informationMode"', self.stable)
 
-    def test_enhanced_page_exposes_optional_demo_physical_scale(self) -> None:
-        self.assertIn('id="physicalCellSizeM"', self.page)
-        self.assertIn("假设尺度／演示用途", self.page)
-        self.assertIn("physical_cell_size_m:physicalCellSizeM", self.page)
-        self.assertIn("不会覆盖地图原有 cell_size", self.page)
-        for marker in ('id="analysisMeshSizeM"', 'id="samplingWindowS"', 'id="roiRadiusM"'):
-            self.assertIn(marker, self.page)
-        self.assertIn("analysis_mesh_size_m:analysisMeshSizeM", self.page)
-        self.assertIn("sampling_window_s:samplingWindowS", self.page)
-        self.assertIn("roi_radius_m:roiRadiusM", self.page)
-        self.assertIn("不等同于地图元胞尺寸", self.page)
+    def test_enhanced_page_uses_fixed_platform_physical_scale(self) -> None:
+        self.assertIn("const PHYSICAL_CELL_SIZE_M = 0.5", self.page)
+        self.assertIn("physical_cell_size_m:PHYSICAL_CELL_SIZE_M", self.page)
+        self.assertIn("物理标定：0.5 m/格", self.page)
+        self.assertIn("不等同于地图显示像素或实地测量", self.page)
+        self.assertNotIn('id="physicalCellSizeM"', self.page)
 
     def test_academic_heatmaps_fit_real_analysis_extent_inside_svg_viewport(self) -> None:
         for label in ("累计占用", "Density", "CL", "CN", "Crowd Danger"):
@@ -158,6 +153,86 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
         self.assertIn("appendFrontendRenderTiming", self.page)
         self.assertIn("前端同步绘制", self.page)
         self.assertNotIn("烟雾模型可能需要十几秒", self.page)
+
+    def test_round2_contract_is_visible_without_claiming_lambda_support(self) -> None:
+        for marker in (
+            'id="lambdaValue" disabled',
+            'id="lambdaExperimentEnabled" type="checkbox"',
+            'fetch("/api/capabilities")',
+            "physical_cell_size_m:PHYSICAL_CELL_SIZE_M",
+            'id="relationFilter"',
+            "snapshot.relations",
+            'id="actualRunTime"',
+            "performance.now()",
+            'id="exportLambdaBtn"',
+        ):
+            self.assertIn(marker, self.page)
+        self.assertIn("普通疏散实验不受影响", self.page)
+        self.assertIn("if(lambdaEnabled && lambdaCapability.supported !== true)", self.page)
+
+    def test_manual_acceptance_exit_panel_and_clock_contract(self) -> None:
+        self.assertIn("暂无人员撤离，出现实际撤离记录后显示。", self.page)
+        self.assertIn('value.textContent = `${Number(count)}人 · ${percent.toFixed(1)}%`', self.page)
+        self.assertIn('id="topActualRunTime">实际运行 00:00:00.0', self.page)
+        self.assertLess(self.page.index('id="topActualRunTime"'), self.page.index('id="timeText"'))
+        self.assertIn("formatElapsedRunTime(elapsed)", self.page)
+        self.assertIn('`Step ${currentStep} / 模拟 ${timeValue(simulatedTime)}s`', self.page)
+
+    def test_primary_toolbar_keeps_controls_on_one_row(self) -> None:
+        self.assertIn(".toolbar-primary{flex-wrap:nowrap;white-space:nowrap}", self.page)
+        self.assertIn(".toolbar-time{flex:0 0 118px;width:118px", self.page)
+        toolbar = self.page[self.page.index('<div class="toolbar-row toolbar-primary">') : self.page.index('<div class="toolbar-row toolbar-layers">')]
+        for control_id in (
+            "initBtn", "guideToggle", "broadcastToggle", "speedSelect",
+            "mapExpandBtn", "topActualRunTime", "timeText", "resetBtn",
+            "pauseBtn", "stepBtn", "startBtn",
+        ):
+            self.assertIn(f'id="{control_id}"', toolbar)
+
+    def test_exit_entity_names_are_stable_display_only_labels(self) -> None:
+        self.assertIn("function exitDisplayName(exitId, sourceSnapshot = snapshot)", self.page)
+        self.assertIn('/^exit_entity_(\\d+)$/i.exec(rawId)', self.page)
+        self.assertIn('return `出口${chineseExitOrdinal(Number(canonical[1]))}`', self.page)
+        self.assertIn('label.textContent = exitDisplayName(name)', self.page)
+        self.assertIn('label.title = String(name)', self.page)
+        self.assertIn('exitDisplayName(recommendation.recommended_exit_entity)', self.page)
+        self.assertNotIn('ctx.fillText("EXIT"', self.page)
+        self.assertIn('drawExitEntityLabels(ox, oy, cell)', self.page)
+
+    def test_exit_display_mapping_does_not_mutate_machine_fields(self) -> None:
+        display_helper = self.page[
+            self.page.index("function exitDisplayName") : self.page.index("function displayedRunMs")
+        ]
+        self.assertNotIn("actual_exit", display_helper)
+        self.assertNotIn("target_exit", display_helper)
+        self.assertNotIn("exit_usage", display_helper)
+
+    def test_animation_loop_defers_expensive_analysis_until_pause_or_completion(self) -> None:
+        step_body = self.page[self.page.index("async function stepOnce()") : self.page.index("function scheduleNextStep()")]
+        self.assertNotIn("refreshLogLayers()", step_body)
+        self.assertIn("if(result.finished)", step_body)
+        self.assertIn("refreshRealAnalysis()", step_body)
+        self.assertIn("exitDistributionSignature !== lastExitDistributionSignature", step_body)
+        self.assertIn("refreshCoreMetrics()", step_body)
+        self.assertIn('id="clientStepTiming"', self.page)
+        self.assertIn("json_parse_ms", self.page)
+        self.assertIn("lastSmokeDrawMs", self.page)
+        self.assertIn("snapshot.runtime_metrics", self.page)
+        self.assertIn("exitDistributionSignature !== lastExitDistributionSignature", self.page)
+        self.assertIn("requestedGeneration !== sessionGeneration", self.page)
+
+    def test_product_copy_hides_internal_team_labels(self) -> None:
+        self.assertIn("关系紧密程度（0–1）", self.page)
+        self.assertNotIn("relation_intensity：0=关系最弱", self.page)
+        self.assertNotIn("A 地图（JSON / CSV / PNG）", self.page)
+        self.assertNotIn("B 正在计算 step", self.page)
+
+    def test_relation_filter_uses_real_edges_and_current_positions(self) -> None:
+        self.assertIn("relation.person_a_id", self.page)
+        self.assertIn("relation.person_b_id", self.page)
+        self.assertIn("relation.relation_type", self.page)
+        self.assertIn("positions.set(String(person.person_id", self.page)
+        self.assertNotIn("group_id) ===", self.page)
 
 
 if __name__ == "__main__":

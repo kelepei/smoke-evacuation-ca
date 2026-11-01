@@ -137,6 +137,21 @@ class CaSnapshotAdapterTests(unittest.TestCase):
             self.simulation.smoke_matrix.tolist(),
         )
 
+    def test_snapshot_keeps_b_switch_counts_and_d_runtime_metrics_separate(self) -> None:
+        chooser = self.simulation.exit_chooser
+        chooser.switch_total = 3
+        chooser.switch_counts = {1: 2, 2: 1}
+        self.simulation._engine.movement_stats["switch_total"] = 3
+        self.simulation._engine.movement_stats["conflict_total"] = 4
+
+        snapshot = self.adapter.capture(self.simulation)
+
+        self.assertEqual(3, snapshot["metrics"]["switch_total"])
+        self.assertEqual({"1": 2, "2": 1}, snapshot["metrics"]["switch_counts"])
+        self.assertEqual(4, snapshot["runtime_metrics"]["conflict_total"])
+        self.assertIn("capabilities", snapshot)
+        self.assertIn("experiment_config", snapshot)
+
     def test_missing_values_remain_null_and_public_evacuation_is_preserved(self) -> None:
         self.simulation.persons[1].evacuated = True
         snapshot = self.adapter.capture(self.simulation)

@@ -45,6 +45,14 @@ PEOPLE_LOG_FIELDS = [
     "follow_target",
     "is_waiting",
     "profile",
+    "panic_level",
+    "danger_urgent",
+    "movement_switch_total",
+    "movement_conflict_total",
+    "movement_conflict_lost_total",
+    "movement_panic_count",
+    "movement_urgent_count",
+    "movement_max_panic",
 ]
 
 EVENT_LOG_FIELDS = [
@@ -294,6 +302,17 @@ class CsvExperimentLogger:
             "time_step_s": self.time_step_s,
             "time_s": time_s,
         }
+        runtime_metrics = snapshot.get("runtime_metrics")
+        if not isinstance(runtime_metrics, Mapping):
+            runtime_metrics = {}
+        movement_columns = {
+            "movement_switch_total": runtime_metrics.get("switch_total"),
+            "movement_conflict_total": runtime_metrics.get("conflict_total"),
+            "movement_conflict_lost_total": runtime_metrics.get("conflict_lost_total"),
+            "movement_panic_count": runtime_metrics.get("panic_count"),
+            "movement_urgent_count": runtime_metrics.get("urgent_count"),
+            "movement_max_panic": runtime_metrics.get("max_panic"),
+        }
 
         for index, raw_person in enumerate(raw_people):
             if not isinstance(raw_person, Mapping):
@@ -378,6 +397,7 @@ class CsvExperimentLogger:
             current_positions[person_id] = (x, y)
             row = {
                 **common,
+                **movement_columns,
                 "person_id": person_id,
                 "x": x,
                 "y": y,
@@ -400,6 +420,8 @@ class CsvExperimentLogger:
                 "follow_target": follow_target,
                 "is_waiting": bool(raw_person.get("is_waiting", False)),
                 "profile": raw_person.get("profile"),
+                "panic_level": raw_person.get("panic_level"),
+                "danger_urgent": raw_person.get("danger_urgent"),
             }
             people_rows.append(row)
 

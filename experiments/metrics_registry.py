@@ -44,6 +44,15 @@ METRIC_REGISTRY: tuple[MetricDefinition, ...] = (
     MetricDefinition("avg_dose", "平均剂量", "dose", "people_log dose", "NA: B did not provide dose"),
     MetricDefinition("avg_risk", "平均风险", "risk", "people_log risk", "NA: B did not provide risk"),
     MetricDefinition("exit_utilization", "出口利用率", "NA", "people_log actual_exit_entity, fallback actual_exit", "NA: B did not provide actual_exit"),
+    MetricDefinition("switch_total", "出口切换总次数", "count", "B movement_stats.switch_total", "NA: B did not publish switch_total", True),
+    MetricDefinition("switch_per_person", "人均出口切换次数", "count/person", "switch_total / initial population", "NA: switch_total is unavailable", True),
+    MetricDefinition("conflict_total", "冲突总次数", "count", "B movement_stats.conflict_total", "NA: B did not publish conflict_total", True),
+    MetricDefinition("conflict_lost_total", "冲突失败总次数", "count", "B movement_stats.conflict_lost_total", "NA: B did not publish conflict_lost_total", True),
+    MetricDefinition("exit_entropy_h", "出口分布归一化熵 H", "ratio", "actual exit usage over declared valid exits", "NA: valid exit distribution requires K >= 2", True),
+    MetricDefinition("exit_gini_g", "出口分布 Gini G", "ratio", "actual exit usage over declared valid exits", "NA: valid exit distribution requires K >= 2", True),
+    MetricDefinition("panic_peak", "恐慌峰值", "panic", "people_log panic_level", "NA: B did not publish panic_level", True),
+    MetricDefinition("urgent_peak", "危险紧迫人数峰值", "person", "people_log danger_urgent count by step", "NA: B did not publish danger_urgent", True),
+    MetricDefinition("q95_dose", "最终个人烟雾剂量 Q95", "dose", "people_log final dose per person", "NA: B did not publish dose", True),
 )
 
 

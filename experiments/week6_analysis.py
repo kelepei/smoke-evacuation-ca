@@ -61,11 +61,42 @@ def _mean(values: Iterable[float]) -> float | str:
     return round(sum(values) / len(values), 6) if values else NA
 
 
+def _q95(values: Iterable[float]) -> float | str:
+    ordered = sorted(values)
+    if not ordered:
+        return NA
+    if len(ordered) == 1:
+        return round(ordered[0], 6)
+    position = 0.95 * (len(ordered) - 1)
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    value = ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
+    return round(value, 6)
+
+
+def _exit_balance(counts: list[int]) -> tuple[float | str, float | str]:
+    """Return normalized entropy H and Gini G for the declared exit universe."""
+
+    total = sum(counts)
+    exit_count = len(counts)
+    if exit_count < 2 or total <= 0:
+        return NA, NA
+    probabilities = [count / total for count in counts if count > 0]
+    entropy = -sum(value * math.log(value) for value in probabilities) / math.log(exit_count)
+    difference_sum = sum(abs(left - right) for left in counts for right in counts)
+    gini = difference_sum / (2 * exit_count * total)
+    return round(entropy, 6), round(gini, 6)
+
+
 def _metric_rows(metrics: Mapping[str, Any]) -> list[dict[str, Any]]:
     return metric_rows(metrics)
 
 
-def analyze_run(run_dir: str | Path) -> dict[str, Any]:
+def analyze_run(
+    run_dir: str | Path,
+    *,
+    valid_exit_ids: Iterable[str] | None = None,
+) -> dict[str, Any]:
     """Analyze D's ``people_log.csv`` and optional event/config files."""
 
     output_dir = Path(run_dir)
@@ -89,6 +120,10 @@ def analyze_run(run_dir: str | Path) -> dict[str, Any]:
     all_smoke: list[float] = []
     all_risk: list[float] = []
     all_dose: list[float] = []
+    final_dose_by_person: dict[str, float] = {}
+    all_panic: list[float] = []
+    urgent_by_step: dict[int, int] = defaultdict(int)
+    urgent_field_present = False
     latest_exit_by_person: dict[str, str] = {}
 
     for row in rows:
@@ -106,6 +141,17 @@ def analyze_run(run_dir: str | Path) -> dict[str, Any]:
         dose = _float(row.get("dose"))
         if dose is not None:
             all_dose.append(dose)
+            final_dose_by_person[person_id] = dose
+        panic = _float(row.get("panic_level"))
+        if panic is not None:
+            all_panic.append(panic)
+        urgent_value = _bool(row.get("danger_urgent"))
+        if urgent_value is not None:
+            urgent_field_present = True
+        if urgent_value is True:
+            row_step = _int(row.get("step"))
+            if row_step is not None:
+                urgent_by_step[row_step] += 1
         # A planned target is not evidence of the exit actually used. Prefer
         # D's entity alias only when it was mapped from B's actual cell exit;
         # otherwise preserve backward-compatible cell-level actual_exit.
@@ -117,6 +163,21 @@ def analyze_run(run_dir: str | Path) -> dict[str, Any]:
     evacuation_times = list(evacuated_by_person.values())
     total_time = max((_float(row.get("time_s")) or 0.0 for row in final_rows), default=0.0)
     exit_distribution = Counter(latest_exit_by_person.values())
+    declared_exits = tuple(dict.fromkeys(str(item) for item in (valid_exit_ids or ()) if str(item)))
+    exit_usage = (
+        {exit_id: int(exit_distribution.get(exit_id, 0)) for exit_id in declared_exits}
+        if declared_exits
+        else NA
+    )
+    entropy_h, gini_g = (
+        _exit_balance(list(exit_usage.values()))
+        if isinstance(exit_usage, dict)
+        else (NA, NA)
+    )
+    final_runtime_row = final_rows[0] if final_rows else {}
+    switch_total = _int(final_runtime_row.get("movement_switch_total"))
+    conflict_total = _int(final_runtime_row.get("movement_conflict_total"))
+    conflict_lost_total = _int(final_runtime_row.get("movement_conflict_lost_total"))
     active_positions = Counter(
         (x, y)
         for row in final_rows
@@ -175,6 +236,32 @@ def analyze_run(run_dir: str | Path) -> dict[str, Any]:
             if latest_exit_by_person
             else "NA: B did not provide actual_exit"
         ),
+        "switch_total": switch_total if switch_total is not None else NA,
+        "switch_per_person": (
+            round(switch_total / population, 6)
+            if switch_total is not None and population > 0
+            else NA
+        ),
+        "switch_counts": NA,
+        "switch_counts_note": "NA: B does not publish per-person exit switch counts",
+        "conflict_total": conflict_total if conflict_total is not None else NA,
+        "conflict_lost_total": conflict_lost_total if conflict_lost_total is not None else NA,
+        "exit_usage": exit_usage,
+        "exit_usage_note": (
+            "counts all declared valid exit entities, including zero-use exits"
+            if declared_exits
+            else "NA: valid exit universe is unavailable"
+        ),
+        "exit_entropy_h": entropy_h,
+        "exit_gini_g": gini_g,
+        "exit_balance_note": (
+            "K includes all declared valid exit entities, including zero-use exits"
+            if declared_exits
+            else "NA: valid exit universe is unavailable"
+        ),
+        "panic_peak": max(all_panic) if all_panic else NA,
+        "urgent_peak": max(urgent_by_step.values(), default=0) if urgent_field_present else NA,
+        "q95_dose": _q95(final_dose_by_person.values()),
         # Compatibility aliases are retained for Round-1 consumers. They are
         # intentionally absent from the formal registry and batch contract.
         "total_population": population,

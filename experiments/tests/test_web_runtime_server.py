@@ -17,8 +17,10 @@ from PIL import Image, ImageDraw
 from experiments.web_runtime_server import (
     DWebRuntimeServer,
     RuntimeRequestHandler,
+    WebRuntimeError,
     _control_runtime_config,
     _optional_physical_cell_size,
+    _platform_physical_cell_size,
 )
 
 
@@ -29,6 +31,12 @@ class WebRuntimeServerTests(unittest.TestCase):
         self.assertEqual(0.5, _optional_physical_cell_size(0.5))
         with self.assertRaisesRegex(Exception, "greater than 0"):
             _optional_physical_cell_size(0)
+
+    def test_platform_physical_scale_is_fixed_at_half_metre(self) -> None:
+        self.assertEqual(0.5, _platform_physical_cell_size(None))
+        self.assertEqual(0.5, _platform_physical_cell_size(0.5))
+        with self.assertRaises(WebRuntimeError):
+            _platform_physical_cell_size(0.4)
 
     def test_enhanced_web_runtime_enables_documented_source_smoke_semantics(self) -> None:
         self.assertTrue(_control_runtime_config({})["web_mode"])
@@ -100,6 +108,12 @@ class WebRuntimeServerTests(unittest.TestCase):
 
         try:
             with tempfile.TemporaryDirectory() as raw:
+                with urlopen(base_url + "/api/capabilities", timeout=10) as response:
+                    capabilities = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(
+                    "unavailable",
+                    capabilities["lambda_experiment"]["status"],
+                )
                 map_path, population_path = self._write_inputs(Path(raw))
                 initial_response = post(
                     "/api/session",
@@ -125,7 +139,7 @@ class WebRuntimeServerTests(unittest.TestCase):
                         "time_step_s": 0.25,
                         "max_steps": 8,
                         "physical_cell_size_m": 0.5,
-                        "physical_scale_kind": "assumption_demo",
+                        "physical_scale_kind": "platform_fixed_assumption",
                     },
                     initial_response["runtime_parameters"],
                 )
@@ -176,6 +190,10 @@ class WebRuntimeServerTests(unittest.TestCase):
                 self.assertIn("crowd_danger_persons_m3", academic["records"][0])
                 self.assertEqual("NA", analysis["week6_metrics"]["total_evacuation_time_s"])
                 self.assertEqual("NA", analysis["week6_metrics"]["exit_distribution"])
+                with urlopen(base_url + "/api/session/metrics", timeout=10) as response:
+                    metrics_only = json.loads(response.read().decode("utf-8"))
+                self.assertTrue(metrics_only["ok"])
+                self.assertNotIn("academic_crowd_fields", metrics_only)
                 with urlopen(base_url + "/api/experiments", timeout=10) as response:
                     history = json.loads(response.read().decode("utf-8"))
                 self.assertTrue(history["ok"])
@@ -189,6 +207,7 @@ class WebRuntimeServerTests(unittest.TestCase):
                 self.assertTrue(layers["ok"])
                 self.assertEqual("people_log.csv", layers["layers"]["source"])
                 self.assertNotIn("evacuation_curve_svg", layers)
+                self.assertNotIn("academic_crowd_fields", layers)
                 with urlopen(base_url + "/api/session/export", timeout=10) as response:
                     self.assertEqual("application/zip", response.headers.get_content_type())
                     package = zipfile.ZipFile(io.BytesIO(response.read()))
@@ -201,6 +220,7 @@ class WebRuntimeServerTests(unittest.TestCase):
                 self.assertIn(prefix + "occupancy_heatmap.svg", names)
                 self.assertIn(prefix + "week6_metrics.json", names)
                 self.assertIn(prefix + "week6_metrics_summary.csv", names)
+                self.assertIn(prefix + "lambda_experiment.csv", names)
                 self.assertIn(prefix + "inputs/map_file.json", names)
                 self.assertIn(prefix + "inputs/population_file.json", names)
                 packaged_people = list(
@@ -212,6 +232,13 @@ class WebRuntimeServerTests(unittest.TestCase):
                 )
                 self.assertEqual(4, len(packaged_people))
                 self.assertEqual({"0", "1"}, {row["step"] for row in packaged_people})
+                with urlopen(base_url + "/api/session/lambda.csv", timeout=10) as response:
+                    lambda_rows = list(
+                        csv.DictReader(io.StringIO(response.read().decode("utf-8-sig")))
+                    )
+                self.assertEqual(1, len(lambda_rows))
+                self.assertEqual("NA", lambda_rows[0]["lambda"])
+                self.assertEqual("unavailable", lambda_rows[0]["capability"])
         finally:
             try:
                 post("/api/session/close", {})

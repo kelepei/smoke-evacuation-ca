@@ -602,6 +602,29 @@ class CaSnapshotAdapter:
         if isinstance(extra_meta, Mapping):
             adapter_meta.update(dict(extra_meta))
 
+        raw_movement_stats = _optional_attr(simulation, "movement_stats")
+        movement_stats = (
+            dict(raw_movement_stats)
+            if isinstance(raw_movement_stats, Mapping)
+            else {}
+        )
+        from experiments.lambda_experiment import lambda_capability
+        movement_parameters = (
+            parameters.get("movement")
+            if isinstance(parameters, Mapping)
+            else None
+        )
+        panic_parameters = (
+            movement_parameters.get("panic")
+            if isinstance(movement_parameters, Mapping)
+            else None
+        )
+        lambda_value = (
+            panic_parameters.get("panic_to_risk_gain")
+            if isinstance(panic_parameters, Mapping)
+            else None
+        )
+
         payload = {
             "schema_version": self.schema_version,
             "run_id": self.run_id,
@@ -618,6 +641,14 @@ class CaSnapshotAdapter:
             "exit_entities": list(_optional_attr(simulation, "exit_entities") or []),
             "guides": list(_optional_attr(simulation, "guides") or []),
             "c_runtime": _optional_attr(simulation, "c_runtime_state"),
+            "runtime_metrics": movement_stats,
+            "capabilities": {"lambda_experiment": lambda_capability()},
+            "experiment_config": {
+                "lambda": lambda_value,
+                "movement": dict(movement_parameters)
+                if isinstance(movement_parameters, Mapping)
+                else None,
+            },
             "fields": {
                 "smoke_field": smoke_field,
                 "smoke_sources": smoke_sources,

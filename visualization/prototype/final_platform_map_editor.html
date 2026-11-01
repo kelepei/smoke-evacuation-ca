@@ -39,16 +39,18 @@
   .canvas-wrap{position:relative;height:100%;display:flex;flex-direction:column}
   .toolbar{flex:0 0 auto;display:flex;flex-direction:column;gap:6px;padding:7px;overflow:visible;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fbfdff,#f2f7fc)}
   .toolbar-row{display:flex;align-items:center;gap:5px;min-width:0;width:100%}
-  .toolbar-primary{flex-wrap:wrap}
+  .toolbar-primary{flex-wrap:nowrap;white-space:nowrap}
   .toolbar-layers{padding-top:6px;border-top:1px solid #d5dfeb}
   .layer-caption{flex:0 0 auto;color:#475569;font-size:11px;font-weight:800;white-space:nowrap}
-  .toolbar .spacer{flex:1 1 20px;min-width:0}
+  .toolbar .spacer{flex:1 1 0;min-width:0}
   .init-control{flex:0 0 88px;min-width:88px;white-space:nowrap}
   .run-control{flex:0 0 56px;min-width:56px;white-space:nowrap}
   .run-controls{display:flex;align-items:center;gap:4px;flex:0 0 auto;margin-left:4px}
-  .map-expand{margin-left:4px}
+  .map-expand{flex:0 0 auto;margin-left:4px}
   .layer-controls{display:flex;flex:1 1 auto;min-width:0;align-items:center;gap:6px 10px;flex-wrap:wrap;white-space:nowrap;font-size:11px;color:#475569}.layer-controls label{display:flex;align-items:center;gap:3px;margin:0;color:inherit}.layer-controls label:has(input:disabled){color:#94a3b8}.layer-controls input{width:auto;margin:0}
-  #timeText{flex:0 0 92px;width:92px;text-align:right;white-space:nowrap;font-size:11px;font-variant-numeric:tabular-nums}
+  .toolbar-time{flex:0 0 118px;width:118px;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;line-height:1.2;white-space:nowrap;font-variant-numeric:tabular-nums}
+  #topActualRunTime{font-size:10px;color:#475569}
+  #timeText{font-size:11px;color:#0f172a}
   .layer-notice{position:absolute;right:12px;left:auto;bottom:12px;top:auto;width:auto;max-width:220px;height:32px;display:block;padding:6px 9px;overflow:hidden;white-space:nowrap;text-align:left;text-overflow:ellipsis;border:1px solid #cbd5e1;border-radius:6px;background:rgba(255,255,255,.94);color:#475569;font-size:11px;pointer-events:none}
   canvas{width:100%;height:auto;min-height:0;flex:1 1 auto;display:block;background:#f8fafc}
   .legend{position:absolute;left:12px;bottom:12px;display:flex;flex-direction:column;gap:4px;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-size:11px;pointer-events:none}
@@ -103,9 +105,9 @@
 </header>
 <main>
   <aside class="panel side config-side">
-    <div class="section-kicker">INPUTS</div>
+    <div class="section-kicker">场景输入</div>
     <div class="title">场景与人群 <span class="pill">真实输入</span></div>
-    <label>A 地图（JSON / CSV / PNG）<input id="mapFile" type="file" accept=".json,.csv,.png,application/json,text/csv,image/png"></label>
+    <label>场景地图（JSON / CSV / PNG）<input id="mapFile" type="file" accept=".json,.csv,.png,application/json,text/csv,image/png"></label>
     <div class="row">
       <button id="previewMap" class="primary">导入并显示地图</button>
       <button id="sampleBtn">加载仓库样例</button>
@@ -124,16 +126,22 @@
     <div class="hint" id="templateHint">模板可直接预览；运行前请导入与该场景匹配的人员位置文件。</div>
 
     <hr>
-    <div class="section-kicker">RUNTIME PARAMETERS</div>
-    <div class="title">本次运行参数 <span class="pill">直传 runtime</span></div>
+    <div class="section-kicker">运行参数</div>
+    <div class="title">本次运行参数 <span class="pill">直接生效</span></div>
     <label>总人数 <input id="totalPersons" type="number" min="1" step="1" value="40"></label>
     <label>random_seed（留空为随机）<input id="randomSeed" type="number" value="42"></label>
-    <label title="关系紧密程度：0=关系最弱，1=默认最强；按比例缩放关系的 strength 与 trust">relation_intensity（关系紧密程度 0–1）<input id="relationIntensity" type="number" min="0" max="1" step="0.01" value="0.6"></label>
-    <div class="hint">relation_intensity：0=关系最弱，1=默认最强；会按比例缩放生成关系的强度（strength）与信任（trust），进而影响结伴分组与信息传播概率。</div>
+    <label title="0 表示关系最弱，1 表示关系最紧密">关系紧密程度（0–1）<input id="relationIntensity" type="number" min="0" max="1" step="0.01" value="0.6"></label>
     <div class="row"><label>student <input id="ratioStudent" type="number" min="0" step="0.01" value="0.8"></label><label>teacher <input id="ratioTeacher" type="number" min="0" step="0.01" value="0.1"></label><label>staff <input id="ratioStaff" type="number" min="0" step="0.01" value="0.1"></label></div>
     <button id="generatePeopleBtn" class="primary" disabled>生成 / 初始化人员</button>
     <div class="row"><label>time_step / s<input id="timeStep" type="number" min="0.01" max="60" step="0.01" value="0.5"></label><label>最大步数<input id="maxSteps" type="number" min="1" max="5000" value="500"></label></div>
-    <div class="hint">time_step 真实决定模拟时间与日志时间轴；最大步数真实决定 runtime 停止上限。</div>
+    <div class="hint">物理时间步长决定模拟时间与日志时间轴；最大步数决定本次仿真的停止上限。</div>
+    <div class="hint success" id="physicalScaleLabel">物理标定：0.5 m/格（平台统一仿真假设，不等同于地图显示像素或实地测量）</div>
+    <div class="title" style="margin-top:12px">λ 恐慌—风险实验 <span class="pill" id="lambdaCapabilityPill">检测中</span></div>
+    <label>panic_to_risk_gain（λ）
+      <select id="lambdaValue" disabled><option value="0.0">0.0</option><option value="0.2">0.2</option><option value="0.4">0.4</option><option value="0.6">0.6</option><option value="0.8">0.8</option></select>
+    </label>
+    <label style="display:flex;grid-template-columns:auto 1fr;align-items:center;gap:7px"><input id="lambdaExperimentEnabled" type="checkbox" style="width:auto" disabled>启用 λ 专项实验（exit_pressure_gain 固定 0.5）</label>
+    <div class="hint" id="lambdaCapabilityText">正在核验模型是否支持 panic_to_risk_gain 与 risk_feedback_cap。</div>
     <div class="title" style="margin-top:12px">C10 管控策略 <span class="pill">真实接入</span></div>
     <label>策略选择
       <select id="controlStrategy">
@@ -150,26 +158,26 @@
     <div class="row"><label>自动解除封锁<select id="controlLockdownAutoUnlock"><option value="true">是</option><option value="false">否</option></select></label><label>分区软偏好/m<input id="controlZoneBiasM" type="number" min="0" step="0.5" value="4"></label></div>
     <div class="row"><label>A*重规划/s<input id="visionReplanIntervalS" type="number" min="1" step="1" value="30"></label><label>双目标风险权重<input id="dualRiskWeight" type="number" min="0" max="1" step="0.05" value="0.5" title="0=最短时间，1=最低风险"></label></div>
     <div class="row"><label>双目标重规划/s<input id="dualReplanIntervalS" type="number" min="1" step="1" value="30"></label></div>
-    <div class="hint">fire_aware 是四合一综合策略：出口关闭、区域封锁、分区疏散、火灾感知路线管控同时生效；none 为对照组。vision_astar 只使用所选 A 地图，区域速度随烟雾浓度折减。dual_objective_aco 依据杨天鹏论文的时间—风险双目标模型，比较所有可达出口的完整路径，风险权重 0=最短时间、1=最低风险；两种路线型策略的路径都显示在“规划路线”图层。</div>
-    <div class="title" style="margin-top:12px">C 配置文件 <span class="pill">部分字段生效</span></div>
+    <div class="hint">综合管控会同时启用出口关闭、区域封锁、分区疏散和火灾感知路线管控；“不启用”为对照组。地图时间型 A* 使用当前场景地图，区域速度随烟雾浓度折减。时间—风险双目标策略会比较所有可达出口的完整路径；风险权重 0=最短时间、1=最低风险。两种路线型策略均显示在“规划路线”图层。</div>
+    <div class="title" style="margin-top:12px">人员配置文件 <span class="pill">部分字段生效</span></div>
     <div class="row">
       <button id="yamlBtn">导入 YAML</button>
       <button id="clearYaml">清除 YAML</button>
     </div>
     <input id="yamlFile" type="file" accept=".yaml,.yml,text/yaml,application/x-yaml" hidden>
     <div class="hint" id="configHint">未选择 YAML；仓库样例固定读取正式 config_template.yaml。</div>
-    <div class="hint" id="peopleInitHint">默认直接设置参数；YAML 为可选高级导入，二者进入同一 C 生成与 A 自动定位链路。</div>
+    <div class="hint" id="peopleInitHint">默认直接设置参数；YAML 为可选高级导入，两种方式进入同一人员生成与自动定位流程。</div>
 
     <details class="diagnostics">
-      <summary>待接入参数与 C 静态字段</summary>
-      <div class="hint">scene、profile、relation_intensity 与 group_config 由 YAML/人员文件记录；网页 C 信息采用“烟源附近先知情 → 烟雾阈值广播 → 口头/关系/引导传播”，不再随机选择初始知情者。C 每步行为真实传入 B runtime。</div>
-      <label>profile_ratios / group_config <input value="使用 C 正式生成器；高级群体参数可由 YAML 提供" disabled></label>
-      <label>C 每步策略 <input value="信息、结伴、从众与引导员由 C runtime bridge 传入" disabled></label>
+      <summary>高级人员与传播配置</summary>
+      <div class="hint">场景、人员属性、关系和群体配置由 YAML 或人员文件记录；信息按局部感知、报警广播和社会关系传播。</div>
+      <label>人员与群体配置 <input value="使用正式人员生成器；高级参数可由 YAML 提供" disabled></label>
+      <label>每步行为 <input value="信息、结伴、从众与引导员行为由仿真服务提供" disabled></label>
     </details>
 
     <details class="diagnostics">
       <summary>烟雾输入</summary>
-      <div class="hint" id="smokeInputHint">B06 publishes a normalized smoke concentration in [0, 1]. 烟源只来自地图 cell.type = smoke_source；导入已有烟源时由用户选择保留或清除，烟场只绘制 B 返回的 smoke_matrix。</div>
+      <div class="hint" id="smokeInputHint">烟雾浓度采用 0–1 归一化值。烟源来自地图中的烟源元胞；烟雾图层只绘制仿真返回的烟雾场。</div>
     </details>
 
   </aside>
@@ -187,7 +195,7 @@
       </select>
       <div class="spacer"></div>
       <button id="mapExpandBtn" class="figure-expand map-expand" type="button" aria-label="放大查看主地图" title="放大查看地图">⛶</button>
-      <span id="timeText">step 0 / 0.0s</span>
+      <div class="toolbar-time"><span id="topActualRunTime">实际运行 00:00:00.0</span><span id="timeText">Step 0 / 模拟 0.0s</span></div>
       <div class="run-controls" aria-label="运行控制">
         <button id="resetBtn" class="danger run-control">重置</button>
         <button id="pauseBtn" class="run-control">暂停</button>
@@ -205,6 +213,7 @@
         <label><input id="layerTrajectories" type="checkbox" disabled>轨迹</label>
         <label><input id="layerPath" type="checkbox" disabled checked>疏散路径</label>
         <label><input id="layerVisionRoutes" type="checkbox" disabled checked>规划路线</label>
+        <label>关系<select id="relationFilter" class="academic-selector" aria-label="人物关系筛选"><option value="none">不显示</option><option value="all">全部</option><option value="classmate">同学</option><option value="family">家庭</option><option value="friend">朋友</option><option value="other">其他</option></select></label>
       </div>
     </div>
   </div>
@@ -221,12 +230,13 @@
   </section>
 
   <aside class="panel side runtime-side">
-    <div class="section-kicker">LIVE RUN</div>
+    <div class="section-kicker">实时运行</div>
     <div class="title">运行状态 <span class="pill">真实快照</span></div>
     <div class="run-summary" id="runSummary">请先导入场景地图。</div>
     <div class="title">核心指标</div>
-    <div class="kv"><span>当前 step</span><b id="runtimeStep">0</b></div>
+    <div class="kv"><span>当前步数</span><b id="runtimeStep">0</b></div>
     <div class="kv"><span>当前模拟时间</span><b id="simTime">0.0 s</b></div>
+    <div class="kv"><span>实际运行时间</span><b id="actualRunTime">0.0 s</b></div>
     <div class="kv"><span>人员总数</span><b id="peopleCount">NA</b></div>
     <div class="kv"><span>知情人数</span><b id="informedCount">NA</b></div>
     <div class="kv"><span>引导员状态</span><b id="guideState">NA</b></div>
@@ -240,29 +250,30 @@
     <div class="kv"><span>最大烟雾</span><b id="smokeMax">NA</b></div>
     <div class="action-grid">
       <button id="exportBtn">导出结果包</button>
+      <button id="exportLambdaBtn">导出 λ CSV</button>
       <button id="refreshAnalysis">刷新真实分析</button>
       <button id="clearLog">清空日志</button>
     </div>
     <details class="diagnostics" id="guidancePanel" open>
-      <summary>疏散指导 / Evacuation Guidance <span class="pill" id="guidanceStatusPill">unavailable</span></summary>
-      <div id="guidanceStatus" class="guidance-status unavailable">unavailable：当前真实 Runtime snapshot 尚未发布 guidance recommendation。</div>
-      <div class="kv"><span>Alarm</span><b id="guidanceAlarm">NA</b></div>
-      <div class="kv"><span>Policy</span><b id="guidancePolicy">smoke_distance_baseline_v1</b></div>
+      <summary>疏散指导 <span class="pill" id="guidanceStatusPill">暂不可用</span></summary>
+      <div id="guidanceStatus" class="guidance-status unavailable">当前仿真尚未提供疏散指导建议。</div>
+      <div class="kv"><span>警报状态</span><b id="guidanceAlarm">NA</b></div>
+      <div class="kv"><span>指导策略</span><b id="guidancePolicy">smoke_distance_baseline_v1</b></div>
       <div id="guidanceSummary" class="guidance-summary">推荐人数：NA；实体出口汇总：NA。</div>
       <div class="guidance-table-wrap">
         <table class="guidance-table" aria-label="真实疏散指导建议">
           <thead><tr><th>人员</th><th>当前位置</th><th>推荐实体出口</th><th>距离</th><th>烟雾</th><th>组合</th><th>原因</th><th>有效至</th></tr></thead>
-          <tbody id="guidanceRows"><tr><td colspan="8">暂无真实 recommendation artifact。</td></tr></tbody>
+          <tbody id="guidanceRows"><tr><td colspan="8">暂无疏散指导建议。</td></tr></tbody>
         </table>
       </div>
-      <div id="guidanceDetail" class="guidance-detail">建议仅用于展示和审计；不会改变实际 target_exit、actual_exit 或 B 的移动。</div>
+      <div id="guidanceDetail" class="guidance-detail">建议仅用于展示和审计，不会改变人员的实际目标出口或运动结果。</div>
     </details>
     <details class="diagnostics">
       <summary>数据契约与参数效力</summary>
       <div class="kv"><span>生效参数</span><b id="effectiveParams">等待初始化</b></div>
-      <div class="kv"><span>C 配置来源</span><b id="configSourceValue">NA</b></div>
-      <div class="kv"><span>B runtime API</span><b id="runtimeApi">NA</b></div>
-      <div class="kv"><span>C 每步行为</span><b id="behaviorStatus">待接入</b></div>
+      <div class="kv"><span>配置来源</span><b id="configSourceValue">NA</b></div>
+      <div class="kv"><span>仿真接口</span><b id="runtimeApi">NA</b></div>
+      <div class="kv"><span>每步行为数据</span><b id="behaviorStatus">待接入</b></div>
       <div class="kv"><span>actual_exit</span><b id="actualExitStatus">NA · 上游未提供</b></div>
       <div class="kv"><span>risk</span><b id="riskStatus">NA · 上游未提供</b></div>
     </details>
@@ -274,13 +285,14 @@
       <div id="historyDetail" class="history-detail">未选择历史实验。</div>
     </details>
     <details class="diagnostics">
-      <summary>开发诊断</summary>
+      <summary>性能与数据诊断</summary>
       <div class="status" id="statusBox">请先导入地图。</div>
       <div class="kv"><span>Grid 尺寸</span><b id="gridSize">NA</b></div>
       <div class="kv"><span>烟源数</span><b id="smokeSourceCount">NA</b></div>
       <div class="kv"><span>烟雾契约</span><b id="smokeContract">NA</b></div>
       <div class="kv"><span>重叠元胞</span><b id="overlapCount">0</b></div>
       <div class="kv"><span>最近一步耗时</span><b id="stepLatency">NA</b></div>
+      <div class="kv output-path"><span>页面耗时明细</span><b id="clientStepTiming">NA</b></div>
       <div class="kv output-path"><span>输出目录</span><b id="outputDir">NA</b></div>
     </details>
     <details class="diagnostics">
@@ -296,7 +308,7 @@
     </section>
     <section class="insight-panel">
       <div class="insight-title">出口利用率</div>
-      <div id="exitBars" class="real-note">NA：尚未收到实际出口字段 actual_exit。</div>
+      <div id="exitBars" class="real-note">暂无人员撤离，出现实际撤离记录后显示。</div>
     </section>
     <section class="insight-panel">
       <div class="insight-title">风险、烟雾与冲突诊断</div>
@@ -305,6 +317,8 @@
         <div class="metric"><span>平均剂量</span><b id="avgDose">NA</b></div>
         <div class="metric"><span>活动重叠元胞</span><b id="insightOverlap">0</b></div>
         <div class="metric"><span>最大烟雾</span><b id="insightSmoke">NA</b></div>
+        <div class="metric"><span>出口切换 / 冲突</span><b id="switchConflictMetric">NA</b></div>
+        <div class="metric"><span>出口 H / G</span><b id="exitBalanceMetric">NA</b></div>
       </div>
     </section>
     <section class="insight-panel figure-panel">
@@ -323,7 +337,7 @@
 <div class="editor-modal" id="editorModal" role="dialog" aria-modal="true" aria-label="地图编辑器">
   <div class="editor-dialog">
     <header><strong>实验性地图编辑</strong><span class="hint">确认后才替换本次运行的地图</span></header>
-    <iframe id="mapEditorFrame" title="A 地图编辑器集成版" src="/visualization/prototype/map_editor_integrated.html"></iframe>
+    <iframe id="mapEditorFrame" title="场景地图编辑器" src="/visualization/prototype/map_editor_integrated.html"></iframe>
     <div class="editor-actions"><button id="cancelMapEdit">取消编辑</button><button id="confirmMapEdit" class="primary">确认编辑</button></div>
   </div>
 </div>
@@ -392,6 +406,121 @@
   let currentMapName = "";
   let editorReady = false;
   let smokeImportResolver = null;
+  const PHYSICAL_CELL_SIZE_M = 0.5;
+  let lambdaCapability = {supported:false, status:"unavailable", reason:"尚未完成能力检测"};
+  let relationCacheSource = null;
+  let relationCache = [];
+  let elapsedRunMs = 0;
+  let activeRunStartedAt = null;
+  let elapsedTicker = null;
+  let lastDrawMs = 0;
+  let lastSmokeDrawMs = 0;
+  let sessionGeneration = 0;
+  let lastExitDistributionSignature = "";
+  let exitDisplayMapSource = null;
+  let exitDisplayMap = new Map();
+
+  function chineseExitOrdinal(value){
+    const number = Number(value);
+    if(!Number.isInteger(number) || number <= 0) return String(value);
+    const digits = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+    if(number < 10) return digits[number];
+    if(number < 20) return `十${number === 10 ? "" : digits[number % 10]}`;
+    if(number < 100) return `${digits[Math.floor(number / 10)]}十${number % 10 ? digits[number % 10] : ""}`;
+    return String(number);
+  }
+
+  function rebuildExitDisplayMap(sourceSnapshot = snapshot){
+    const entities = sourceSnapshot && Array.isArray(sourceSnapshot.exit_entities)
+      ? sourceSnapshot.exit_entities : [];
+    if(entities === exitDisplayMapSource) return;
+    exitDisplayMapSource = entities;
+    exitDisplayMap = new Map();
+    const ids = [...new Set(entities.map(entity => String(entity && entity.exit_entity_id || "").trim()).filter(Boolean))];
+    const usedOrdinals = new Set();
+    ids.forEach(id => {
+      const match = /^exit_entity_(\d+)$/i.exec(id);
+      if(!match) return;
+      const ordinal = Number(match[1]);
+      if(ordinal > 0){
+        exitDisplayMap.set(id, `出口${chineseExitOrdinal(ordinal)}`);
+        usedOrdinals.add(ordinal);
+      }
+    });
+    let nextOrdinal = 1;
+    ids.filter(id => !exitDisplayMap.has(id)).sort().forEach(id => {
+      while(usedOrdinals.has(nextOrdinal)) nextOrdinal += 1;
+      exitDisplayMap.set(id, `出口${chineseExitOrdinal(nextOrdinal)}`);
+      usedOrdinals.add(nextOrdinal);
+    });
+  }
+
+  function exitDisplayName(exitId, sourceSnapshot = snapshot){
+    if(exitId === null || exitId === undefined || exitId === "") return "NA";
+    const rawId = String(exitId);
+    const canonical = /^exit_entity_(\d+)$/i.exec(rawId);
+    if(canonical && Number(canonical[1]) > 0){
+      return `出口${chineseExitOrdinal(Number(canonical[1]))}`;
+    }
+    rebuildExitDisplayMap(sourceSnapshot);
+    return exitDisplayMap.get(rawId) || rawId;
+  }
+
+  function displayedRunMs(){
+    return elapsedRunMs + (activeRunStartedAt === null ? 0 : performance.now() - activeRunStartedAt);
+  }
+
+  function refreshRunClock(){
+    const elapsed = displayedRunMs();
+    const target = $("actualRunTime");
+    if(target) target.textContent = `${(elapsed / 1000).toFixed(1)} s`;
+    const topTarget = $("topActualRunTime");
+    if(topTarget) topTarget.textContent = `实际运行 ${formatElapsedRunTime(elapsed)}`;
+  }
+
+  function formatElapsedRunTime(milliseconds){
+    const tenths = Math.max(0, Math.floor(Number(milliseconds || 0) / 100));
+    const hours = Math.floor(tenths / 36000);
+    const minutes = Math.floor(tenths / 600) % 60;
+    const seconds = Math.floor(tenths / 10) % 60;
+    return `${String(hours).padStart(2,"0")}:${String(minutes).padStart(2,"0")}:${String(seconds).padStart(2,"0")}.${tenths % 10}`;
+  }
+
+  function beginRunClock(){
+    if(activeRunStartedAt !== null) return;
+    activeRunStartedAt = performance.now();
+    if(elapsedTicker === null) elapsedTicker = setInterval(refreshRunClock, 100);
+    refreshRunClock();
+  }
+
+  function pauseRunClock(){
+    if(activeRunStartedAt !== null){
+      elapsedRunMs += performance.now() - activeRunStartedAt;
+      activeRunStartedAt = null;
+    }
+    if(elapsedTicker !== null){ clearInterval(elapsedTicker); elapsedTicker = null; }
+    refreshRunClock();
+  }
+
+  function resetRunClock(){
+    pauseRunClock();
+    elapsedRunMs = 0;
+    refreshRunClock();
+  }
+
+  async function loadCapabilities(){
+    const response = await fetch("/api/capabilities");
+    const data = await response.json().catch(() => ({ok:false, error:"能力信息无法解析"}));
+    if(!response.ok || !data.ok) throw new Error(data.error || "无法读取运行能力");
+    lambdaCapability = data.lambda_experiment || lambdaCapability;
+    const supported = lambdaCapability.supported === true;
+    $("lambdaValue").disabled = !supported;
+    $("lambdaExperimentEnabled").disabled = !supported;
+    $("lambdaCapabilityPill").textContent = supported ? "模型已支持" : "暂不可用";
+    $("lambdaCapabilityText").textContent = supported
+      ? "模型已发布所需参数；启用后参数会进入正式运动配置。"
+      : `不可用：${lambdaCapability.reason || "模型尚未发布 λ 参数接口"}。普通疏散实验不受影响。`;
+  }
 
   function setConfigState(message, state = ""){
     const hint = $("configHint");
@@ -473,13 +602,30 @@
   }
 
   async function api(path, payload = {}){
+    const requestStarted = performance.now();
     const response = await fetch(path, {
       method: "POST",
       headers: {"Content-Type":"application/json"},
       body: JSON.stringify(payload)
     });
-    const data = await response.json().catch(() => ({ok:false, error:"服务端返回不可解析数据"}));
+    const responseReceived = performance.now();
+    const text = await response.text();
+    const bodyReceived = performance.now();
+    const parseStarted = performance.now();
+    let data;
+    try{ data = JSON.parse(text); }
+    catch(_error){ data = {ok:false, error:"服务端返回不可解析数据"}; }
+    const parseFinished = performance.now();
     if(!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    if(data && typeof data === "object"){
+      data._client_diagnostics = {
+        http_total_ms: bodyReceived - requestStarted,
+        response_wait_ms: responseReceived - requestStarted,
+        body_read_ms: bodyReceived - responseReceived,
+        json_parse_ms: parseFinished - parseStarted,
+        response_bytes: Number(response.headers.get("Content-Length")) || text.length,
+      };
+    }
     return data;
   }
 
@@ -530,13 +676,6 @@
           ctx.strokeStyle = "rgba(80,96,120,.16)";
           ctx.strokeRect(ox + x * cell, oy + y * cell, cell, cell);
         }
-        if(type === "exit" && layerEnabled("layerExits") && cell >= 8){
-          ctx.fillStyle = "#fff";
-          ctx.font = `700 ${Math.max(8, Math.min(14, cell * .42))}px Arial`;
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillText("EXIT", ox + (x + .5) * cell, oy + (y + .5) * cell);
-        }
         const alarms = Array.isArray(grid.alarm_cells) ? grid.alarm_cells : (Array.isArray(snapshot.alarm_cells) ? snapshot.alarm_cells : []);
         if(alarms.some(marker => Number(marker && marker.x) === x && Number(marker && marker.y) === y)){
           ctx.strokeStyle = "#dc2626";
@@ -545,13 +684,36 @@
         }
       }
     }
+    drawExitEntityLabels(ox, oy, cell);
+  }
+
+  function drawExitEntityLabels(ox, oy, cell){
+    if(!layerEnabled("layerExits") || cell < 8) return;
+    const entities = snapshot && Array.isArray(snapshot.exit_entities) ? snapshot.exit_entities : [];
+    entities.forEach(entity => {
+      if(!entity || !entity.exit_entity_id) return;
+      const members = Array.isArray(entity.member_cells) ? entity.member_cells : [];
+      const centroid = Array.isArray(entity.centroid) && entity.centroid.length >= 2
+        ? entity.centroid
+        : (members.length
+          ? [members.reduce((sum, point) => sum + Number(point && point[0] || 0), 0) / members.length,
+             members.reduce((sum, point) => sum + Number(point && point[1] || 0), 0) / members.length]
+          : null);
+      if(!centroid || !Number.isFinite(Number(centroid[0])) || !Number.isFinite(Number(centroid[1]))) return;
+      ctx.fillStyle = "#fff";
+      ctx.font = `700 ${Math.max(8, Math.min(14, cell * .42))}px Arial`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(exitDisplayName(entity.exit_entity_id), ox + (Number(centroid[0]) + .5) * cell, oy + (Number(centroid[1]) + .5) * cell);
+    });
   }
 
   function drawField(field, grid, ox, oy, cell){
-    if(!Array.isArray(field)) return;
+    const started = performance.now();
+    if(!Array.isArray(field)){ lastSmokeDrawMs = 0; return; }
     let max = 0;
     field.forEach(row => Array.isArray(row) && row.forEach(v => { if(Number(v) > max) max = Number(v); }));
-    if(max <= 0) return;
+    if(max <= 0){ lastSmokeDrawMs = performance.now() - started; return; }
     field.forEach((row, y) => {
       if(!Array.isArray(row)) return;
       row.forEach((raw, x) => {
@@ -563,6 +725,7 @@
         ctx.fillRect(ox + x * cell, oy + y * cell, cell, cell);
       });
     });
+    lastSmokeDrawMs = performance.now() - started;
   }
 
   function drawSmokeSources(sources, grid, ox, oy, cell){
@@ -709,6 +872,45 @@
     });
   }
 
+  function cachedRelations(){
+    const source = snapshot && Array.isArray(snapshot.relations) ? snapshot.relations : [];
+    if(source === relationCacheSource) return relationCache;
+    relationCacheSource = source;
+    relationCache = source.map(relation => ({
+      personA:String(relation && relation.person_a_id),
+      personB:String(relation && relation.person_b_id),
+      type:String(relation && relation.relation_type || "other").toLowerCase(),
+    })).filter(relation => relation.personA !== "undefined" && relation.personB !== "undefined");
+    return relationCache;
+  }
+
+  function drawRelations(people, ox, oy, cell){
+    const filter = String($("relationFilter").value || "none");
+    if(filter === "none") return;
+    const positions = new Map();
+    (people || []).forEach(person => {
+      if(!person || person.evacuated) return;
+      const x = Number(person.x), y = Number(person.y);
+      if(Number.isFinite(x) && Number.isFinite(y)) positions.set(String(person.person_id ?? person.id), {x, y});
+    });
+    const colors = {classmate:"#2563eb", family:"#dc2626", friend:"#16a34a", other:"#7c3aed"};
+    ctx.save();
+    ctx.lineWidth = Math.max(.7, Math.min(1.8, cell * .07));
+    ctx.globalAlpha = .34;
+    cachedRelations().forEach(relation => {
+      const category = ["classmate", "family", "friend"].includes(relation.type) ? relation.type : "other";
+      if(filter !== "all" && filter !== category) return;
+      const left = positions.get(relation.personA), right = positions.get(relation.personB);
+      if(!left || !right) return;
+      ctx.beginPath();
+      ctx.strokeStyle = colors[category];
+      ctx.moveTo(ox + (left.x + .5) * cell, oy + (left.y + .5) * cell);
+      ctx.lineTo(ox + (right.x + .5) * cell, oy + (right.y + .5) * cell);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
   function currentGuidance(){
     if(!snapshot || typeof snapshot !== "object") return null;
     const guidance = snapshot.guidance;
@@ -797,7 +999,7 @@
       ctx.fillStyle = "#64748b";
       ctx.font = "700 18px Microsoft YaHei";
       ctx.textAlign = "center";
-      ctx.fillText("等待 A 地图导入", w/2, h/2);
+      ctx.fillText("等待场景地图导入", w/2, h/2);
       ctx = previousCtx;
       return;
     }
@@ -816,6 +1018,7 @@
       (snapshot.c_runtime && snapshot.c_runtime.dual_routes) || []
     );
     drawVisionRoutes(plannedRoutes, grid, ox, oy, cell);
+    drawRelations(snapshot.people, ox, oy, cell);
     if(layerEnabled("layerPeople")) drawPeople(snapshot.people, grid, ox, oy, cell);
     drawGuides(snapshot.guides, ox, oy, cell);
     drawGuidanceOverlay(grid, ox, oy, cell);
@@ -826,7 +1029,10 @@
   }
 
   function draw(){
+    const started = performance.now();
     renderMap(canvas, mainMapView);
+    lastDrawMs = performance.now() - started;
+    return lastDrawMs;
   }
 
   function drawExpandedMap(){
@@ -947,7 +1153,7 @@
   function renderGuidanceDetail(recommendation, guidance){
     const detail = $("guidanceDetail");
     if(!recommendation){
-      detail.textContent = "建议仅用于展示和审计；不会改变实际 target_exit、actual_exit 或 B 的移动。";
+      detail.textContent = "建议仅用于展示和审计，不会改变人员的实际目标出口或运动结果。";
       return;
     }
     const components = guidanceComponents(recommendation);
@@ -962,7 +1168,7 @@
     const person = (snapshot && Array.isArray(snapshot.people) ? snapshot.people : []).find(item => String(item && item.person_id) === String(recommendation.person_id)) || {};
     const targetExit = recommendation.current_target_exit ?? person.target_exit ?? "NA";
     const actualExit = person.actual_exit_entity ?? person.actual_exit_cell ?? person.actual_exit ?? "NA";
-    detail.append(`推荐出口=${recommendation.recommended_exit_entity ?? "NA"}；实际 target_exit=${targetExit}；实际 actual_exit=${actualExit}。展示层不会写回任何实际字段。`);
+    detail.append(`推荐出口=${exitDisplayName(recommendation.recommended_exit_entity)}；实际目标出口=${exitDisplayName(targetExit)}；实际撤离出口=${exitDisplayName(actualExit)}。展示层不会写回任何实际字段。`);
   }
 
   function renderGuidance(){
@@ -1009,7 +1215,7 @@
       const entity = item.recommended_exit_entity;
       if(entity) entityCounts[entity] = (entityCounts[entity] || 0) + 1;
     });
-    const entityText = Object.entries(entityCounts).map(([id, count]) => `${id}: ${count}`).join("；") || "NA";
+    const entityText = Object.entries(entityCounts).map(([id, count]) => `${exitDisplayName(id)}: ${count}`).join("；") || "NA";
     $("guidanceSummary").textContent = `推荐人数：${recommendations.length}；实体出口汇总：${entityText}。`;
     if(status === "inactive"){
       setGuidanceStatus("inactive", guidance.reason_text || "尚未触发疏散指导。");
@@ -1038,7 +1244,7 @@
       const values = [
         recommendation.person_id,
         `(${person.x}, ${person.y})`,
-        recommendation.recommended_exit_entity || "NA",
+        exitDisplayName(recommendation.recommended_exit_entity),
         guidanceNumber(components.route_distance_cost),
         guidanceNumber(components.route_smoke_cost),
         guidanceNumber(components.combined_cost),
@@ -1086,7 +1292,7 @@
     $("smokeMax").textContent = observed.maxSmoke === null ? "NA" : observed.maxSmoke.toFixed(3);
     $("smokeContract").textContent = observed.maxSmoke === null
       ? "NA"
-      : (observed.smokeSourceCount === 0 ? "无烟源" : (!observed.smokeActive ? "待 B 首步更新" : (observed.maxSmoke <= 10 ? "正常 (0~10)" : "超出 0~10")));
+      : (observed.smokeSourceCount === 0 ? "无烟源" : (!observed.smokeActive ? "等待首步更新" : (observed.maxSmoke <= 10 ? "正常 (0~10)" : "超出 0~10")));
     $("overlapCount").textContent = observed.overlapCells;
     if(extra.diagnostics && Number.isFinite(Number(extra.diagnostics.request_processing_ms))){
       $("stepLatency").textContent = `${Number(extra.diagnostics.request_processing_ms).toFixed(1)} ms`;
@@ -1095,7 +1301,8 @@
     const simulatedTime = snapshot ? Number(snapshot.time_s || 0) : 0;
     $("runtimeStep").textContent = String(currentStep);
     $("simTime").textContent = `${timeValue(simulatedTime)} s`;
-    $("timeText").textContent = `step ${currentStep} / ${timeValue(simulatedTime)}s`;
+    $("timeText").textContent = `Step ${currentStep} / 模拟 ${timeValue(simulatedTime)}s`;
+    refreshRunClock();
     if(extra.output_dir){
       lastOutputDir = extra.output_dir;
       $("outputDir").textContent = extra.output_dir;
@@ -1135,7 +1342,7 @@
     $("layerNotice").title = noticeDetail;
     $("smokeInputHint").textContent = grid && observed.smokeSourceCount === 0
       ? "当前场景无 smoke_source，烟雾图层保持为空。"
-      : "烟源来自地图；烟场只绘制 B 返回的 smoke_matrix。";
+      : "烟源来自地图；烟雾图层只绘制仿真返回的烟雾场。";
     return observed;
   }
 
@@ -1156,6 +1363,11 @@
       currentMapViewKey = mapKey;
     }
     if(extra.resetHistory){
+      sessionGeneration += 1;
+      lastExitDistributionSignature = "";
+      exitDisplayMapSource = null;
+      exitDisplayMap = new Map();
+      resetRunClock();
       logLayers = null;
       liveHistory = [];
       liveExitUtilizationRepresentation = Array.isArray(next && next.exit_entities) && next.exit_entities.length > 0
@@ -1214,7 +1426,11 @@
       }
     });
     renderActualExitDistribution(actualExits, representation);
-    const riskNote = riskMean === null ? "B 当前未公开个人风险结果，平均风险显示 NA。" : "";
+    const runtimeMetrics = snapshot && snapshot.runtime_metrics;
+    if(runtimeMetrics && typeof runtimeMetrics === "object"){
+      $("switchConflictMetric").textContent = `${runtimeMetrics.switch_total ?? "NA"} / ${runtimeMetrics.conflict_total ?? "NA"}`;
+    }
+    const riskNote = riskMean === null ? "当前仿真未提供个人风险结果，平均风险显示 NA。" : "";
     $("dataProvenance").innerHTML = `<b>数据来源：</b>本次运行日志和仿真快照。风险、剂量、实际出口只在上游实际返回时展示；缺失字段为 NA。${riskNote}`;
   }
 
@@ -1257,8 +1473,8 @@
 
   function resetDerivedAnalysis(message = "等待本次运行的真实日志。"){
     ["totalEvacTime", "meanEvacTime", "t90Time"].forEach(id => { $(id).textContent = "NA"; });
-    $("exitBars").textContent = "NA：尚未收到实际出口字段 actual_exit。";
-    $("actualExitStatus").textContent = "NA · 上游未提供";
+    $("exitBars").textContent = "暂无人员撤离，出现实际撤离记录后显示。";
+    $("actualExitStatus").textContent = "暂无实际撤离记录";
     setAnalysisFigure("curveFigure", "", message);
     setAnalysisFigure("heatmapFigure", "", message);
     $("curveNote").textContent = "本次运行尚无分析数据。";
@@ -1271,10 +1487,8 @@
     const container = $("exitBars");
     container.replaceChildren();
     if(total <= 0){
-      container.textContent = representation === "entity"
-        ? "NA：本次运行采用实体出口统计；尚无 actual_exit_entity。"
-        : "NA：旧日志未提供实体出口，按 actual_exit 统计。";
-      $("actualExitStatus").textContent = "NA · 上游未提供";
+      container.textContent = "暂无人员撤离，出现实际撤离记录后显示。";
+      $("actualExitStatus").textContent = "暂无实际撤离记录";
       return;
     }
     values.forEach(([name, count], index) => {
@@ -1282,19 +1496,20 @@
       const row = document.createElement("div");
       row.className = "bar-row";
       const label = document.createElement("span");
-      label.textContent = String(name);
+      label.textContent = exitDisplayName(name);
+      label.title = String(name);
       const track = document.createElement("div");
       track.className = "bar-track";
       const bar = document.createElement("div");
       bar.className = `bar-fill${index % 2 ? " green" : ""}`;
       bar.style.width = `${percent}%`;
       const value = document.createElement("b");
-      value.textContent = `${percent.toFixed(1)}%`;
+      value.textContent = `${Number(count)}人 · ${percent.toFixed(1)}%`;
       track.appendChild(bar);
       row.append(label, track, value);
       container.appendChild(row);
     });
-    $("actualExitStatus").textContent = "已收到真实字段";
+    $("actualExitStatus").textContent = representation === "entity" ? "按实际出口实体统计" : "按实际出口记录统计";
   }
 
   function metricText(metrics, key, suffix = ""){
@@ -1314,6 +1529,8 @@
     $("totalEvacTime").textContent = metricText(metrics, "total_evacuation_time_s", " s");
     $("meanEvacTime").textContent = metricText(metrics, "mean_evacuation_time_s", " s");
     $("t90Time").textContent = metricText(metrics, "t90_time_s", " s");
+    $("switchConflictMetric").textContent = `${metricText(metrics, "switch_total")} / ${metricText(metrics, "conflict_total")}`;
+    $("exitBalanceMetric").textContent = `${metricText(metrics, "exit_entropy_h")} / ${metricText(metrics, "exit_gini_g")}`;
     const representation = (data.exit_utilization_contract && data.exit_utilization_contract.representation)
       || liveExitUtilizationRepresentation
       || "legacy_cell";
@@ -1322,9 +1539,12 @@
 
   async function refreshCoreMetrics(){
     if(!activeSession) return;
+    const requestedGeneration = sessionGeneration;
+    const requestedRunId = snapshot && snapshot.run_id;
     const response = await fetch("/api/session/metrics");
     const data = await response.json().catch(() => ({ok:false, error:"指标结果无法解析"}));
     if(!response.ok || !data.ok) throw new Error(data.error || "无法刷新真实指标");
+    if(requestedGeneration !== sessionGeneration || requestedRunId !== (snapshot && snapshot.run_id)) return;
     renderAnalysisMetrics(data);
   }
 
@@ -1379,9 +1599,12 @@
 
   async function refreshLogLayers(){
     if(!activeSession) return;
+    const requestedGeneration = sessionGeneration;
+    const requestedRunId = snapshot && snapshot.run_id;
     const response = await fetch("/api/session/layers");
     const data = await response.json().catch(() => ({ok:false, error:"日志图层无法解析"}));
     if(!response.ok || !data.ok) throw new Error(data.error || "无法刷新真实日志图层");
+    if(requestedGeneration !== sessionGeneration || requestedRunId !== (snapshot && snapshot.run_id)) return;
     logLayers = data.layers || null;
     draw();
     refreshStats();
@@ -1392,9 +1615,12 @@
       log("请先初始化仿真，再刷新真实分析。");
       return;
     }
+    const requestedGeneration = sessionGeneration;
+    const requestedRunId = snapshot && snapshot.run_id;
     const response = await fetch("/api/session/analysis");
     const data = await response.json().catch(() => ({ok:false, error:"分析结果无法解析"}));
     if(!response.ok || !data.ok) throw new Error(data.error || "无法生成真实分析");
+    if(requestedGeneration !== sessionGeneration || requestedRunId !== (snapshot && snapshot.run_id)) return;
     const summary = data.summary || {};
     renderAnalysisMetrics(data);
     logLayers = data.layers || null;
@@ -1519,11 +1745,11 @@
     $("editMapBtn").disabled = false;
     $("autoPositionBtn").disabled = false;
     $("generatePeopleBtn").disabled = false;
-    const exitIds = (currentMapData.cells || []).filter(cell => cell && cell.type === "exit").map((cell, index) => cell.exit_id || `exit_${index + 1}`);
+    const exitIds = [...new Set((currentMapData.cells || []).filter(cell => cell && cell.type === "exit").map((cell, index) => cell.exit_id || `exit_${index + 1}`))];
     if(!exitIds.length){
       $("mapEditorHint").textContent = "当前地图没有出口。请点击“编辑地图”添加至少一个 exit 元胞，否则无法生成可疏散人员。";
     }
-    setStatus(`地图已显示：${currentMapName}\n当前状态：内存 JSON${smokeSources ? `；烟源 ${smokeSources} 个` : "；无烟源"}\n出口ID：${exitIds.join(", ") || "无"}${exitIds.length ? "" : "\n缺少出口：请先编辑地图添加 exit 后再生成人员"}`, "地图预览");
+    setStatus(`地图已显示：${currentMapName}\n当前状态：内存 JSON${smokeSources ? `；烟源 ${smokeSources} 个` : "；无烟源"}\n出口：${exitIds.map(id => exitDisplayName(id)).join(", ") || "无"}${exitIds.length ? "" : "\n缺少出口：请先编辑地图添加 exit 后再生成人员"}`, "地图预览");
     return result;
   }
 
@@ -1572,7 +1798,7 @@
       return;
     }
     const mapFile = await readFilePayload($("mapFile"));
-    if(!mapFile){ setStatus("请选择 A 地图文件。", "等待地图"); return; }
+    if(!mapFile){ setStatus("请选择场景地图文件。", "等待地图"); return; }
     if(String(mapFile.name || "").toLowerCase().endsWith(".json")){
       try{
         const parsed = JSON.parse(mapFile.text);
@@ -1632,7 +1858,7 @@
     applySnapshot(result.snapshot, {resetHistory:true});
     const meta = result.map_meta || {};
     const smokeSources = Number((meta.cell_counts || {}).smoke_source || 0);
-    setStatus(`地图已显示。\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\n烟源: ${smokeSources}${smokeSources ? " 个；启动联调后显示 B 烟雾" : " 个；当前地图无 smoke_source，因此不会产生烟雾"}\ncell_type: ${JSON.stringify(meta.cell_counts || {})}${currentMapData ? "\n下一步：可直接生成人员" : ""}`, "地图预览");
+    setStatus(`地图已显示。\n读取方式：${meta.loader}\n网格：${meta.width} x ${meta.height}\n烟源：${smokeSources}${smokeSources ? " 个；初始化后显示烟雾" : " 个；当前地图无烟源，因此不会产生烟雾"}${currentMapData ? "\n下一步：可直接生成人员" : ""}`, "地图预览");
     log(`地图预览成功：${mapFile.name}`);
   }
 
@@ -1661,8 +1887,8 @@
     $("templateHint").textContent = currentMapData
       ? `已选择 ${templateId} 模板；可直接点击“生成 / 初始化人员”，也可上传已有人员文件后启动联调。`
       : `已选择 ${templateId} 模板，但未返回可编辑地图 JSON。`;
-    setStatus(`A 标准模板已显示：${templateId}\nA loader: ${meta.loader}\nGrid: ${meta.width} x ${meta.height}\n地图烟源: ${smokeSources} 个\n下一步：点击“生成 / 初始化人员”，或上传 C 人员文件后启动联调。`, "模板预览");
-    log(`A 标准模板预览成功：${templateId}`);
+    setStatus(`标准模板已显示：${templateId}\n读取方式：${meta.loader}\n网格：${meta.width} x ${meta.height}\n地图烟源：${smokeSources} 个\n下一步：点击“生成 / 初始化人员”，或上传人员文件后初始化仿真。`, "模板预览");
+    log(`标准模板预览成功：${templateId}`);
   }
 
   function syncBroadcastToggle(enabled, notify = false){
@@ -1687,7 +1913,9 @@
     if(seedRaw !== "" && !Number.isInteger(randomSeed)) throw new Error("random_seed 必须是整数或留空");
     if(!Number.isFinite(timeStep) || timeStep <= 0 || timeStep > 60) throw new Error("time_step 必须在 0 到 60 秒之间");
     if(!Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 5000) throw new Error("最大步数必须是 1 到 5000 的整数");
-    return {random_seed:randomSeed, time_step_s:timeStep, max_steps:maxSteps, guide_enabled:guideEnabled, information_mode:broadcastEnabled ? "broadcast" : "local", alarm_enabled:broadcastEnabled, ...controlConfigPayload()};
+    const lambdaEnabled = $("lambdaExperimentEnabled").checked;
+    if(lambdaEnabled && lambdaCapability.supported !== true) throw new Error("当前模型尚未实现 λ 参数，不能启动 λ 专项实验");
+    return {random_seed:randomSeed, time_step_s:timeStep, max_steps:maxSteps, physical_cell_size_m:PHYSICAL_CELL_SIZE_M, sampling_window_s:4.5, analysis_mesh_size_m:2.0, roi_radius_m:4.0, lambda_experiment:lambdaEnabled, panic_to_risk_gain:Number($("lambdaValue").value), guide_enabled:guideEnabled, information_mode:broadcastEnabled ? "broadcast" : "local", alarm_enabled:broadcastEnabled, ...controlConfigPayload()};
   }
 
   function controlConfigPayload(){
@@ -1757,7 +1985,7 @@
     generatingPeople = true;
     generateButton.disabled = true;
     generateButton.textContent = "生成中...";
-    setStatus("正在由 C 生成人员/关系，并由 A 分配初始位置，请稍候...", "生成中");
+    setStatus("正在生成人员与关系并分配初始位置，请稍候...", "生成中");
     try{
       const sceneConfig = sceneConfigPayload();
       const uploadedYaml = await readFilePayload($("yamlFile"));
@@ -1768,8 +1996,8 @@
       showEffectiveRuntime(result, result.initialization?.config_source === "yaml" ? "YAML → canonical config" : "UI → canonical config");
       const init = result.initialization || {};
       $("mapEditorHint").textContent = "已生成并定位 " + (init.person_count ?? "NA") + " 人；profile 分布：" + JSON.stringify(init.profile_counts || {});
-      setStatus("人员已由 C 正式生成器创建，并由 A 自动分配初始位置\n实际人数：" + (init.person_count ?? "NA") + "\n配置来源：" + (init.config_source || "NA") + "\n同一 canonical config 可复现", "初始化成功");
-      log("UI canonical config → C profile/social → A position allocator → B runtime");
+      setStatus("人员已生成并自动分配初始位置\n实际人数：" + (init.person_count ?? "NA") + "\n配置来源：" + (init.config_source || "NA") + "\n相同配置与随机种子可复现", "初始化成功");
+      log("人员生成、关系生成、位置分配和仿真初始化已完成");
     }catch(error){
       if(!showSpawnCapacityError(error, "人员生成")){
         setStatus(error.message || String(error), "初始化失败");
@@ -1794,7 +2022,7 @@
       readFilePayload($("yamlFile"))
     ]);
     if((!mapFile && !currentMapData && !selectedTemplate) || !populationFile){
-      setStatus("启动 A+B+C 联调需要 A 地图或标准模板，以及 C 人群输出。", "缺少输入");
+      setStatus("初始化仿真需要场景地图或标准模板，以及人员数据。", "缺少输入");
       return;
     }
     const yaml = uploadedYaml;
@@ -1814,22 +2042,21 @@
     resetDerivedAnalysis("正在读取初始化日志。");
     applySnapshot(result.snapshot, {output_dir:result.output_dir, resetHistory:true});
     showEffectiveRuntime(result, configSource);
-    refreshRealAnalysis().catch(error => log(`初始化后分析未刷新：${error.message}`));
     const meta = result.snapshot.adapter_meta || {};
     const behaviorStatus = String(meta.behavior_input || "未提供").startsWith("empty mapping")
       ? "未接入（空映射）"
       : String(meta.behavior_input || "未提供");
     const drawingStatus = String(meta.upstream_animation || "").startsWith("suppressed")
-      ? "D Canvas（B 重复绘图已关闭）"
-      : String(meta.upstream_animation || "D Canvas");
+      ? "网页画布（重复绘图已关闭）"
+      : String(meta.upstream_animation || "网页画布");
     const observed = inspectSnapshot();
     const smokeStatus = observed.runtimeSmokeSourceCount
-      ? `烟雾: 已接入 B 运行时烟源 ${observed.runtimeSmokeSourceCount} 个；${observed.smokeActive ? "已显示" : "等待 B 首步更新"}`
+      ? `烟雾：已接入运行时烟源 ${observed.runtimeSmokeSourceCount} 个；${observed.smokeActive ? "已显示" : "等待首步更新"}`
       : (observed.smokeSourceCount
-        ? `烟雾: ${observed.smokeActive ? "已显示" : "已接入，等待 B 首步更新"}`
+        ? `烟雾：${observed.smokeActive ? "已显示" : "已接入，等待首步更新"}`
         : "烟雾: 当前场景无 smoke_source，烟雾图层已禁用");
-    setStatus(`A+B+C 文件联调已初始化\nB: ${meta.b_runtime_api || "run_one_step(c_step_data)"}\nC 人员: 已接入\nC 配置: ${configSource}\nC 每步行为: ${behaviorStatus}\nC 信息传播: 烟源附近先知情；烟雾达阈值后广播；其余靠口头/关系/引导\nC10: ${((result.snapshot.c_runtime || {}).control_strategy || {}).active_strategies || "none"} 关闭出口=${(((result.snapshot.c_runtime || {}).control_strategy || {}).closed_exits || []).join(",")||"无"}\n烟雾: normalize=${(result.snapshot.c_runtime || {}).smoke_normalize} grow=${(result.snapshot.c_runtime || {}).smoke_sigma_grow} target=${(result.snapshot.c_runtime || {}).smoke_target_intensity} ramp=${(result.snapshot.c_runtime || {}).smoke_ramp_steps} 报警步=${(result.snapshot.c_runtime || {}).alarm_broadcast_step ?? "未触发"}\n速度: 未知情 x0.35；知情 x1.15；个体速度差 ±30%；拥堵处继续减速\nB字段: is_panicked、panic_level、speed_multiplier 已随每步行为传入\n颜色: 红色=已知火情，紫色=引导员\n${smokeStatus}\n绘图: ${drawingStatus}`, "真实联调");
-    log("A+B+C 联调初始化成功");
+    setStatus(`仿真已初始化\n人员：已接入\n配置：${configSource}\n每步行为：${behaviorStatus}\n信息传播：烟源附近先知情；烟雾达阈值后广播；其余通过口头、关系或引导传播\n管控策略：${((result.snapshot.c_runtime || {}).control_strategy || {}).active_strategies || "none"}\n${smokeStatus}\n绘图：${drawingStatus}`, "初始化成功");
+    log("仿真初始化成功");
   }
 
   async function initAutoPositionSession(){
@@ -1857,9 +2084,9 @@
     applySnapshot(result.snapshot, {output_dir:result.output_dir, resetHistory:true});
     showEffectiveRuntime(result, uploadedYaml ? `外部 YAML (${uploadedYaml.name})` : "未提供 YAML");
     const allocation = result.auto_positioning || {};
-    $("mapEditorHint").textContent = `已由 A 自动分配 ${allocation.person_count ?? "NA"} 人；编辑后的 currentMapData 已进入 runtime。`;
-    setStatus(`人员位置已由 A 自动分配并完成 runtime 初始化\n人数：${allocation.person_count ?? "NA"}\n来源：${allocation.source || "allocate_positions"}`, "自动分配已初始化");
-    log("编辑后地图已用于 A 自动位置分配和 B runtime 初始化");
+    $("mapEditorHint").textContent = `已自动分配 ${allocation.person_count ?? "NA"} 人；编辑后的地图已用于本次仿真。`;
+    setStatus(`人员位置已自动分配并完成仿真初始化\n人数：${allocation.person_count ?? "NA"}\n来源：${allocation.source || "位置分配器"}`, "自动分配已初始化");
+    log("编辑后的地图已用于人员位置分配和仿真初始化");
   }
 
   async function loadSample(){
@@ -1883,31 +2110,51 @@
     resetDerivedAnalysis("正在读取仓库样例日志。");
     applySnapshot(result.snapshot, {output_dir:result.output_dir, resetHistory:true});
     showEffectiveRuntime(result, "control/config_template.yaml（仓库正式配置）");
-    refreshRealAnalysis().catch(error => log(`样例分析未刷新：${error.message}`));
     const meta = result.snapshot.adapter_meta || {};
     const behaviorStatus = String(meta.behavior_input || "未提供").startsWith("empty mapping")
       ? "未接入（空映射）"
       : String(meta.behavior_input || "未提供");
-    setStatus(`仓库样例已加载\nB: ${meta.b_runtime_api || "run_one_step(c_step_data)"}\nC 人员 + 配置: 已接入\nC 每步行为: ${behaviorStatus}\n烟雾: 当前样例无烟源`, "仓库样例");
+    setStatus(`仓库样例已加载\n人员与配置：已接入\n每步行为：${behaviorStatus}\n烟雾：当前样例无烟源`, "仓库样例");
     log("仓库样例初始化成功");
   }
 
   async function stepOnce(){
-    if(!activeSession){ log("当前只有地图预览，未启动 B 联调。"); return; }
+    if(!activeSession){ log("当前只有地图预览，尚未初始化仿真。"); return; }
     if(pending) return;
+    const manualClock = !autoPlaying && activeRunStartedAt === null;
+    if(manualClock) beginRunClock();
     pending = true;
     setRunControlsBusy(true);
     $("stepLatency").textContent = "计算中";
-    setStatus(`B 正在计算 step ${Number(snapshot && snapshot.step || 0) + 1}。\n最新版烟雾模型可能需要十几秒，请勿重置或重复点击。`, "计算中");
+    setStatus(`正在计算第 ${Number(snapshot && snapshot.step || 0) + 1} 步。\n请勿重置或重复点击。`, "计算中");
     try{
       const result = await api("/api/session/step", {});
       sessionFinished = Boolean(result.finished);
+      const applyStarted = performance.now();
       const observed = applySnapshot(result.snapshot, {output_dir:result.output_dir, diagnostics:result.diagnostics});
-      refreshCoreMetrics().catch(error => log(`本步指标未刷新：${error.message}`));
-      if(layerEnabled("layerOccupancy") || layerEnabled("layerTrajectories")){
-        refreshLogLayers().catch(error => log(`日志图层未刷新：${error.message}`));
+      const applySnapshotMs = performance.now() - applyStarted;
+      const serverTiming = result.diagnostics || {};
+      const clientTiming = result._client_diagnostics || {};
+      $("clientStepTiming").textContent = `后端 ${Number(serverTiming.runtime_step_ms || 0).toFixed(1)} ms · HTTP ${Number(clientTiming.http_total_ms || 0).toFixed(1)} ms · JSON ${Number(clientTiming.json_parse_ms || 0).toFixed(1)} ms · 应用 ${applySnapshotMs.toFixed(1)} ms · 绘制 ${lastDrawMs.toFixed(1)} ms · 烟雾 ${lastSmokeDrawMs.toFixed(1)} ms · ${Number(clientTiming.response_bytes || serverTiming.payload_bytes || 0)} B`;
+      const currentExitDistribution = {};
+      const representation = liveExitUtilizationRepresentation || "legacy_cell";
+      observed.people.forEach(person => {
+        const exitValue = representation === "entity"
+          ? person && person.actual_exit_entity
+          : person && (person.actual_exit_cell ?? person.actual_exit);
+        if(person && person.evacuated && exitValue){
+          const exitId = String(exitValue);
+          currentExitDistribution[exitId] = (currentExitDistribution[exitId] || 0) + 1;
+        }
+      });
+      const exitDistributionSignature = JSON.stringify(currentExitDistribution);
+      if(exitDistributionSignature !== lastExitDistributionSignature){
+        lastExitDistributionSignature = exitDistributionSignature;
+        if(Object.keys(currentExitDistribution).length){
+          refreshCoreMetrics().catch(error => log(`出口均衡指标未刷新：${error.message}`));
+        }
       }
-      if(result.finished || !autoPlaying || result.snapshot.step - lastAnalysisStep >= 25){
+      if(result.finished){
         refreshRealAnalysis().catch(error => log(`分析图表未刷新：${error.message}`));
       }
       const warnings = [];
@@ -1934,16 +2181,17 @@
         log(`烟雾在 step ${result.snapshot.step} 超出 0~10，动画已自动暂停`);
       }
       if(result.snapshot.step <= 5 || result.snapshot.step % 10 === 0 || result.finished || warnings.length){
-        log(`step ${result.snapshot.step}，已撤离 ${$("evacCount").textContent}，后台 ${$("stepLatency").textContent}`);
+        log(`第 ${result.snapshot.step} 步：已撤离 ${$("evacCount").textContent}；后端 ${Number(serverTiming.runtime_step_ms || 0).toFixed(1)} ms，HTTP ${Number(clientTiming.http_total_ms || 0).toFixed(1)} ms，页面应用 ${applySnapshotMs.toFixed(1)} ms`);
       }
       if(result.finished) stopTimer();
     }catch(error){
       stopTimer();
-      setStatus(`B step 调用失败：${error.message}\nD 未改 B 核心，请交给 B 后续确认。`, "联调错误");
-      log(`step 失败：${error.message}`);
+      setStatus(`仿真单步调用失败：${error.message}`, "运行错误");
+      log(`单步失败：${error.message}`);
     }finally{
       pending = false;
       setRunControlsBusy(false);
+      if(manualClock) pauseRunClock();
     }
   }
 
@@ -1957,13 +2205,14 @@
   }
 
   function startTimer(){
-    if(!activeSession){ log("请先启动 A+B+C 联调或仓库样例。"); return; }
+    if(!activeSession){ log("请先初始化仿真或加载仓库样例。"); return; }
     if(sessionFinished){ log("本次运行已结束；如需重新运行，请点击重置。"); return; }
     if(pending || autoPlaying){ log("当前正在计算，请等待本步完成。 "); return; }
     pauseRequested = false;
     autoPlaying = true;
+    beginRunClock();
     autoDelayMs = Math.max(100, Number($("speedSelect").value) || 300);
-    setStatus(`连续运行已开始：从 step ${Number(snapshot && snapshot.step || 0)} 继续。播放速度只影响页面请求间隔，不改变模型。`, "连续运行");
+    setStatus(`连续运行已开始：从第 ${Number(snapshot && snapshot.step || 0)} 步继续。播放速度只影响页面请求间隔，不改变模型。`, "连续运行");
     setRunControlsBusy(false);
     stepOnce().then(scheduleNextStep);
   }
@@ -1973,6 +2222,7 @@
     if(timer) clearTimeout(timer);
     timer = null;
     autoPlaying = false;
+    pauseRunClock();
     setRunControlsBusy(pending);
   }
 
@@ -1981,7 +2231,7 @@
     pauseRequested = true;
     stopTimer();
     if(activeSession && wasPlaying){
-      setStatus(`已暂停：step ${Number(snapshot && snapshot.step || 0)}，当前模拟时间 ${timeValue(snapshot && snapshot.time_s || 0)} s。`, "已暂停");
+      setStatus(`已暂停：第 ${Number(snapshot && snapshot.step || 0)} 步，当前模拟时间 ${timeValue(snapshot && snapshot.time_s || 0)} s。`, "已暂停");
       refreshRealAnalysis().catch(error => log(`暂停后分析未刷新：${error.message}`));
     }
   }
@@ -1989,15 +2239,14 @@
   async function resetSession(){
     if(pending){ log("当前单步正在计算，不能重置。请等待完成或点击暂停停止后续自动步骤。"); return; }
     if(!activeSession){ snapshot = null; draw(); refreshStats(); setStatus("已清空预览。", "等待导入地图"); return; }
+    stopTimer();
     const result = await api("/api/session/reset", {});
     sessionFinished = false;
     pauseRequested = false;
     lastAnalysisStep = -1;
-    stopTimer();
     resetDerivedAnalysis("正在读取重置后的新日志。");
     applySnapshot(result.snapshot, {output_dir:result.output_dir, resetHistory:true, resetMapView:true});
     showEffectiveRuntime(result, $("configSourceValue").textContent);
-    refreshRealAnalysis().catch(error => log(`重置后分析未刷新：${error.message}`));
     setStatus(`已重置。新的输出目录：${result.output_dir}`, "已重置");
     log("联调会话已重置");
   }
@@ -2017,6 +2266,23 @@
     link.click();
     URL.revokeObjectURL(link.href);
     log(`已导出结果包；本地输出目录：${lastOutputDir || "见 outputs/experiments"}`);
+  }
+
+  async function exportLambdaCsv(){
+    if(pending){ log("当前单步正在计算，请等待完成后再导出。 "); return; }
+    if(!activeSession){ log("没有活动联调会话，暂不能导出 λ CSV。"); return; }
+    const response = await fetch("/api/session/lambda.csv");
+    if(!response.ok){
+      const data = await response.json().catch(() => ({error:"λ CSV 导出失败"}));
+      throw new Error(data.error || "λ CSV 导出失败");
+    }
+    const blob = await response.blob();
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = (response.headers.get("Content-Disposition") || "").match(/filename="?(.*?)"?$/)?.[1] || "lambda_experiment.csv";
+    link.click();
+    URL.revokeObjectURL(link.href);
+    log("已导出与结果包同源的 λ 实验 CSV；缺失的 B 指标保持 NA。");
   }
 
   $("previewMap").onclick = () => previewMap().catch(error => setStatus(`地图导入失败：${error.message}`, "导入失败"));
@@ -2092,8 +2358,10 @@
   $("stepBtn").onclick = () => { pauseRequested = false; stepOnce(); };
   $("resetBtn").onclick = () => resetSession().catch(error => setStatus(`重置失败：${error.message}`, "重置失败"));
   $("exportBtn").onclick = () => exportPackage().catch(error => setStatus(`导出失败：${error.message}`, "导出失败"));
+  $("exportLambdaBtn").onclick = () => exportLambdaCsv().catch(error => setStatus(`λ CSV 导出失败：${error.message}`, "导出失败"));
   $("refreshAnalysis").onclick = () => refreshRealAnalysis().catch(error => setStatus(`刷新真实分析失败：${error.message}`, "分析失败"));
   $("academicHeatmapSelect").onchange = renderSelectedHeatmap;
+  $("relationFilter").onchange = () => { draw(); drawExpandedMap(); };
   $("refreshHistory").onclick = () => refreshHistory().catch(showHistoryError);
   document.querySelectorAll(".figure-expand").forEach(button => {
     button.onclick = () => openFigureModal(button.dataset.figure, button.dataset.title);
@@ -2124,6 +2392,10 @@
   refreshStats();
   syncBroadcastToggle(broadcastEnabled);
   setRunControlsBusy(false);
+  loadCapabilities().catch(error => {
+    $("lambdaCapabilityPill").textContent = "检测失败";
+    $("lambdaCapabilityText").textContent = `能力检测失败：${error.message}。普通疏散实验仍可使用。`;
+  });
   log("统一前端已加载");
 })();
 </script>
