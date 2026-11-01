@@ -35,20 +35,16 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
         self.assertNotIn('busy ? "计算中..."', self.page)
         self.assertIn('busy ? "计算中"', self.page)
         self.assertIn('class="primary run-control">开始</button>', self.page)
-        self.assertLess(self.page.index('id="speedSelect"'), self.page.index('id="resetBtn"'))
         self.assertLess(self.page.index('id="resetBtn"'), self.page.index('id="startBtn"'))
         self.assertIn('class="figure-meta" id="curveNote"', self.page)
         self.assertIn('class="info-tooltip"', self.page)
         self.assertIn('class="info-tooltip-content" id="dataProvenance"', self.page)
-        self.assertIn('.toolbar{height:50px;min-height:50px;flex:0 0 50px', self.page)
         self.assertIn('grid-template-columns:320px minmax(560px,1fr) 368px', self.page)
         self.assertIn('.init-control{flex:0 0 88px;min-width:88px;white-space:nowrap}', self.page)
-        self.assertIn('.toolbar .spacer{flex:1 1 auto;min-width:0}', self.page)
-        self.assertIn('@media(max-width:1640px){.layer-controls{display:none}}', self.page)
+        self.assertIn('.toolbar .spacer{flex:1 1 0;min-width:0}', self.page)
         self.assertIn('.run-control{flex:0 0 56px;min-width:56px;white-space:nowrap}', self.page)
-        self.assertIn('#timeText{flex:0 0 86px;width:86px', self.page)
+        self.assertIn('.toolbar-options{display:flex;align-items:center;gap:5px;flex:0 0 auto}', self.page)
         self.assertIn('flex-wrap:nowrap;white-space:nowrap', self.page)
-        self.assertIn('left:12px;right:auto;top:55px;width:auto;max-width:180px;height:32px', self.page)
         self.assertIn('$("layerNotice").title = noticeDetail', self.page)
         self.assertIn('canvas{width:100%;height:auto;min-height:0;flex:1 1 auto', self.page)
         self.assertIn('.run-summary{height:62px;min-height:62px;max-height:62px', self.page)
@@ -178,16 +174,20 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
         self.assertIn("formatElapsedRunTime(elapsed)", self.page)
         self.assertIn('`Step ${currentStep} / 模拟 ${timeValue(simulatedTime)}s`', self.page)
 
-    def test_primary_toolbar_keeps_controls_on_one_row(self) -> None:
+    def test_toolbar_uses_two_rows_with_primary_controls_kept_on_first_row(self) -> None:
         self.assertIn(".toolbar-primary{flex-wrap:nowrap;white-space:nowrap}", self.page)
         self.assertIn(".toolbar-time{flex:0 0 118px;width:118px", self.page)
-        toolbar = self.page[self.page.index('<div class="toolbar-row toolbar-primary">') : self.page.index('<div class="toolbar-row toolbar-layers">')]
+        primary = self.page[self.page.index('<div class="toolbar-row toolbar-primary">') : self.page.index('<div class="toolbar-row toolbar-layers">')]
         for control_id in (
-            "initBtn", "guideToggle", "broadcastToggle", "speedSelect",
-            "mapExpandBtn", "topActualRunTime", "timeText", "resetBtn",
+            "initBtn", "guideToggle", "broadcastToggle", "topActualRunTime", "timeText", "resetBtn",
             "pauseBtn", "stepBtn", "startBtn",
         ):
-            self.assertIn(f'id="{control_id}"', toolbar)
+            self.assertIn(f'id="{control_id}"', primary)
+        self.assertNotIn('id="speedSelect"', primary)
+        self.assertNotIn('id="mapExpandBtn"', primary)
+        layers = self.page[self.page.index('<div class="toolbar-row toolbar-layers">') : self.page.index('</div>\n  </div>\n    <canvas id="view"')]
+        for control_id in ("relationFilter", "speedSelect", "mapExpandBtn"):
+            self.assertIn(f'id="{control_id}"', layers)
 
     def test_exit_entity_names_are_stable_display_only_labels(self) -> None:
         self.assertIn("function exitDisplayName(exitId, sourceSnapshot = snapshot)", self.page)
@@ -220,6 +220,9 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
         self.assertIn("snapshot.runtime_metrics", self.page)
         self.assertIn("exitDistributionSignature !== lastExitDistributionSignature", self.page)
         self.assertIn("requestedGeneration !== sessionGeneration", self.page)
+        self.assertNotIn("result.snapshot.step - lastAnalysisStep >= 25", step_body)
+        self.assertIn('termination.reason || ""', step_body)
+        self.assertIn("unfinished_count", step_body)
 
     def test_product_copy_hides_internal_team_labels(self) -> None:
         self.assertIn("关系紧密程度（0–1）", self.page)

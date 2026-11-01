@@ -50,6 +50,7 @@ class Week6AnalysisTests(unittest.TestCase):
             self.assertEqual(metrics["total_persons"], 2)
             self.assertEqual(metrics["mean_evacuation_time_s"], 0.5)
             self.assertEqual(metrics["total_evacuation_time_s"], "NA")
+            self.assertEqual(metrics["t90_time_s"], "NA")
             self.assertEqual(metrics["exit_utilization"], {"exit_1": 1.0})
             self.assertEqual(metrics["panic_peak"], "NA")
             self.assertEqual(metrics["urgent_peak"], "NA")

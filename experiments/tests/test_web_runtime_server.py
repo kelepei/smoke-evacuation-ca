@@ -19,10 +19,48 @@ from experiments.web_runtime_server import (
     RuntimeRequestHandler,
     _control_runtime_config,
     _optional_physical_cell_size,
+    _termination_state,
 )
 
 
 class WebRuntimeServerTests(unittest.TestCase):
+    def test_termination_state_distinguishes_completion_and_max_steps(self) -> None:
+        all_evacuated = _termination_state(
+            {"step": 9, "people": [{"evacuated": True}, {"evacuated": True}]},
+            finished=True,
+            max_steps=500,
+        )
+        self.assertEqual("all_evacuated", all_evacuated["reason"])
+
+        accounted = _termination_state(
+            {
+                "step": 9,
+                "people": [
+                    {"evacuated": True},
+                    {"evacuated": False, "is_dead": True},
+                ],
+            },
+            finished=True,
+            max_steps=500,
+        )
+        self.assertEqual("all_evacuated_or_dead", accounted["reason"])
+        self.assertEqual(1, accounted["dead_count"])
+
+        capped = _termination_state(
+            {
+                "step": 500,
+                "people": [
+                    {"evacuated": True},
+                    {"evacuated": False, "is_dead": True},
+                    {"evacuated": False, "is_dead": False},
+                ],
+            },
+            finished=True,
+            max_steps=500,
+        )
+        self.assertEqual("max_steps_reached", capped["reason"])
+        self.assertEqual(1, capped["unfinished_count"])
+
     def test_optional_physical_cell_size_is_explicit_and_validated(self) -> None:
         self.assertIsNone(_optional_physical_cell_size(None))
         self.assertIsNone(_optional_physical_cell_size(""))
@@ -165,7 +203,13 @@ class WebRuntimeServerTests(unittest.TestCase):
                 # Payload size is intentionally not measured by serializing the
                 # full snapshot a second time on every live step.
                 self.assertEqual(0, stepped_response["diagnostics"]["payload_bytes"])
+                self.assertIn("termination", stepped_response)
+                self.assertEqual("running", stepped_response["termination"]["reason"])
                 self.assertTrue(Path(stepped_response["output_dir"], "final_frame.png").is_file())
+                with urlopen(base_url + "/api/session/metrics", timeout=10) as response:
+                    metrics = json.loads(response.read().decode("utf-8"))
+                self.assertTrue(metrics["ok"])
+                self.assertNotIn("academic_crowd_fields", metrics)
                 with urlopen(base_url + "/api/session/analysis", timeout=10) as response:
                     analysis = json.loads(response.read().decode("utf-8"))
                 self.assertTrue(analysis["ok"])
@@ -195,6 +239,7 @@ class WebRuntimeServerTests(unittest.TestCase):
                 self.assertTrue(layers["ok"])
                 self.assertEqual("people_log.csv", layers["layers"]["source"])
                 self.assertNotIn("evacuation_curve_svg", layers)
+                self.assertNotIn("academic_crowd_fields", layers)
                 with urlopen(base_url + "/api/session/export", timeout=10) as response:
                     self.assertEqual("application/zip", response.headers.get_content_type())
                     package = zipfile.ZipFile(io.BytesIO(response.read()))

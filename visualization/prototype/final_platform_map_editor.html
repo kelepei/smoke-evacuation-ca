@@ -39,16 +39,19 @@
   .canvas-wrap{position:relative;height:100%;display:flex;flex-direction:column}
   .toolbar{flex:0 0 auto;display:flex;flex-direction:column;gap:6px;padding:7px;overflow:visible;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fbfdff,#f2f7fc)}
   .toolbar-row{display:flex;align-items:center;gap:5px;min-width:0;width:100%}
-  .toolbar-primary{flex-wrap:wrap}
+  .toolbar-primary{flex-wrap:nowrap;white-space:nowrap}
   .toolbar-layers{padding-top:6px;border-top:1px solid #d5dfeb}
   .layer-caption{flex:0 0 auto;color:#475569;font-size:11px;font-weight:800;white-space:nowrap}
-  .toolbar .spacer{flex:1 1 20px;min-width:0}
+  .toolbar .spacer{flex:1 1 0;min-width:0}
   .init-control{flex:0 0 88px;min-width:88px;white-space:nowrap}
   .run-control{flex:0 0 56px;min-width:56px;white-space:nowrap}
   .run-controls{display:flex;align-items:center;gap:4px;flex:0 0 auto;margin-left:4px}
-  .map-expand{margin-left:4px}
+  .map-expand{flex:0 0 auto;margin-left:4px}
   .layer-controls{display:flex;flex:1 1 auto;min-width:0;align-items:center;gap:6px 10px;flex-wrap:wrap;white-space:nowrap;font-size:11px;color:#475569}.layer-controls label{display:flex;align-items:center;gap:3px;margin:0;color:inherit}.layer-controls label:has(input:disabled){color:#94a3b8}.layer-controls input{width:auto;margin:0}
-  #timeText{flex:0 0 92px;width:92px;text-align:right;white-space:nowrap;font-size:11px;font-variant-numeric:tabular-nums}
+  .toolbar-time{flex:0 0 118px;width:118px;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;line-height:1.2;white-space:nowrap;font-variant-numeric:tabular-nums}
+  #topActualRunTime{font-size:10px;color:#475569}
+  #timeText{font-size:11px;color:#0f172a}
+  .toolbar-options{display:flex;align-items:center;gap:5px;flex:0 0 auto}
   .layer-notice{position:absolute;right:12px;left:auto;bottom:12px;top:auto;width:auto;max-width:220px;height:32px;display:block;padding:6px 9px;overflow:hidden;white-space:nowrap;text-align:left;text-overflow:ellipsis;border:1px solid #cbd5e1;border-radius:6px;background:rgba(255,255,255,.94);color:#475569;font-size:11px;pointer-events:none}
   canvas{width:100%;height:auto;min-height:0;flex:1 1 auto;display:block;background:#f8fafc}
   .legend{position:absolute;left:12px;bottom:12px;display:flex;flex-direction:column;gap:4px;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-size:11px;pointer-events:none}
@@ -91,6 +94,7 @@
   .editor-modal{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(15,23,42,.55)}.editor-modal.open{display:flex}.editor-dialog{width:min(1440px,96vw);height:min(900px,92vh);display:flex;flex-direction:column;overflow:hidden;border-radius:10px;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.28)}.editor-dialog header{height:auto;min-height:50px;padding:8px 12px;background:#fff;color:var(--ink);box-shadow:none;border-bottom:1px solid var(--line)}.editor-dialog header strong{margin-right:auto}.editor-dialog iframe{width:100%;min-height:0;flex:1;border:0}.editor-actions{display:flex;justify-content:flex-end;gap:8px;padding:8px 12px;border-top:1px solid var(--line)}
   .choice-dialog{width:min(520px,92vw);overflow:hidden;border-radius:10px;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.28)}.choice-dialog header{height:auto;min-height:50px;padding:12px 16px;background:#fff;color:var(--ink);box-shadow:none;border-bottom:1px solid var(--line)}.choice-dialog-content{padding:16px;color:#475569;line-height:1.7}.choice-dialog-content strong{color:#1e3a5f}.choice-actions{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid var(--line)}.choice-actions button{height:auto;min-height:34px;padding:7px 12px}
   @media(max-width:1640px){.toolbar-primary{gap:4px}}
+  @media(max-width:1320px){.toolbar-time{flex-basis:108px;width:108px}.run-control{flex-basis:54px;min-width:54px}.init-control{flex-basis:84px;min-width:84px}.toolbar-options select{width:72px!important}}
   @media(max-width:1180px){body{overflow:auto}.top-nav{display:none}main{height:auto;min-height:calc(100vh - 56px);grid-template-columns:280px minmax(420px,1fr);grid-template-rows:minmax(560px,70vh) auto auto}.config-side{grid-column:1;grid-row:1}.canvas-wrap{grid-column:2;grid-row:1}.runtime-side{grid-column:1 / 3;grid-row:2}.insights{grid-column:1 / 3;grid-row:3;grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media(max-width:760px){main{grid-template-columns:1fr;grid-template-rows:auto}.config-side,.canvas-wrap,.runtime-side,.insights{grid-column:1;grid-row:auto}.insights{grid-template-columns:1fr}.canvas-wrap{height:70vh}}
 </style>
@@ -105,7 +109,7 @@
   <aside class="panel side config-side">
     <div class="section-kicker">INPUTS</div>
     <div class="title">场景与人群 <span class="pill">真实输入</span></div>
-    <label>A 地图（JSON / CSV / PNG）<input id="mapFile" type="file" accept=".json,.csv,.png,application/json,text/csv,image/png"></label>
+    <label>场景地图（JSON / CSV / PNG）<input id="mapFile" type="file" accept=".json,.csv,.png,application/json,text/csv,image/png"></label>
     <div class="row">
       <button id="previewMap" class="primary">导入并显示地图</button>
       <button id="sampleBtn">加载仓库样例</button>
@@ -128,8 +132,7 @@
     <div class="title">本次运行参数 <span class="pill">直传 runtime</span></div>
     <label>总人数 <input id="totalPersons" type="number" min="1" step="1" value="40"></label>
     <label>random_seed（留空为随机）<input id="randomSeed" type="number" value="42"></label>
-    <label title="关系紧密程度：0=关系最弱，1=默认最强；按比例缩放关系的 strength 与 trust">relation_intensity（关系紧密程度 0–1）<input id="relationIntensity" type="number" min="0" max="1" step="0.01" value="0.6"></label>
-    <div class="hint">relation_intensity：0=关系最弱，1=默认最强；会按比例缩放生成关系的强度（strength）与信任（trust），进而影响结伴分组与信息传播概率。</div>
+    <label title="0 表示关系最弱，1 表示关系最紧密">关系紧密程度（0–1）<input id="relationIntensity" type="number" min="0" max="1" step="0.01" value="0.6"></label>
     <div class="row">
       <label>出口偏好加成 bonus<input id="preferenceBonus" type="number" min="0" max="1" step="0.05" value="0.3"></label>
       <label>烟雾感知阈值<input id="smokeExposureThreshold" type="number" min="0" max="1" step="0.001" value="0.01"></label>
@@ -146,6 +149,13 @@
     <button id="generatePeopleBtn" class="primary" disabled>生成 / 初始化人员</button>
     <div class="row"><label>time_step / s<input id="timeStep" type="number" min="0.01" max="60" step="0.01" value="0.5"></label><label>最大步数<input id="maxSteps" type="number" min="1" max="5000" value="500"></label></div>
     <div class="hint">time_step 真实决定模拟时间与日志时间轴；最大步数真实决定 runtime 停止上限。</div>
+    <div class="hint success" id="physicalScaleLabel">物理标定：0.5 m/格（平台统一仿真假设，不等同于地图显示像素或实地测量）</div>
+    <div class="title" style="margin-top:12px">λ 恐慌—风险实验 <span class="pill" id="lambdaCapabilityPill">检测中</span></div>
+    <label>panic_to_risk_gain（λ）
+      <select id="lambdaValue" disabled><option value="0.0">0.0</option><option value="0.2">0.2</option><option value="0.4">0.4</option><option value="0.6">0.6</option><option value="0.8">0.8</option></select>
+    </label>
+    <label style="display:flex;grid-template-columns:auto 1fr;align-items:center;gap:7px"><input id="lambdaExperimentEnabled" type="checkbox" style="width:auto" disabled>启用 λ 专项实验（exit_pressure_gain 固定 0.5）</label>
+    <div class="hint" id="lambdaCapabilityText">正在核验模型是否支持 panic_to_risk_gain 与 risk_feedback_cap。</div>
     <div class="title" style="margin-top:12px">C10 管控策略 <span class="pill">真实接入</span></div>
     <label>策略选择
       <select id="controlStrategy">
@@ -192,14 +202,8 @@
       <button id="initBtn" class="good init-control">初始化仿真</button>
       <button id="guideToggle" class="primary">疏散指导：开</button>
       <button id="broadcastToggle" class="good">全局广播：开启</button>
-      <select id="speedSelect" aria-label="播放速度" style="width:78px;height:34px;padding:4px 5px">
-        <option value="150">快速</option>
-        <option value="300" selected>标准</option>
-        <option value="600">慢速</option>
-      </select>
       <div class="spacer"></div>
-      <button id="mapExpandBtn" class="figure-expand map-expand" type="button" aria-label="放大查看主地图" title="放大查看地图">⛶</button>
-      <span id="timeText">step 0 / 0.0s</span>
+      <div class="toolbar-time"><span id="topActualRunTime">实际运行 00:00:00.0</span><span id="timeText">Step 0 / 模拟 0.0s</span></div>
       <div class="run-controls" aria-label="运行控制">
         <button id="resetBtn" class="danger run-control">重置</button>
         <button id="pauseBtn" class="run-control">暂停</button>
@@ -217,6 +221,16 @@
         <label><input id="layerTrajectories" type="checkbox" disabled>轨迹</label>
         <label><input id="layerPath" type="checkbox" disabled checked>疏散路径</label>
         <label><input id="layerVisionRoutes" type="checkbox" disabled checked>规划路线</label>
+        <label>关系<select id="relationFilter" class="academic-selector" aria-label="人物关系筛选"><option value="none">不显示</option><option value="all">全部</option><option value="classmate">同学</option><option value="family">家庭</option><option value="friend">朋友</option><option value="other">其他</option></select></label>
+      </div>
+      <div class="spacer"></div>
+      <div class="toolbar-options">
+        <select id="speedSelect" aria-label="播放速度" style="width:78px;height:28px;padding:3px 5px">
+          <option value="150">快速</option>
+          <option value="300" selected>标准</option>
+          <option value="600">慢速</option>
+        </select>
+        <button id="mapExpandBtn" class="figure-expand map-expand" type="button" aria-label="放大查看主地图" title="放大查看地图">⛶</button>
       </div>
     </div>
   </div>
@@ -239,6 +253,7 @@
     <div class="title">核心指标</div>
     <div class="kv"><span>当前 step</span><b id="runtimeStep">0</b></div>
     <div class="kv"><span>当前模拟时间</span><b id="simTime">0.0 s</b></div>
+    <div class="kv"><span>实际运行时间</span><b id="actualRunTime">0.0 s</b></div>
     <div class="kv"><span>人员总数</span><b id="peopleCount">NA</b></div>
     <div class="kv"><span>知情人数</span><b id="informedCount">NA</b></div>
     <div class="kv"><span>引导员状态</span><b id="guideState">NA</b></div>
@@ -252,6 +267,7 @@
     <div class="kv"><span>最大烟雾</span><b id="smokeMax">NA</b></div>
     <div class="action-grid">
       <button id="exportBtn">导出结果包</button>
+      <button id="exportLambdaBtn">导出 λ CSV</button>
       <button id="refreshAnalysis">刷新真实分析</button>
       <button id="clearLog">清空日志</button>
     </div>
@@ -286,13 +302,14 @@
       <div id="historyDetail" class="history-detail">未选择历史实验。</div>
     </details>
     <details class="diagnostics">
-      <summary>开发诊断</summary>
+      <summary>性能与数据诊断</summary>
       <div class="status" id="statusBox">请先导入地图。</div>
       <div class="kv"><span>Grid 尺寸</span><b id="gridSize">NA</b></div>
       <div class="kv"><span>烟源数</span><b id="smokeSourceCount">NA</b></div>
       <div class="kv"><span>烟雾契约</span><b id="smokeContract">NA</b></div>
       <div class="kv"><span>重叠元胞</span><b id="overlapCount">0</b></div>
       <div class="kv"><span>最近一步耗时</span><b id="stepLatency">NA</b></div>
+      <div class="kv output-path"><span>页面耗时明细</span><b id="clientStepTiming">NA</b></div>
       <div class="kv output-path"><span>输出目录</span><b id="outputDir">NA</b></div>
     </details>
     <details class="diagnostics">
@@ -308,7 +325,7 @@
     </section>
     <section class="insight-panel">
       <div class="insight-title">出口利用率</div>
-      <div id="exitBars" class="real-note">NA：尚未收到实际出口字段 actual_exit。</div>
+      <div id="exitBars" class="real-note">暂无人员撤离，出现实际撤离记录后显示。</div>
     </section>
     <section class="insight-panel">
       <div class="insight-title">风险、烟雾与冲突诊断</div>
@@ -317,6 +334,8 @@
         <div class="metric"><span>平均剂量</span><b id="avgDose">NA</b></div>
         <div class="metric"><span>活动重叠元胞</span><b id="insightOverlap">0</b></div>
         <div class="metric"><span>最大烟雾</span><b id="insightSmoke">NA</b></div>
+        <div class="metric"><span>出口切换 / 冲突</span><b id="switchConflictMetric">NA</b></div>
+        <div class="metric"><span>出口 H / G</span><b id="exitBalanceMetric">NA</b></div>
       </div>
     </section>
     <section class="insight-panel figure-panel">
@@ -404,6 +423,101 @@
   let currentMapName = "";
   let editorReady = false;
   let smokeImportResolver = null;
+  const PHYSICAL_CELL_SIZE_M = 0.5;
+  let lambdaCapability = {supported:false, status:"unavailable", reason:"尚未完成能力检测"};
+  let relationCacheSource = null;
+  let relationCache = [];
+  let elapsedRunMs = 0;
+  let activeRunStartedAt = null;
+  let elapsedTicker = null;
+  let lastDrawMs = 0;
+  let lastSmokeDrawMs = 0;
+  let sessionGeneration = 0;
+  let lastExitDistributionSignature = "";
+  let exitDisplayMapSource = null;
+  let exitDisplayMap = new Map();
+
+  function chineseExitOrdinal(value){
+    const number = Number(value);
+    if(!Number.isInteger(number) || number <= 0) return String(value);
+    const digits = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+    if(number < 10) return digits[number];
+    if(number < 20) return `十${number === 10 ? "" : digits[number % 10]}`;
+    if(number < 100) return `${digits[Math.floor(number / 10)]}十${number % 10 ? digits[number % 10] : ""}`;
+    return String(number);
+  }
+
+  function rebuildExitDisplayMap(sourceSnapshot = snapshot){
+    const entities = sourceSnapshot && Array.isArray(sourceSnapshot.exit_entities) ? sourceSnapshot.exit_entities : [];
+    if(entities === exitDisplayMapSource) return;
+    exitDisplayMapSource = entities;
+    exitDisplayMap = new Map();
+    const ids = [...new Set(entities.map(entity => String(entity && entity.exit_entity_id || "").trim()).filter(Boolean))];
+    const usedOrdinals = new Set();
+    ids.forEach(id => {
+      const match = /^exit_entity_(\d+)$/i.exec(id);
+      if(!match) return;
+      const ordinal = Number(match[1]);
+      if(ordinal > 0){ exitDisplayMap.set(id, `出口${chineseExitOrdinal(ordinal)}`); usedOrdinals.add(ordinal); }
+    });
+    let nextOrdinal = 1;
+    ids.filter(id => !exitDisplayMap.has(id)).sort().forEach(id => {
+      while(usedOrdinals.has(nextOrdinal)) nextOrdinal += 1;
+      exitDisplayMap.set(id, `出口${chineseExitOrdinal(nextOrdinal)}`);
+      usedOrdinals.add(nextOrdinal);
+    });
+  }
+
+  function exitDisplayName(exitId, sourceSnapshot = snapshot){
+    if(exitId === null || exitId === undefined || exitId === "") return "NA";
+    const rawId = String(exitId);
+    const canonical = /^exit_entity_(\d+)$/i.exec(rawId);
+    if(canonical && Number(canonical[1]) > 0) return `出口${chineseExitOrdinal(Number(canonical[1]))}`;
+    rebuildExitDisplayMap(sourceSnapshot);
+    return exitDisplayMap.get(rawId) || rawId;
+  }
+
+  function displayedRunMs(){ return elapsedRunMs + (activeRunStartedAt === null ? 0 : performance.now() - activeRunStartedAt); }
+  function formatElapsedRunTime(milliseconds){
+    const tenths = Math.max(0, Math.floor(Number(milliseconds || 0) / 100));
+    const hours = Math.floor(tenths / 36000);
+    const minutes = Math.floor(tenths / 600) % 60;
+    const seconds = Math.floor(tenths / 10) % 60;
+    return `${String(hours).padStart(2,"0")}:${String(minutes).padStart(2,"0")}:${String(seconds).padStart(2,"0")}.${tenths % 10}`;
+  }
+  function refreshRunClock(){
+    const elapsed = displayedRunMs();
+    const target = $("actualRunTime");
+    if(target) target.textContent = `${(elapsed / 1000).toFixed(1)} s`;
+    const topTarget = $("topActualRunTime");
+    if(topTarget) topTarget.textContent = `实际运行 ${formatElapsedRunTime(elapsed)}`;
+  }
+  function beginRunClock(){
+    if(activeRunStartedAt !== null) return;
+    activeRunStartedAt = performance.now();
+    if(elapsedTicker === null) elapsedTicker = setInterval(refreshRunClock, 100);
+    refreshRunClock();
+  }
+  function pauseRunClock(){
+    if(activeRunStartedAt !== null){ elapsedRunMs += performance.now() - activeRunStartedAt; activeRunStartedAt = null; }
+    if(elapsedTicker !== null){ clearInterval(elapsedTicker); elapsedTicker = null; }
+    refreshRunClock();
+  }
+  function resetRunClock(){ pauseRunClock(); elapsedRunMs = 0; refreshRunClock(); }
+
+  async function loadCapabilities(){
+    const response = await fetch("/api/capabilities");
+    const data = await response.json().catch(() => ({ok:false, error:"能力信息无法解析"}));
+    if(!response.ok || !data.ok) throw new Error(data.error || "无法读取运行能力");
+    lambdaCapability = data.lambda_experiment || lambdaCapability;
+    const supported = lambdaCapability.supported === true;
+    $("lambdaValue").disabled = !supported;
+    $("lambdaExperimentEnabled").disabled = !supported;
+    $("lambdaCapabilityPill").textContent = supported ? "模型已支持" : "暂不可用";
+    $("lambdaCapabilityText").textContent = supported
+      ? "模型已发布所需参数；启用后参数会进入正式运动配置。"
+      : `不可用：${lambdaCapability.reason || "模型尚未发布 λ 参数接口"}。普通疏散实验不受影响。`;
+  }
 
   function setConfigState(message, state = ""){
     const hint = $("configHint");
@@ -542,12 +656,12 @@
           ctx.strokeStyle = "rgba(80,96,120,.16)";
           ctx.strokeRect(ox + x * cell, oy + y * cell, cell, cell);
         }
-        if(type === "exit" && layerEnabled("layerExits") && cell >= 8){
+        if(type === "exit" && layerEnabled("layerExits") && cell >= 8 && !(snapshot && Array.isArray(snapshot.exit_entities) && snapshot.exit_entities.length)){
           ctx.fillStyle = "#fff";
           ctx.font = `700 ${Math.max(8, Math.min(14, cell * .42))}px Arial`;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillText("EXIT", ox + (x + .5) * cell, oy + (y + .5) * cell);
+          ctx.fillText("出口", ox + (x + .5) * cell, oy + (y + .5) * cell);
         }
         const alarms = Array.isArray(grid.alarm_cells) ? grid.alarm_cells : (Array.isArray(snapshot.alarm_cells) ? snapshot.alarm_cells : []);
         if(alarms.some(marker => Number(marker && marker.x) === x && Number(marker && marker.y) === y)){
@@ -559,11 +673,33 @@
     }
   }
 
+  function drawExitEntityLabels(ox, oy, cell){
+    if(!layerEnabled("layerExits") || cell < 8) return;
+    const entities = snapshot && Array.isArray(snapshot.exit_entities) ? snapshot.exit_entities : [];
+    entities.forEach(entity => {
+      if(!entity || !entity.exit_entity_id) return;
+      const members = Array.isArray(entity.member_cells) ? entity.member_cells : [];
+      const centroid = Array.isArray(entity.centroid) && entity.centroid.length >= 2
+        ? entity.centroid
+        : (members.length ? [
+          members.reduce((sum, point) => sum + Number(point && point[0] || 0), 0) / members.length,
+          members.reduce((sum, point) => sum + Number(point && point[1] || 0), 0) / members.length
+        ] : null);
+      if(!centroid || !Number.isFinite(Number(centroid[0])) || !Number.isFinite(Number(centroid[1]))) return;
+      ctx.fillStyle = "#fff";
+      ctx.font = `700 ${Math.max(8, Math.min(14, cell * .42))}px Arial`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(exitDisplayName(entity.exit_entity_id), ox + (Number(centroid[0]) + .5) * cell, oy + (Number(centroid[1]) + .5) * cell);
+    });
+  }
+
   function drawField(field, grid, ox, oy, cell){
-    if(!Array.isArray(field)) return;
+    const started = performance.now();
+    if(!Array.isArray(field)){ lastSmokeDrawMs = 0; return; }
     let max = 0;
     field.forEach(row => Array.isArray(row) && row.forEach(v => { if(Number(v) > max) max = Number(v); }));
-    if(max <= 0) return;
+    if(max <= 0){ lastSmokeDrawMs = performance.now() - started; return; }
     field.forEach((row, y) => {
       if(!Array.isArray(row)) return;
       row.forEach((raw, x) => {
@@ -575,6 +711,7 @@
         ctx.fillRect(ox + x * cell, oy + y * cell, cell, cell);
       });
     });
+    lastSmokeDrawMs = performance.now() - started;
   }
 
   function drawSmokeSources(sources, grid, ox, oy, cell){
@@ -721,6 +858,45 @@
     });
   }
 
+  function cachedRelations(){
+    const source = snapshot && Array.isArray(snapshot.relations) ? snapshot.relations : [];
+    if(source === relationCacheSource) return relationCache;
+    relationCacheSource = source;
+    relationCache = source.map(relation => ({
+      personA:String(relation && relation.person_a_id),
+      personB:String(relation && relation.person_b_id),
+      type:String(relation && relation.relation_type || "other").toLowerCase(),
+    })).filter(relation => relation.personA !== "undefined" && relation.personB !== "undefined");
+    return relationCache;
+  }
+
+  function drawRelations(people, ox, oy, cell){
+    const filter = String($("relationFilter").value || "none");
+    if(filter === "none") return;
+    const positions = new Map();
+    (people || []).forEach(person => {
+      if(!person || person.evacuated) return;
+      const x = Number(person.x), y = Number(person.y);
+      if(Number.isFinite(x) && Number.isFinite(y)) positions.set(String(person.person_id ?? person.id), {x, y});
+    });
+    const relationColors = {classmate:"#2563eb", family:"#dc2626", friend:"#16a34a", other:"#7c3aed"};
+    ctx.save();
+    ctx.lineWidth = Math.max(.7, Math.min(1.8, cell * .07));
+    ctx.globalAlpha = .34;
+    cachedRelations().forEach(relation => {
+      const category = ["classmate", "family", "friend"].includes(relation.type) ? relation.type : "other";
+      if(filter !== "all" && filter !== category) return;
+      const left = positions.get(relation.personA), right = positions.get(relation.personB);
+      if(!left || !right) return;
+      ctx.beginPath();
+      ctx.strokeStyle = relationColors[category];
+      ctx.moveTo(ox + (left.x + .5) * cell, oy + (left.y + .5) * cell);
+      ctx.lineTo(ox + (right.x + .5) * cell, oy + (right.y + .5) * cell);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
   function currentGuidance(){
     if(!snapshot || typeof snapshot !== "object") return null;
     const guidance = snapshot.guidance;
@@ -816,6 +992,7 @@
     const grid = snapshot.grid;
     const {cell, ox, oy} = mapTransform(target, view, grid);
     drawGrid(grid, ox, oy, cell);
+    drawExitEntityLabels(ox, oy, cell);
     drawCumulativeOccupancy(grid, ox, oy, cell);
     if(layerEnabled("layerSmoke")){
       drawField(snapshot.fields && snapshot.fields.smoke_field, grid, ox, oy, cell);
@@ -828,6 +1005,7 @@
       (snapshot.c_runtime && snapshot.c_runtime.dual_routes) || []
     );
     drawVisionRoutes(plannedRoutes, grid, ox, oy, cell);
+    drawRelations(snapshot.people, ox, oy, cell);
     if(layerEnabled("layerPeople")) drawPeople(snapshot.people, grid, ox, oy, cell);
     drawGuides(snapshot.guides, ox, oy, cell);
     drawGuidanceOverlay(grid, ox, oy, cell);
@@ -838,7 +1016,9 @@
   }
 
   function draw(){
+    const started = performance.now();
     renderMap(canvas, mainMapView);
+    lastDrawMs = performance.now() - started;
   }
 
   function drawExpandedMap(){
@@ -974,7 +1154,7 @@
     const person = (snapshot && Array.isArray(snapshot.people) ? snapshot.people : []).find(item => String(item && item.person_id) === String(recommendation.person_id)) || {};
     const targetExit = recommendation.current_target_exit ?? person.target_exit ?? "NA";
     const actualExit = person.actual_exit_entity ?? person.actual_exit_cell ?? person.actual_exit ?? "NA";
-    detail.append(`推荐出口=${recommendation.recommended_exit_entity ?? "NA"}；实际 target_exit=${targetExit}；实际 actual_exit=${actualExit}。展示层不会写回任何实际字段。`);
+    detail.append(`推荐出口=${exitDisplayName(recommendation.recommended_exit_entity)}；实际 target_exit=${targetExit}；实际 actual_exit=${actualExit}。展示层不会写回任何实际字段。`);
   }
 
   function renderGuidance(){
@@ -1021,7 +1201,7 @@
       const entity = item.recommended_exit_entity;
       if(entity) entityCounts[entity] = (entityCounts[entity] || 0) + 1;
     });
-    const entityText = Object.entries(entityCounts).map(([id, count]) => `${id}: ${count}`).join("；") || "NA";
+    const entityText = Object.entries(entityCounts).map(([id, count]) => `${exitDisplayName(id)}: ${count}`).join("；") || "NA";
     $("guidanceSummary").textContent = `推荐人数：${recommendations.length}；实体出口汇总：${entityText}。`;
     if(status === "inactive"){
       setGuidanceStatus("inactive", guidance.reason_text || "尚未触发疏散指导。");
@@ -1050,7 +1230,7 @@
       const values = [
         recommendation.person_id,
         `(${person.x}, ${person.y})`,
-        recommendation.recommended_exit_entity || "NA",
+        exitDisplayName(recommendation.recommended_exit_entity),
         guidanceNumber(components.route_distance_cost),
         guidanceNumber(components.route_smoke_cost),
         guidanceNumber(components.combined_cost),
@@ -1093,7 +1273,8 @@
     if(hasPeople) $("totalPersons").value = String(observed.people.length);
     $("evacCount").textContent = observed.evacuated;
     $("evacRate").textContent = hasPeople ? `${(observed.evacuated / observed.people.length * 100).toFixed(1)}%` : "NA";
-    $("remainingCount").textContent = hasPeople ? String(observed.people.length - observed.evacuated) : "NA";
+    const activeRemaining = observed.people.filter(person => person && !person.evacuated && !person.is_dead).length;
+    $("remainingCount").textContent = hasPeople ? String(activeRemaining) : "NA";
     $("smokeSourceCount").textContent = grid ? observed.smokeSourceCount : "NA";
     $("smokeMax").textContent = observed.maxSmoke === null ? "NA" : observed.maxSmoke.toFixed(3);
     $("smokeContract").textContent = observed.maxSmoke === null
@@ -1107,7 +1288,8 @@
     const simulatedTime = snapshot ? Number(snapshot.time_s || 0) : 0;
     $("runtimeStep").textContent = String(currentStep);
     $("simTime").textContent = `${timeValue(simulatedTime)} s`;
-    $("timeText").textContent = `step ${currentStep} / ${timeValue(simulatedTime)}s`;
+    $("timeText").textContent = `Step ${currentStep} / 模拟 ${timeValue(simulatedTime)}s`;
+    refreshRunClock();
     if(extra.output_dir){
       lastOutputDir = extra.output_dir;
       $("outputDir").textContent = extra.output_dir;
@@ -1168,10 +1350,17 @@
       currentMapViewKey = mapKey;
     }
     if(extra.resetHistory){
+      sessionGeneration += 1;
       logLayers = null;
       liveHistory = [];
       liveExitUtilizationRepresentation = Array.isArray(next && next.exit_entities) && next.exit_entities.length > 0
         ? "entity" : "legacy_cell";
+      relationCacheSource = null;
+      relationCache = [];
+      exitDisplayMapSource = null;
+      exitDisplayMap = new Map();
+      lastExitDistributionSignature = "";
+      resetRunClock();
     }
     if(next && next.grid && Array.isArray(next.people)){
       liveHistory.push(next);
@@ -1206,6 +1395,8 @@
 
   function drawInsights(observed = inspectSnapshot()){
     const people = snapshot && Array.isArray(snapshot.people) ? snapshot.people : [];
+    const runtimeMetrics = snapshot && snapshot.runtime_metrics && typeof snapshot.runtime_metrics === "object"
+      ? snapshot.runtime_metrics : null;
     const riskMean = finiteMean(people.map(person => person && person.risk));
     const doseMean = finiteMean(people.map(person => person && person.dose));
     $("avgRisk").textContent = textValue(riskMean);
@@ -1213,6 +1404,15 @@
     $("riskStatus").textContent = riskMean === null ? "NA · 上游未提供" : "已收到真实字段";
     $("insightOverlap").textContent = String(observed.overlapCells);
     $("insightSmoke").textContent = textValue(observed.maxSmoke);
+    if(runtimeMetrics){
+      const switches = Number(runtimeMetrics.switch_total);
+      const conflicts = Number(runtimeMetrics.conflict_total);
+      $("switchConflictMetric").textContent = Number.isFinite(switches) && Number.isFinite(conflicts)
+        ? `切换 ${switches} / 冲突 ${conflicts}`
+        : "NA";
+    }else{
+      $("switchConflictMetric").textContent = "NA";
+    }
 
     const representation = liveExitUtilizationRepresentation || "legacy_cell";
     const actualExits = {};
@@ -1269,7 +1469,7 @@
 
   function resetDerivedAnalysis(message = "等待本次运行的真实日志。"){
     ["totalEvacTime", "meanEvacTime", "t90Time"].forEach(id => { $(id).textContent = "NA"; });
-    $("exitBars").textContent = "NA：尚未收到实际出口字段 actual_exit。";
+    $("exitBars").textContent = "暂无人员撤离，出现实际撤离记录后显示。";
     $("actualExitStatus").textContent = "NA · 上游未提供";
     setAnalysisFigure("curveFigure", "", message);
     setAnalysisFigure("heatmapFigure", "", message);
@@ -1284,8 +1484,8 @@
     container.replaceChildren();
     if(total <= 0){
       container.textContent = representation === "entity"
-        ? "NA：本次运行采用实体出口统计；尚无 actual_exit_entity。"
-        : "NA：旧日志未提供实体出口，按 actual_exit 统计。";
+        ? "暂无人员撤离，出现 actual_exit_entity 记录后显示。"
+        : "暂无人员撤离，出现 actual_exit 记录后显示。";
       $("actualExitStatus").textContent = "NA · 上游未提供";
       return;
     }
@@ -1294,14 +1494,15 @@
       const row = document.createElement("div");
       row.className = "bar-row";
       const label = document.createElement("span");
-      label.textContent = String(name);
+      label.textContent = exitDisplayName(name);
+      label.title = String(name);
       const track = document.createElement("div");
       track.className = "bar-track";
       const bar = document.createElement("div");
       bar.className = `bar-fill${index % 2 ? " green" : ""}`;
       bar.style.width = `${percent}%`;
       const value = document.createElement("b");
-      value.textContent = `${percent.toFixed(1)}%`;
+      value.textContent = `${Number(count)}人 · ${percent.toFixed(1)}%`;
       track.appendChild(bar);
       row.append(label, track, value);
       container.appendChild(row);
@@ -1326,6 +1527,7 @@
     $("totalEvacTime").textContent = metricText(metrics, "total_evacuation_time_s", " s");
     $("meanEvacTime").textContent = metricText(metrics, "mean_evacuation_time_s", " s");
     $("t90Time").textContent = metricText(metrics, "t90_time_s", " s");
+    $("exitBalanceMetric").textContent = `H ${metricText(metrics, "exit_entropy_h")} / G ${metricText(metrics, "exit_gini_g")}`;
     const representation = (data.exit_utilization_contract && data.exit_utilization_contract.representation)
       || liveExitUtilizationRepresentation
       || "legacy_cell";
@@ -1334,9 +1536,13 @@
 
   async function refreshCoreMetrics(){
     if(!activeSession) return;
+    const requestedGeneration = sessionGeneration;
+    const requestedRunId = snapshot && snapshot.run_id;
+    const requestedStep = Number(snapshot && snapshot.step);
     const response = await fetch("/api/session/metrics");
     const data = await response.json().catch(() => ({ok:false, error:"指标结果无法解析"}));
     if(!response.ok || !data.ok) throw new Error(data.error || "无法刷新真实指标");
+    if(requestedGeneration !== sessionGeneration || requestedRunId !== (snapshot && snapshot.run_id) || requestedStep !== Number(snapshot && snapshot.step)) return;
     renderAnalysisMetrics(data);
   }
 
@@ -1391,9 +1597,12 @@
 
   async function refreshLogLayers(){
     if(!activeSession) return;
+    const requestedGeneration = sessionGeneration;
+    const requestedRunId = snapshot && snapshot.run_id;
     const response = await fetch("/api/session/layers");
     const data = await response.json().catch(() => ({ok:false, error:"日志图层无法解析"}));
     if(!response.ok || !data.ok) throw new Error(data.error || "无法刷新真实日志图层");
+    if(requestedGeneration !== sessionGeneration || requestedRunId !== (snapshot && snapshot.run_id)) return;
     logLayers = data.layers || null;
     draw();
     refreshStats();
@@ -1404,9 +1613,12 @@
       log("请先初始化仿真，再刷新真实分析。");
       return;
     }
+    const requestedGeneration = sessionGeneration;
+    const requestedRunId = snapshot && snapshot.run_id;
     const response = await fetch("/api/session/analysis");
     const data = await response.json().catch(() => ({ok:false, error:"分析结果无法解析"}));
     if(!response.ok || !data.ok) throw new Error(data.error || "无法生成真实分析");
+    if(requestedGeneration !== sessionGeneration || requestedRunId !== (snapshot && snapshot.run_id)) return;
     const summary = data.summary || {};
     renderAnalysisMetrics(data);
     logLayers = data.layers || null;
@@ -1703,7 +1915,9 @@
     if(!Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 5000) throw new Error("最大步数必须是 1 到 5000 的整数");
     if(!Number.isFinite(preferenceBonus) || preferenceBonus < 0 || preferenceBonus > 1) throw new Error("出口偏好 bonus 必须在 0 到 1 之间");
     if(!Number.isFinite(smokeExposureThreshold) || smokeExposureThreshold < 0 || smokeExposureThreshold > 1) throw new Error("烟雾感知阈值必须在 0 到 1 之间");
-    return {random_seed:randomSeed, time_step_s:timeStep, max_steps:maxSteps, guide_enabled:guideEnabled, information_mode:broadcastEnabled ? "broadcast" : "local", alarm_enabled:broadcastEnabled, preference_bonus:preferenceBonus, smoke_exposure_threshold:smokeExposureThreshold, unknown_behavior:String($("unknownBehavior").value||"evacuate"), ...controlConfigPayload()};
+    const lambdaEnabled = $("lambdaExperimentEnabled").checked;
+    if(lambdaEnabled && lambdaCapability.supported !== true) throw new Error("当前模型尚未实现 λ 参数，不能启动 λ 专项实验");
+    return {random_seed:randomSeed, time_step_s:timeStep, max_steps:maxSteps, physical_cell_size_m:PHYSICAL_CELL_SIZE_M, sampling_window_s:4.5, analysis_mesh_size_m:2.0, roi_radius_m:4.0, lambda_experiment:lambdaEnabled, panic_to_risk_gain:Number($("lambdaValue").value), guide_enabled:guideEnabled, information_mode:broadcastEnabled ? "broadcast" : "local", alarm_enabled:broadcastEnabled, preference_bonus:preferenceBonus, smoke_exposure_threshold:smokeExposureThreshold, unknown_behavior:String($("unknownBehavior").value||"evacuate"), ...controlConfigPayload()};
   }
 
   function controlConfigPayload(){
@@ -1909,35 +2123,65 @@
   }
 
   async function stepOnce(){
-    if(!activeSession){ log("当前只有地图预览，未启动 B 联调。"); return; }
+    if(!activeSession){ log("当前只有地图预览，尚未初始化仿真。 "); return; }
     if(pending) return;
+    const manualClock = !autoPlaying && activeRunStartedAt === null;
+    if(manualClock) beginRunClock();
     pending = true;
     setRunControlsBusy(true);
     $("stepLatency").textContent = "计算中";
-    setStatus(`B 正在计算 step ${Number(snapshot && snapshot.step || 0) + 1}。\n最新版烟雾模型可能需要十几秒，请勿重置或重复点击。`, "计算中");
+    setStatus(`正在计算第 ${Number(snapshot && snapshot.step || 0) + 1} 步。\n请勿重置或重复点击。`, "计算中");
     try{
       const result = await api("/api/session/step", {});
       sessionFinished = Boolean(result.finished);
+      const applyStarted = performance.now();
       const observed = applySnapshot(result.snapshot, {output_dir:result.output_dir, diagnostics:result.diagnostics});
-      refreshCoreMetrics().catch(error => log(`本步指标未刷新：${error.message}`));
-      if(layerEnabled("layerOccupancy") || layerEnabled("layerTrajectories")){
-        refreshLogLayers().catch(error => log(`日志图层未刷新：${error.message}`));
+      const applySnapshotMs = performance.now() - applyStarted;
+      const serverTiming = result.diagnostics || {};
+      const clientTiming = result._client_diagnostics || {};
+      $("clientStepTiming").textContent = `后端 ${Number(serverTiming.runtime_step_ms || 0).toFixed(1)} ms · HTTP ${Number(clientTiming.http_total_ms || 0).toFixed(1)} ms · JSON ${Number(clientTiming.json_parse_ms || 0).toFixed(1)} ms · 应用 ${applySnapshotMs.toFixed(1)} ms · 绘制 ${lastDrawMs.toFixed(1)} ms · 烟雾 ${lastSmokeDrawMs.toFixed(1)} ms · ${Number(clientTiming.response_bytes || serverTiming.payload_bytes || 0)} B`;
+      const currentExitDistribution = {};
+      const representation = liveExitUtilizationRepresentation || "legacy_cell";
+      observed.people.forEach(person => {
+        const exitValue = representation === "entity"
+          ? person && person.actual_exit_entity
+          : person && (person.actual_exit_cell ?? person.actual_exit);
+        if(person && person.evacuated && exitValue){
+          const exitId = String(exitValue);
+          currentExitDistribution[exitId] = (currentExitDistribution[exitId] || 0) + 1;
+        }
+      });
+      const exitDistributionSignature = JSON.stringify(currentExitDistribution);
+      if(exitDistributionSignature !== lastExitDistributionSignature){
+        lastExitDistributionSignature = exitDistributionSignature;
+        if(Object.keys(currentExitDistribution).length && !result.finished){
+          refreshCoreMetrics().catch(error => log(`本步指标未刷新：${error.message}`));
+        }
       }
-      if(result.finished || !autoPlaying || result.snapshot.step - lastAnalysisStep >= 25){
+      if(result.finished){
         refreshRealAnalysis().catch(error => log(`分析图表未刷新：${error.message}`));
       }
       const warnings = [];
       const smokeContractViolated = observed.maxSmoke !== null && observed.maxSmoke > 10;
       if(observed.overlapCells > 0) warnings.push(`检测到 ${observed.overlapCells} 个活动人员重叠元胞`);
       if(smokeContractViolated) warnings.push(`烟雾最大值 ${observed.maxSmoke.toFixed(3)} 超出 B 约定 0~10`);
-      const deadCount = observed.people.filter(person => person && person.is_dead).length;
-      const completed = observed.people.length > 0 && observed.evacuated === observed.people.length;
-      const allAccountedFor = observed.people.length > 0 && observed.evacuated + deadCount === observed.people.length;
-      const runState = completed
+      const termination = result.termination && typeof result.termination === "object" ? result.termination : {};
+      const deadCount = Number.isFinite(Number(termination.dead_count))
+        ? Number(termination.dead_count)
+        : observed.people.filter(person => person && person.is_dead && !person.evacuated).length;
+      const unfinishedCount = Number.isFinite(Number(termination.unfinished_count))
+        ? Number(termination.unfinished_count)
+        : observed.people.filter(person => person && !person.evacuated && !person.is_dead).length;
+      const terminationReason = String(termination.reason || "");
+      const runState = terminationReason === "all_evacuated"
         ? "全员疏散完成"
-        : (result.finished
-          ? (allAccountedFor ? `仿真结束（死亡 ${deadCount} 人）` : "已达到最大步数")
-          : (pauseRequested ? "已暂停" : (autoPlaying ? "连续运行中" : "单步完成")));
+        : (terminationReason === "all_evacuated_or_dead"
+          ? `仿真结束（死亡 ${deadCount} 人）`
+          : (terminationReason === "max_steps_reached"
+            ? `已达到最大步数（仍有 ${unfinishedCount} 人未完成）`
+            : (result.finished
+              ? "仿真已结束"
+              : (pauseRequested ? "已暂停" : (autoPlaying ? "连续运行中" : "单步完成")))));
       const warningText = warnings.length
         ? `\n契约诊断：${warnings.join("；")}。D 保留原始数据，未伪造或静默修正。`
         : "";
@@ -1950,16 +2194,17 @@
         log(`烟雾在 step ${result.snapshot.step} 超出 0~10，动画已自动暂停`);
       }
       if(result.snapshot.step <= 5 || result.snapshot.step % 10 === 0 || result.finished || warnings.length){
-        log(`step ${result.snapshot.step}，已撤离 ${$("evacCount").textContent}，后台 ${$("stepLatency").textContent}`);
+        log(`第 ${result.snapshot.step} 步：已撤离 ${$("evacCount").textContent}；后端 ${Number(serverTiming.runtime_step_ms || 0).toFixed(1)} ms，HTTP ${Number(clientTiming.http_total_ms || 0).toFixed(1)} ms，页面应用 ${applySnapshotMs.toFixed(1)} ms`);
       }
       if(result.finished) stopTimer();
     }catch(error){
       stopTimer();
-      setStatus(`B step 调用失败：${error.message}\nD 未改 B 核心，请交给 B 后续确认。`, "联调错误");
-      log(`step 失败：${error.message}`);
+      setStatus(`仿真单步调用失败：${error.message}`, "运行错误");
+      log(`单步失败：${error.message}`);
     }finally{
       pending = false;
       setRunControlsBusy(false);
+      if(manualClock) pauseRunClock();
     }
   }
 
@@ -1973,11 +2218,12 @@
   }
 
   function startTimer(){
-    if(!activeSession){ log("请先启动 A+B+C 联调或仓库样例。"); return; }
+    if(!activeSession){ log("请先初始化仿真或加载仓库样例。"); return; }
     if(sessionFinished){ log("本次运行已结束；如需重新运行，请点击重置。"); return; }
     if(pending || autoPlaying){ log("当前正在计算，请等待本步完成。 "); return; }
     pauseRequested = false;
     autoPlaying = true;
+    beginRunClock();
     autoDelayMs = Math.max(100, Number($("speedSelect").value) || 300);
     setStatus(`连续运行已开始：从 step ${Number(snapshot && snapshot.step || 0)} 继续。播放速度只影响页面请求间隔，不改变模型。`, "连续运行");
     setRunControlsBusy(false);
@@ -1989,6 +2235,7 @@
     if(timer) clearTimeout(timer);
     timer = null;
     autoPlaying = false;
+    pauseRunClock();
     setRunControlsBusy(pending);
   }
 
@@ -2033,6 +2280,23 @@
     link.click();
     URL.revokeObjectURL(link.href);
     log(`已导出结果包；本地输出目录：${lastOutputDir || "见 outputs/experiments"}`);
+  }
+
+  async function exportLambdaCsv(){
+    if(pending){ log("当前单步正在计算，请等待完成后再导出。 "); return; }
+    if(!activeSession){ log("没有活动联调会话，暂不能导出 λ CSV。"); return; }
+    const response = await fetch("/api/session/lambda.csv");
+    if(!response.ok){
+      const data = await response.json().catch(() => ({error:"λ CSV 导出失败"}));
+      throw new Error(data.error || "λ CSV 导出失败");
+    }
+    const blob = await response.blob();
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = (response.headers.get("Content-Disposition") || "").match(/filename="?(.*?)"?$/)?.[1] || "lambda_experiment.csv";
+    link.click();
+    URL.revokeObjectURL(link.href);
+    log("已导出与结果包同源的 λ 实验 CSV；缺失的 B 指标保持 NA。");
   }
 
   $("previewMap").onclick = () => previewMap().catch(error => setStatus(`地图导入失败：${error.message}`, "导入失败"));
@@ -2110,6 +2374,8 @@
   $("exportBtn").onclick = () => exportPackage().catch(error => setStatus(`导出失败：${error.message}`, "导出失败"));
   $("refreshAnalysis").onclick = () => refreshRealAnalysis().catch(error => setStatus(`刷新真实分析失败：${error.message}`, "分析失败"));
   $("academicHeatmapSelect").onchange = renderSelectedHeatmap;
+  $("relationFilter").onchange = () => { draw(); drawExpandedMap(); };
+  $("exportLambdaBtn").onclick = () => exportLambdaCsv().catch(error => setStatus(`λ CSV 导出失败：${error.message}`, "导出失败"));
   $("refreshHistory").onclick = () => refreshHistory().catch(showHistoryError);
   document.querySelectorAll(".figure-expand").forEach(button => {
     button.onclick = () => openFigureModal(button.dataset.figure, button.dataset.title);
@@ -2140,6 +2406,11 @@
   refreshStats();
   syncBroadcastToggle(broadcastEnabled);
   setRunControlsBusy(false);
+  refreshRunClock();
+  loadCapabilities().catch(error => {
+    $("lambdaCapabilityPill").textContent = "检测失败";
+    $("lambdaCapabilityText").textContent = `能力检测失败：${error.message}。普通疏散实验仍可使用。`;
+  });
   log("统一前端已加载");
 })();
 </script>
