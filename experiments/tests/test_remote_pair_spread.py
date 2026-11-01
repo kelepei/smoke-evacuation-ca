@@ -42,6 +42,7 @@ class RemotePairSpreadTests(unittest.TestCase):
         info, diffusion, people = self._engine()
         info.transition_state(1, InfoState.ALERTED, 0, source=1, method="test")
         info.transition_state(1, InfoState.CONFIRMED, 1, source=1, method="test")
+        diffusion.remote_pair_params["enabled"] = True
         diffusion.remote_pair_params.update({"pairs_per_step": 1, "probability": 1.0})
         diffusion._apply_remote_pair_spread(people, 1)
         # UNKNOWN 不能直接到 CONFIRMED，远程告知先到 ALERTED
@@ -52,6 +53,7 @@ class RemotePairSpreadTests(unittest.TestCase):
         info, diffusion, people = self._engine()
         info.transition_state(1, InfoState.ALERTED, 0, source=1, method="test")
         info.transition_state(1, InfoState.CONFIRMED, 1, source=1, method="test")
+        diffusion.remote_pair_params["enabled"] = True
         diffusion.remote_pair_params.update({"pairs_per_step": 1})
         diffusion.remote_pair_params["relation_probabilities"]["family"] = 0.0
         diffusion._apply_remote_pair_spread(people, 1)

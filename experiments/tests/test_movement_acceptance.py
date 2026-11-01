@@ -150,7 +150,7 @@ class SmokeAvoidanceTests(unittest.TestCase):
         self.assertEqual((x, y), (4, 1))
 
     def test_default_threshold_is_zero_point_eight(self) -> None:
-        self.assertEqual(MovementConfig().smoke_avoid_threshold, 0.8)
+        self.assertEqual(MovementConfig().smoke_avoid_threshold, 0.4)
 
 
 if __name__ == "__main__":

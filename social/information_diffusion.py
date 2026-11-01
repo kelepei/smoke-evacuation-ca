@@ -57,8 +57,10 @@ DIFFUSION_PARAMS = {
         "max_spread_per_step": 3,
     },
     "remote_pair": {
-        "enabled": True,
-        "pairs_per_step": 3,
+        # 远程关系传播：默认关闭（先不参与实验）。如需启用，
+        # 把 enabled 改为 True，并把 pairs_per_step 设为大于 0 的整数。
+        "enabled": False,
+        "pairs_per_step": 0,
         # 未在 relation_probabilities 中列出的关系类型使用该回退概率
         "probability": 0.2,
         "relation_probabilities": {
