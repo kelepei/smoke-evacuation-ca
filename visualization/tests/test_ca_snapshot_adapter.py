@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from core.schema import CellType, Relation
+from core.schema import Cell, CellType, Relation
 from experiments.b_runtime_adapter import EvacEngineRuntimeAdapter
 from scenarios.mock_data import build_base_scene
 from simulation.evac_simulation import EvacEngine
@@ -136,6 +136,49 @@ class CaSnapshotAdapterTests(unittest.TestCase):
             next_snapshot["fields"]["smoke_field"],
             self.simulation.smoke_matrix.tolist(),
         )
+
+    def test_large_map_fields_are_current_on_every_step(self) -> None:
+        width, height = 250, 200
+        simulation = SimpleNamespace(
+            grid=SimpleNamespace(
+                width=width,
+                height=height,
+                cell_size=0.5,
+                cells=[
+                    Cell(x=x, y=y, cell_type=CellType.FREE)
+                    for y in range(height)
+                    for x in range(width)
+                ],
+                d_alarm_cells=[],
+            ),
+            config=SimpleNamespace(
+                scenario_id="large_matrix_fidelity",
+                random_seed=42,
+                parameters={},
+                exits=[],
+                relations=[],
+            ),
+            current_step=0,
+            smoke_matrix=np.zeros((height, width), dtype=np.float64),
+            risk_field=np.zeros((height, width), dtype=np.float64),
+            congestion_field=np.zeros((height, width), dtype=np.float64),
+            persons={},
+            movement_stats={},
+        )
+        adapter = CaSnapshotAdapter(run_id="large_matrix_fidelity", time_step_s=0.5)
+
+        first = adapter.capture(simulation)
+        self.assertEqual(0.0, first["fields"]["smoke_field"][10][20])
+
+        simulation.current_step = 1
+        simulation.smoke_matrix[10, 20] = 0.75
+        simulation.risk_field[10, 20] = 0.5
+        simulation.congestion_field[10, 20] = 0.25
+        second = adapter.capture(simulation)
+
+        self.assertEqual(0.75, second["fields"]["smoke_field"][10][20])
+        self.assertEqual(0.5, second["fields"]["risk_field"][10][20])
+        self.assertEqual(0.25, second["fields"]["congestion_field"][10][20])
 
     def test_snapshot_keeps_b_switch_counts_and_d_runtime_metrics_separate(self) -> None:
         chooser = self.simulation.exit_chooser

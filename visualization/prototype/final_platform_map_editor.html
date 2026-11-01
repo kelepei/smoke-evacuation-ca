@@ -1273,7 +1273,8 @@
     if(hasPeople) $("totalPersons").value = String(observed.people.length);
     $("evacCount").textContent = observed.evacuated;
     $("evacRate").textContent = hasPeople ? `${(observed.evacuated / observed.people.length * 100).toFixed(1)}%` : "NA";
-    $("remainingCount").textContent = hasPeople ? String(observed.people.length - observed.evacuated) : "NA";
+    const activeRemaining = observed.people.filter(person => person && !person.evacuated && !person.is_dead).length;
+    $("remainingCount").textContent = hasPeople ? String(activeRemaining) : "NA";
     $("smokeSourceCount").textContent = grid ? observed.smokeSourceCount : "NA";
     $("smokeMax").textContent = observed.maxSmoke === null ? "NA" : observed.maxSmoke.toFixed(3);
     $("smokeContract").textContent = observed.maxSmoke === null
@@ -1403,6 +1404,15 @@
     $("riskStatus").textContent = riskMean === null ? "NA · 上游未提供" : "已收到真实字段";
     $("insightOverlap").textContent = String(observed.overlapCells);
     $("insightSmoke").textContent = textValue(observed.maxSmoke);
+    if(runtimeMetrics){
+      const switches = Number(runtimeMetrics.switch_total);
+      const conflicts = Number(runtimeMetrics.conflict_total);
+      $("switchConflictMetric").textContent = Number.isFinite(switches) && Number.isFinite(conflicts)
+        ? `切换 ${switches} / 冲突 ${conflicts}`
+        : "NA";
+    }else{
+      $("switchConflictMetric").textContent = "NA";
+    }
 
     const representation = liveExitUtilizationRepresentation || "legacy_cell";
     const actualExits = {};
@@ -1517,6 +1527,7 @@
     $("totalEvacTime").textContent = metricText(metrics, "total_evacuation_time_s", " s");
     $("meanEvacTime").textContent = metricText(metrics, "mean_evacuation_time_s", " s");
     $("t90Time").textContent = metricText(metrics, "t90_time_s", " s");
+    $("exitBalanceMetric").textContent = `H ${metricText(metrics, "exit_entropy_h")} / G ${metricText(metrics, "exit_gini_g")}`;
     const representation = (data.exit_utilization_contract && data.exit_utilization_contract.representation)
       || liveExitUtilizationRepresentation
       || "legacy_cell";
@@ -1527,10 +1538,11 @@
     if(!activeSession) return;
     const requestedGeneration = sessionGeneration;
     const requestedRunId = snapshot && snapshot.run_id;
+    const requestedStep = Number(snapshot && snapshot.step);
     const response = await fetch("/api/session/metrics");
     const data = await response.json().catch(() => ({ok:false, error:"指标结果无法解析"}));
     if(!response.ok || !data.ok) throw new Error(data.error || "无法刷新真实指标");
-    if(requestedGeneration !== sessionGeneration || requestedRunId !== (snapshot && snapshot.run_id)) return;
+    if(requestedGeneration !== sessionGeneration || requestedRunId !== (snapshot && snapshot.run_id) || requestedStep !== Number(snapshot && snapshot.step)) return;
     renderAnalysisMetrics(data);
   }
 
@@ -2142,23 +2154,34 @@
       const exitDistributionSignature = JSON.stringify(currentExitDistribution);
       if(exitDistributionSignature !== lastExitDistributionSignature){
         lastExitDistributionSignature = exitDistributionSignature;
+        if(Object.keys(currentExitDistribution).length && !result.finished){
+          refreshCoreMetrics().catch(error => log(`本步指标未刷新：${error.message}`));
+        }
       }
-      refreshCoreMetrics().catch(error => log(`本步指标未刷新：${error.message}`));
-      if(result.finished || !autoPlaying || result.snapshot.step - lastAnalysisStep >= 25){
+      if(result.finished){
         refreshRealAnalysis().catch(error => log(`分析图表未刷新：${error.message}`));
       }
       const warnings = [];
       const smokeContractViolated = observed.maxSmoke !== null && observed.maxSmoke > 10;
       if(observed.overlapCells > 0) warnings.push(`检测到 ${observed.overlapCells} 个活动人员重叠元胞`);
       if(smokeContractViolated) warnings.push(`烟雾最大值 ${observed.maxSmoke.toFixed(3)} 超出 B 约定 0~10`);
-      const deadCount = observed.people.filter(person => person && person.is_dead).length;
-      const completed = observed.people.length > 0 && observed.evacuated === observed.people.length;
-      const allAccountedFor = observed.people.length > 0 && observed.evacuated + deadCount === observed.people.length;
-      const runState = completed
+      const termination = result.termination && typeof result.termination === "object" ? result.termination : {};
+      const deadCount = Number.isFinite(Number(termination.dead_count))
+        ? Number(termination.dead_count)
+        : observed.people.filter(person => person && person.is_dead && !person.evacuated).length;
+      const unfinishedCount = Number.isFinite(Number(termination.unfinished_count))
+        ? Number(termination.unfinished_count)
+        : observed.people.filter(person => person && !person.evacuated && !person.is_dead).length;
+      const terminationReason = String(termination.reason || "");
+      const runState = terminationReason === "all_evacuated"
         ? "全员疏散完成"
-        : (result.finished
-          ? (allAccountedFor ? `仿真结束（死亡 ${deadCount} 人）` : "已达到最大步数")
-          : (pauseRequested ? "已暂停" : (autoPlaying ? "连续运行中" : "单步完成")));
+        : (terminationReason === "all_evacuated_or_dead"
+          ? `仿真结束（死亡 ${deadCount} 人）`
+          : (terminationReason === "max_steps_reached"
+            ? `已达到最大步数（仍有 ${unfinishedCount} 人未完成）`
+            : (result.finished
+              ? "仿真已结束"
+              : (pauseRequested ? "已暂停" : (autoPlaying ? "连续运行中" : "单步完成")))));
       const warningText = warnings.length
         ? `\n契约诊断：${warnings.join("；")}。D 保留原始数据，未伪造或静默修正。`
         : "";

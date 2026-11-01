@@ -220,6 +220,9 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
         self.assertIn("snapshot.runtime_metrics", self.page)
         self.assertIn("exitDistributionSignature !== lastExitDistributionSignature", self.page)
         self.assertIn("requestedGeneration !== sessionGeneration", self.page)
+        self.assertNotIn("result.snapshot.step - lastAnalysisStep >= 25", step_body)
+        self.assertIn('termination.reason || ""', step_body)
+        self.assertIn("unfinished_count", step_body)
 
     def test_product_copy_hides_internal_team_labels(self) -> None:
         self.assertIn("关系紧密程度（0–1）", self.page)

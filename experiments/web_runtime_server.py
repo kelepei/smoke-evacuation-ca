@@ -81,6 +81,52 @@ class RuntimeSession:
         self.temporary_directory.cleanup()
 
 
+def _termination_state(
+    snapshot: Mapping[str, Any], *, finished: bool, max_steps: int
+) -> dict[str, Any]:
+    """Describe why a run stopped without changing B's completion rules."""
+
+    raw_people = snapshot.get("people")
+    people = raw_people if isinstance(raw_people, list) else []
+    evacuated_count = sum(
+        1
+        for person in people
+        if isinstance(person, Mapping) and person.get("evacuated") is True
+    )
+    dead_count = sum(
+        1
+        for person in people
+        if isinstance(person, Mapping)
+        and person.get("evacuated") is not True
+        and person.get("is_dead") is True
+    )
+    total_count = len(people)
+    unfinished_count = max(0, total_count - evacuated_count - dead_count)
+    step = int(snapshot.get("step") or 0)
+
+    reason = "running"
+    if finished:
+        if total_count > 0 and evacuated_count == total_count:
+            reason = "all_evacuated"
+        elif total_count > 0 and unfinished_count == 0:
+            reason = "all_evacuated_or_dead"
+        elif step >= max_steps:
+            reason = "max_steps_reached"
+        else:
+            reason = "upstream_finished"
+
+    return {
+        "finished": bool(finished),
+        "reason": reason,
+        "step": step,
+        "max_steps": int(max_steps),
+        "total_count": total_count,
+        "evacuated_count": evacuated_count,
+        "dead_count": dead_count,
+        "unfinished_count": unfinished_count,
+    }
+
+
 class DWebRuntimeServer(ThreadingHTTPServer):
     """Local server state; only one active run is needed for the MVP UI."""
 
@@ -335,6 +381,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                             include_figures=path.endswith("/analysis"),
                             include_layers=path.endswith("/analysis")
                             or path.endswith("/layers"),
+                            include_academic=path.endswith("/analysis"),
                         )
                     )
             except WebRuntimeError as exc:
@@ -794,9 +841,13 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         # to report its size.  _send_json performs the one authoritative encode.
         payload_bytes = 0
         request_processing_ms = (perf_counter() - request_started) * 1000.0
+        finished = session.runner.finished
         return {
             "ok": True,
-            "finished": session.runner.finished,
+            "finished": finished,
+            "termination": _termination_state(
+                snapshot, finished=finished, max_steps=session.max_steps
+            ),
             "snapshot": slim_snapshot,
             "static_fields_omitted": ["grid", "relations"],
             "output_dir": str(session.runner.output_root / snapshot["run_id"]),
@@ -887,7 +938,11 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         )
 
     def _runtime_analysis(
-        self, *, include_figures: bool, include_layers: bool
+        self,
+        *,
+        include_figures: bool,
+        include_layers: bool,
+        include_academic: bool,
     ) -> dict[str, Any]:
         """Return only CSV-derived analysis for the active D run."""
 
@@ -903,6 +958,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 final_snapshot=snapshot,
                 include_figures=include_figures,
                 include_layers=include_layers,
+                include_academic=include_academic,
             )
         except ResultPackageError as exc:
             raise WebRuntimeError(str(exc)) from exc
