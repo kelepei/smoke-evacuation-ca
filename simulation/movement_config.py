@@ -60,6 +60,12 @@ class PanicConfig:
     speed_gain: float = 0.20
     # 烟源本身的危险感知：在烟雾浓度之外，按到烟源的距离额外增加暴露
     source_weight: float = 1.0
+    # ---- 信息状态对恐慌的作用（w_a 知情抬恐慌 / w_g 被引导压恐慌）----
+    info_alert_weight: float = 0.30
+    info_guide_weight: float = 0.20
+    # ---- 恐慌对风险感知的反馈 λ：R' = R · (1 + λ·P)，0=关闭 ----
+    panic_to_risk_gain: float = 0.0
+    risk_feedback_cap: float = 3.0
     # ---- 关系加权情绪传染（任务书 5.3 / 项目设计） ----
     relation_contagion: bool = True
     relation_floor: float = 0.30
@@ -169,6 +175,9 @@ class ExitChoiceConfig:
     # ---- 项目扩展（默认不改变原文行为） ----
     smoke_weight: float = 0.15   # 出口区域烟雾权重；0=完全按原文（原文无烟雾）
     smoke_ref: float = 1.0
+    # 项目扩展：烟源附近的出口直接禁用（无论离人多远、效用多高都不选）
+    ban_smoke_source_exits: bool = True
+    smoke_source_ban_radius_m: float = 3.2   # 判定半径（米）
     panic_noise: float = 0.0     # 恐慌判断噪声；0=关闭
     exit_pressure_gain: float = 0.0  # 危险感知削弱 Pm 的强度；0=固定 Pm
 
@@ -198,8 +207,12 @@ class MovementConfig:
     unknown_speed_factor: float = 0.35
     # 烟源危险感知的影响半径（米）：到烟源距离按 exp(-d^2/(2σ^2)) 衰减
     source_sigma_m: float = 1.5
-    # 烟雾浓度超过该值时，该候选格直接不可进入（硬绕行）
-    smoke_avoid_threshold: float = 0.8
+    # 烟雾浓度超过该值时，该候选格给极大惩罚（近似不可进入；四周全被烟封住时仍可选烟最轻的一格）
+    smoke_avoid_threshold: float = 0.4
+    # 烟雾软惩罚权重：utility -= smoke_penalty_weight · S^1.5
+    smoke_penalty_weight: float = 24.0
+    # 烟雾上升惩罚：进入比当前更浓的格子额外扣分
+    smoke_delta_weight: float = 8.0
     panic: PanicConfig = field(default_factory=PanicConfig)
     speed: SpeedConfig = field(default_factory=SpeedConfig)
     danger: DangerConfig = field(default_factory=DangerConfig)

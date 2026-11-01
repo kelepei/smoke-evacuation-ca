@@ -15,6 +15,7 @@
 本项目扩展（默认不改变原文行为）：
 - `smoke_weight`：出口区域平均烟雾浓度对 E_k 的指数惩罚，0 即完全按原文；
 - `exit_pressure_gain` / `panic_noise`：危险感知削弱 Pm、恐慌判断噪声，默认 0。
+- `ban_smoke_source_exits` / `smoke_source_ban_radius_m`：烟源半径内的出口直接禁用（默认开启，3.2 m）。
 """
 
 from __future__ import annotations
@@ -84,6 +85,7 @@ class ExitChooser:
         self._prev_best: dict[int, float] = {}
         self._last_switch: dict[int, int] = {}
         self.switch_total = 0
+        self.switch_counts: dict[int, int] = {}
 
         # 出口区域半径（元胞）与容量（元胞数）
         self._radius_cells = max(1.0, float(self.cfg.region_radius_m) / self.cell_size)
@@ -96,6 +98,37 @@ class ExitChooser:
             1.0,
             area / (self.cell_size ** 2) * max(1e-6, float(self.cfg.capacity_scale)),
         )
+
+        # 烟源附近出口禁用：距任一烟源不超过半径的出口，直接不参与选择
+        self.all_exits = list(self.exits)
+        self.banned_exits: set[str] = set()
+        self.forced_switch_total = 0
+        if getattr(self.cfg, "ban_smoke_source_exits", False):
+            self.banned_exits = self._find_smoke_source_exits()
+            if len(self.banned_exits) >= len(self.all_exits):
+                # 所有出口都在烟源附近：退回原规则，避免无出口可选
+                self.banned_exits = set()
+            else:
+                self.exits = [e for e in self.all_exits if e[0] not in self.banned_exits]
+
+    def _find_smoke_source_exits(self) -> set[str]:
+        """返回距任一烟源不超过 smoke_source_ban_radius_m 的出口 id 集合。"""
+        if self.scene is None:
+            return set()
+        sources = list(getattr(self.scene, "smoke_sources", []) or [])
+        if not sources:
+            return set()
+        radius = max(0.0, float(getattr(self.cfg, "smoke_source_ban_radius_m", 3.2)))
+        radius_cells = radius / self.cell_size
+        banned: set[str] = set()
+        for eid, ex, ey, _width in self.all_exits:
+            for src in sources:
+                sx = int(getattr(src, "x", -10**6))
+                sy = int(getattr(src, "y", -10**6))
+                if (ex - sx) ** 2 + (ey - sy) ** 2 <= radius_cells ** 2:
+                    banned.add(eid)
+                    break
+        return banned
 
     # ------------------------------------------------------------------ 旧接口
     def select_exit(self, person, mode: str, guided_exit_id: Optional[str] = None):
@@ -172,6 +205,17 @@ class ExitChooser:
 
             best_exit = max(probs, key=probs.get)
             best_prob = probs[best_exit]
+            # 烟源附近出口被禁用：当前目标若已被禁，立即改到可用出口（不受 σ/Pm 限制）
+            if current in self.banned_exits and best_exit != current:
+                self._target[pid] = best_exit
+                self._last_switch[pid] = int(step)
+                self.switch_total += 1
+                self.switch_counts[pid] = self.switch_counts.get(pid, 0) + 1
+                self.forced_switch_total += 1
+                self._prev_probs[pid] = probs
+                self._prev_best[pid] = best_prob
+                result[pid] = best_exit
+                continue
             if current is None:
                 # Start from the shortest reachable route.  Density and smoke
                 # may justify a later switch, but the initial choice must not
@@ -210,6 +254,7 @@ class ExitChooser:
                     self._target[pid] = best_exit
                     self._last_switch[pid] = int(step)
                     self.switch_total += 1
+                    self.switch_counts[pid] = self.switch_counts.get(pid, 0) + 1
             self._prev_probs[pid] = probs
             result[pid] = self._target[pid]
         return result

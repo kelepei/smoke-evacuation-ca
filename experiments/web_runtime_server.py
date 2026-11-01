@@ -140,6 +140,11 @@ def _control_runtime_config(payload: Mapping[str, Any]) -> dict[str, Any]:
             pass
     if "route_shift_ratio" in payload:
         config["route_shift_ratio"] = float(payload.get("route_shift_ratio") or 0.2)
+    # 允许调用方直接覆盖移动/恐慌/风险反馈参数：
+    #   {"movement": {"panic": {"panic_to_risk_gain": 0.4, "info_alert_weight": 0.3}}}
+    movement = payload.get("movement")
+    if isinstance(movement, Mapping):
+        config["movement"] = dict(movement)
     return config
 
 
