@@ -1,10 +1,9 @@
 """D-side physical-scale contracts and trajectory kinematics.
 
 This module deliberately stops before congestion metrics.  It turns the
-normalized D people log into auditable cell-space velocities and exposes
-metric units only when a map or explicit runtime configuration provides a
-validated physical cell size.  The legacy ``grid.cell_size`` is never used as
-a physical length because current maps use it with incompatible meanings.
+normalized D people log into auditable cell-space velocities using the
+platform-wide 0.5 m/cell simulation assumption.  The legacy ``grid.cell_size``
+is never interpreted as metres.
 """
 
 from __future__ import annotations
@@ -15,6 +14,13 @@ import math
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterable, Mapping
+
+from experiments.platform_physics import (
+    PLATFORM_PHYSICAL_CELL_SIZE_M,
+    PLATFORM_PHYSICAL_SCALE_NOTE,
+    PLATFORM_PHYSICAL_SCALE_SOURCE,
+    platform_physical_cell_size,
+)
 
 
 DEFAULT_SAMPLING_WINDOW_S = 2.5
@@ -55,12 +61,7 @@ def resolve_analysis_contract(
     runtime_physical_cell_size_m: Any = None,
     runtime_sampling_window_s: Any = None,
 ) -> dict[str, Any]:
-    """Resolve explicit-only physical and sampling configuration.
-
-    Runtime configuration may be used for a controlled run.  If a map also
-    declares a different physical scale, the run is rejected instead of
-    silently selecting one of two incompatible unit systems.
-    """
+    """Resolve the fixed platform scale and explicit analysis sampling settings."""
 
     map_analysis = map_analysis or {}
     if not isinstance(map_analysis, Mapping):
@@ -71,44 +72,33 @@ def resolve_analysis_contract(
         None if map_scale_raw in (None, "")
         else _positive_finite(map_scale_raw, field="analysis.physical_cell_size_m")
     )
-    runtime_scale = (
-        None if runtime_physical_cell_size_m in (None, "")
-        else _positive_finite(
-            runtime_physical_cell_size_m,
-            field="runtime physical_cell_size_m",
-        )
+    platform_physical_cell_size(
+        runtime_physical_cell_size_m,
+        field="runtime physical_cell_size_m",
     )
-    if map_scale is not None and runtime_scale is not None and not math.isclose(
-        map_scale, runtime_scale, rel_tol=0.0, abs_tol=1e-12
-    ):
-        raise ValueError(
-            "explicit map and runtime physical_cell_size_m disagree; "
-            "choose one calibrated scale before calculating physical metrics"
-        )
-    if runtime_scale is not None:
-        physical_scale = {
-            "source": "runtime_config",
-            "value": runtime_scale,
-            "unit": "m",
-            "warning": None,
-        }
-    elif map_scale is not None:
-        physical_scale = {
-            "source": "explicit_map",
-            "value": map_scale,
-            "unit": "m",
-            "warning": None,
-        }
-    else:
-        physical_scale = {
-            "source": "unavailable",
-            "value": None,
-            "unit": "m",
-            "warning": (
-                "physical_cell_size_m was not explicitly supplied; "
-                "legacy grid.cell_size is not interpreted as metres"
-            ),
-        }
+    map_scale_differs = map_scale is not None and not math.isclose(
+        map_scale,
+        PLATFORM_PHYSICAL_CELL_SIZE_M,
+        rel_tol=0.0,
+        abs_tol=1e-12,
+    )
+    physical_scale = {
+        "source": PLATFORM_PHYSICAL_SCALE_SOURCE,
+        "value": PLATFORM_PHYSICAL_CELL_SIZE_M,
+        "unit": "m",
+        "assumption": "uniform_simulation",
+        "warning": PLATFORM_PHYSICAL_SCALE_NOTE,
+        "map_declared": (
+            {
+                "physical_cell_size_m": map_scale,
+                "unit": "m",
+                "source": "explicit_map",
+                "differs_from_platform_assumption": map_scale_differs,
+            }
+            if map_scale is not None
+            else None
+        ),
+    }
 
     map_window_raw = map_analysis.get("sampling_window_s")
     map_window = (
@@ -157,7 +147,34 @@ def resolve_analysis_contract(
         "physical_scale": physical_scale,
         "sampling_window_s": sampling_window,
         "velocity_method": velocity_method,
+        "map_declared_analysis": dict(map_analysis),
     }
+
+
+def normalize_analysis_contract(
+    contract: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Upgrade legacy contracts to the fixed platform physical scale."""
+
+    result = resolve_analysis_contract()
+    if not isinstance(contract, Mapping):
+        return result
+    for key, value in contract.items():
+        if key == "physical_scale":
+            continue
+        result[key] = dict(value) if isinstance(value, Mapping) else value
+    sampling = contract.get("sampling_window_s")
+    if not (
+        isinstance(sampling, Mapping)
+        and isinstance(sampling.get("value"), (int, float))
+        and not isinstance(sampling.get("value"), bool)
+        and sampling.get("value") > 0
+    ):
+        result["sampling_window_s"] = resolve_analysis_contract()["sampling_window_s"]
+    raw_physical = contract.get("physical_scale")
+    if isinstance(raw_physical, Mapping) and "map_declared" in raw_physical:
+        result["physical_scale"]["map_declared"] = raw_physical["map_declared"]
+    return result
 
 
 def with_runtime_dt(
@@ -166,7 +183,7 @@ def with_runtime_dt(
     """Attach the runtime's declared dt without inventing a fixed value."""
 
     dt = _positive_finite(dt_s, field="runtime dt_s")
-    result = dict(contract or resolve_analysis_contract())
+    result = normalize_analysis_contract(contract)
     result["dt_s"] = {
         "source": "runtime_snapshot.time_step",
         "value": dt,
@@ -238,7 +255,11 @@ def _physical_scale_value(physical_scale: Mapping[str, Any] | None) -> float | N
 
     if not isinstance(physical_scale, Mapping):
         return None
-    if physical_scale.get("source") not in {"explicit_map", "runtime_config"}:
+    if physical_scale.get("source") not in {
+        "explicit_map",
+        "runtime_config",
+        PLATFORM_PHYSICAL_SCALE_SOURCE,
+    }:
         return None
     value = physical_scale.get("value")
     return None if value in (None, "") else _positive_finite(

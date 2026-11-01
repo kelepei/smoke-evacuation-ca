@@ -136,7 +136,7 @@ class EvacEngineRuntimeAdapter:
                 person.dose = 0.0
                 initialized_fields.append("person.dose=0.0")
         self.d_adapter_meta = {
-            "input_mode": "A map + C population + B EvacEngine",
+            "input_mode": "场景地图 + 人员数据 + 疏散仿真引擎",
             "b_runtime_api": (
                 "EvacEngine.run_one_step(c_step_data)"
                 if callable(getattr(engine, "run_one_step", None))

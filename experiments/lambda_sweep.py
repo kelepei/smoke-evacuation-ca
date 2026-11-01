@@ -26,6 +26,7 @@ sys.path.insert(0, str(ROOT))
 from experiments.integrated_runner import create_integrated_runner  # noqa: E402
 from experiments.lambda_experiment import lambda_movement_settings  # noqa: E402
 from experiments.metrics_registry import NA  # noqa: E402
+from experiments.platform_physics import PLATFORM_PHYSICAL_CELL_SIZE_M  # noqa: E402
 from experiments.week6_analysis import _exit_balance, _q95  # noqa: E402
 
 DEFAULT_LAMBDA_LEVELS = "0,0.2,0.4,0.6,0.8"
@@ -104,7 +105,7 @@ def run_once(map_path, people_path, yaml_path, lam, seed, max_steps, pressure_ga
         run_id=f"lambda_{lam}_s{seed}_{int(time.time() * 1000) % 1000000}",
         random_seed=seed,
         time_step_s=0.5,
-        physical_cell_size_m=0.5,
+        physical_cell_size_m=PLATFORM_PHYSICAL_CELL_SIZE_M,
         max_steps=max_steps,
         c_runtime_config={"movement": movement_settings},
     )
@@ -174,7 +175,7 @@ def run_once(map_path, people_path, yaml_path, lam, seed, max_steps, pressure_ga
         "risk_mean": (risk_sum / risk_n) if risk_n else "",
         "q95_dose": q95,
         "time_step_s": 0.5,
-        "physical_cell_size_m": 0.5,
+        "physical_cell_size_m": PLATFORM_PHYSICAL_CELL_SIZE_M,
         "risk_feedback_cap": 3.0,
         "exit_pressure_gain": float(pressure_gain),
         "max_steps": max_steps,

@@ -101,7 +101,15 @@ class ExitTopologyTests(unittest.TestCase):
         self.assertEqual("exit_1", snapshot["people"][0]["actual_exit"])
         self.assertEqual("exit_1", snapshot["people"][0]["actual_exit_cell"])
         self.assertEqual("exit_entity_01", snapshot["people"][0]["actual_exit_entity"])
-        self.assertEqual("unavailable", snapshot["analysis_contract"]["physical_scale"]["source"])
+        self.assertEqual(
+            "platform_simulation_assumption",
+            snapshot["analysis_contract"]["physical_scale"]["source"],
+        )
+        self.assertEqual(
+            0.5,
+            snapshot["analysis_contract"]["physical_scale"]["value"],
+        )
+        self.assertEqual(0.5, snapshot["grid"]["physical_cell_size_m"])
         self.assertIn("guidance", snapshot)
 
     def test_entity_level_exit_utilization_is_one_bucket_and_sums_to_one(self) -> None:

@@ -64,12 +64,12 @@ class WebRuntimeServerTests(unittest.TestCase):
         self.assertEqual("max_steps_reached", capped["reason"])
         self.assertEqual(1, capped["unfinished_count"])
 
-    def test_optional_physical_cell_size_is_explicit_and_validated(self) -> None:
-        self.assertIsNone(_optional_physical_cell_size(None))
-        self.assertIsNone(_optional_physical_cell_size(""))
+    def test_platform_physical_cell_size_is_fixed_and_validated(self) -> None:
+        self.assertEqual(0.5, _optional_physical_cell_size(None))
+        self.assertEqual(0.5, _optional_physical_cell_size(""))
         self.assertEqual(0.5, _optional_physical_cell_size(0.5))
-        with self.assertRaisesRegex(Exception, "greater than 0"):
-            _optional_physical_cell_size(0)
+        with self.assertRaisesRegex(Exception, "fixed at 0.5"):
+            _optional_physical_cell_size(0.4)
 
     def test_enhanced_web_runtime_enables_documented_source_smoke_semantics(self) -> None:
         self.assertTrue(_control_runtime_config({})["web_mode"])
@@ -178,7 +178,6 @@ class WebRuntimeServerTests(unittest.TestCase):
                         "max_steps": 8,
                         "random_seed": 17,
                         "time_step_s": 0.25,
-                        "physical_cell_size_m": 0.5,
                         "analysis_mesh_size_m": 2.0,
                         "sampling_window_s": 2.5,
                         "roi_radius_m": 4.0,
@@ -191,13 +190,21 @@ class WebRuntimeServerTests(unittest.TestCase):
                         "time_step_s": 0.25,
                         "max_steps": 8,
                         "physical_cell_size_m": 0.5,
-                        "physical_scale_kind": "assumption_demo",
+                        "physical_scale_kind": "platform_simulation_assumption",
                     },
                     initial_response["runtime_parameters"],
                 )
                 self.assertEqual(
                     0.5,
                     initial["analysis_contract"]["physical_scale"]["value"],
+                )
+                self.assertEqual(
+                    0.5,
+                    initial["grid"]["physical_cell_size_m"],
+                )
+                self.assertEqual(
+                    "platform_simulation_assumption",
+                    initial["analysis_contract"]["physical_scale"]["source"],
                 )
                 self.assertEqual(
                     2.0,
@@ -208,7 +215,10 @@ class WebRuntimeServerTests(unittest.TestCase):
                 self.assertEqual(17, initial["random_seed"])
                 self.assertEqual(0.25, initial["time_step"])
                 self.assertEqual(2, len(initial["people"]))
-                self.assertEqual("A map + C population + B EvacEngine", initial["adapter_meta"]["input_mode"])
+                self.assertEqual(
+                    "场景地图 + 人员数据 + 疏散仿真引擎",
+                    initial["adapter_meta"]["input_mode"],
+                )
                 stepped_response = post("/api/session/step", {})
                 stepped = stepped_response["snapshot"]
                 self.assertEqual(1, stepped["step"])
@@ -584,6 +594,14 @@ class WebRuntimeServerTests(unittest.TestCase):
                 )
                 self.assertEqual(2, initial["auto_positioning"]["person_count"])
                 self.assertEqual(44, initial["auto_positioning"]["random_seed"])
+                self.assertEqual(
+                    "platform_simulation_assumption",
+                    initial["snapshot"]["analysis_contract"]["physical_scale"]["source"],
+                )
+                self.assertEqual(
+                    0.5,
+                    initial["snapshot"]["analysis_contract"]["physical_scale"]["value"],
+                )
                 self.assertEqual("wall", initial["snapshot"]["grid"]["cell_type"][1][1])
                 saved_map = json.loads(server.session.input_files["map"].read_text(encoding="utf-8"))
                 self.assertEqual("kept-through-session", saved_map["editor_marker"])

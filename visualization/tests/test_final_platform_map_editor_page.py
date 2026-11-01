@@ -189,6 +189,21 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
         for control_id in ("relationFilter", "speedSelect", "mapExpandBtn"):
             self.assertIn(f'id="{control_id}"', layers)
 
+    def test_compact_desktop_layout_keeps_primary_controls_reachable(self) -> None:
+        self.assertIn(
+            "@media(max-width:1400px){main{grid-template-columns:260px minmax(0,1fr) 300px",
+            self.page,
+        )
+        self.assertIn("toolbar-primary .good", self.page)
+        self.assertIn("run-controls{gap:2px}", self.page)
+
+    def test_user_facing_copy_avoids_internal_workstream_labels(self) -> None:
+        self.assertNotIn("A+B+C", self.page)
+        self.assertNotIn("C 人员", self.page)
+        self.assertNotIn("A 地图", self.page)
+        self.assertIn("物理标定：0.5 m/格", self.page)
+        self.assertIn("平台统一仿真假设", self.page)
+
     def test_exit_entity_names_are_stable_display_only_labels(self) -> None:
         self.assertIn("function exitDisplayName(exitId, sourceSnapshot = snapshot)", self.page)
         self.assertIn('/^exit_entity_(\\d+)$/i.exec(rawId)', self.page)
