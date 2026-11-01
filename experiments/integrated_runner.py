@@ -282,6 +282,8 @@ def build_integrated_scenario(
             "web_mode",
             "smoke_local_radius",
             "smoke_exposure_threshold",
+            "smoke_perception_radius",
+            "preference_bonus",
             "smoke_ramp_steps",
             "broadcast_smoke_threshold",
             "information_mode",
