@@ -253,10 +253,6 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
         if 0 <= ty < len(smoke_matrix) and 0 <= tx < len(smoke_matrix[0]):
             next_smoke = float(smoke_matrix[ty][tx])
 
-        # 高浓度硬约束：超过阈值直接不进入，逼出绕行
-        if next_smoke > smoke_avoid:
-            continue
-
         utility = 0.0
 
         # 1. 到"目标出口"的距离
@@ -272,6 +268,10 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
         risk_sens = getattr(person, "risk_sensitivity", 0.5)
         w_s_eff = w_s * (0.5 + risk_sens)
         utility -= w_s_eff * (next_smoke ** 1.5)
+
+        # 高浓度约束：超过阈值给极大惩罚，逼出绕行；若四周全被烟封住，仍可选烟最轻的一格
+        if next_smoke > smoke_avoid:
+            utility -= 1000.0 + 50.0 * next_smoke
 
         # 3. ΔS
         dS = next_smoke - current_cell_smoke

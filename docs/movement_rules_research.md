@@ -85,14 +85,14 @@ doctor_patient 0.334、staff_to_customer 0.166、stranger 0.067。
 
 ### 2.1.2 高浓度烟雾绕行（0.8 阈值）
 
-候选格烟雾浓度 `S > smoke_avoid_threshold`（默认 **0.8**）时直接不可进入：
+候选格烟雾浓度 `S > smoke_avoid_threshold`（默认 **0.4**）时给极大惩罚、近似不可进入：
 
 - 单步选格：该候选格从效用比较中剔除；
 - 多格前进：`_extend_path` 遇到超过阈值的格子立即停止，不再沿该方向继续；
 - 行人会在 8 邻域里选择其他低烟格，形成"绕过烟团"的局部行为；
 - 如果 8 个候选格全部超过阈值，行人原地等待，不强行穿烟。
 
-参数：`movement.smoke_avoid_threshold`（默认 0.8，之前硬编码为 0.9）。
+参数：`movement.smoke_avoid_threshold`（默认 0.4，为让网页上绕行可见而从 0.8 下调；四周全被烟封住时仍会选烟最轻的一格）。
 
 ### 2.2 加速与多速度
 
@@ -325,7 +325,7 @@ D 端完成 `movement` 透传后（见随附的《D 板块待改说明》第 2 �
 | speed | `initial_velocity_ratio` / `initial_credit` | 0.8 / 0.5 | 初始速度比例/初始距离亏欠 |
 | speed | `max_cells_per_step` | 2 | 单步最多前进格数 |
 | speed | `smoke_slow` / `min_speed_factor` | 0.55 / 0.30 | 烟雾减速系数/下限 |
-| movement | `smoke_avoid_threshold` | 0.8 | 超过该浓度的候选格直接绕行 |
+| movement | `smoke_avoid_threshold` | 0.4 | 超过该浓度的候选格极大惩罚、近似绕行 |
 | speed | `dose_ref` | 6.0 | 剂量减速参考 |
 | danger | `gamma` / `beta` / `low_speed_ratio` | 0.5 / 0.1 / 0.2 | 张琦 2025 原文参数 |
 | danger | `window_steps` | 10 | 实时速度滚动窗口 |

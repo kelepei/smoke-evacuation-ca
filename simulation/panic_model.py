@@ -119,6 +119,34 @@ class PanicModel:
             + cfg.delta_weight * np.minimum(1.0, np.maximum(0.0, delta_s) / max(1e-6, self.dt))
             + cfg.risk_weight * np.minimum(1.0, np.maximum(0.0, risk) / max(1e-6, cfg.risk_ref))
         )
+        # 信息状态：知情（ALERTED/CONFIRMED/INFORMED）抬高恐慌；被引导（GUIDED）压低恐慌
+        alerted = np.fromiter(
+            (
+                1.0
+                if str(getattr(person, "info_state", "UNKNOWN") or "UNKNOWN").upper()
+                in {"ALERTED", "CONFIRMED", "INFORMED"}
+                else 0.0
+                for person in persons
+            ),
+            dtype=np.float64,
+            count=n,
+        )
+        guided = np.fromiter(
+            (
+                1.0
+                if str(getattr(person, "info_state", "UNKNOWN") or "UNKNOWN").upper() == "GUIDED"
+                else 0.0
+                for person in persons
+            ),
+            dtype=np.float64,
+            count=n,
+        )
+        exposure = (
+            exposure
+            + max(0.0, float(getattr(cfg, "info_alert_weight", 0.0))) * alerted
+            - max(0.0, float(getattr(cfg, "info_guide_weight", 0.0))) * guided
+        )
+        exposure = np.maximum(0.0, exposure)
         if source_proximity is not None:
             proximity = np.fromiter(
                 (float(source_proximity.get(int(person.id), 0.0) or 0.0) for person in persons),
