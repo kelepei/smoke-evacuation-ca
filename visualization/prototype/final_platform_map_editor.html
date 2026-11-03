@@ -227,9 +227,9 @@
       <div class="spacer"></div>
       <div class="toolbar-options">
         <select id="speedSelect" aria-label="播放速度" style="width:78px;height:28px;padding:3px 5px">
-          <option value="150">快速</option>
-          <option value="300" selected>标准</option>
-          <option value="600">慢速</option>
+          <option value="fast">快速</option>
+          <option value="standard" selected>标准</option>
+          <option value="slow">慢速</option>
         </select>
         <button id="mapExpandBtn" class="figure-expand map-expand" type="button" aria-label="放大查看主地图" title="放大查看地图">⛶</button>
       </div>
@@ -396,7 +396,7 @@
   const expandedCanvas = $("mapExpandedView");
   const mainMapView = {scale:1, panX:0, panY:0};
   const expandedMapView = {scale:1, panX:0, panY:0};
-  let currentMapViewKey = "";
+  let currentStaticGrid = null;
   let snapshot = null;
   let liveHistory = [];
   let activeSession = false;
@@ -406,7 +406,23 @@
   let pending = false;
   let generatingPeople = false;
   let autoPlaying = false;
+  const PLAYBACK_SPEEDS = Object.freeze({
+    fast: Object.freeze({key:"fast", label:"快速", waitAfterStepMs:0, compensateStep:false}),
+    standard: Object.freeze({key:"standard", label:"标准", waitAfterStepMs:300, compensateStep:false}),
+    slow: Object.freeze({key:"slow", label:"慢速", waitAfterStepMs:600, compensateStep:true})
+  });
   let autoDelayMs = 300;
+  let lastAutoStepDurationMs = null;
+  let lastPlaybackWaitMs = null;
+  let autoRunStartedAt = null;
+  const playbackDiagnostics = window.__p5PlaybackDiagnostics = {
+    speed:"standard",
+    last_step_ms:null,
+    last_wait_ms:null,
+    completed_steps:0,
+    elapsed_ms:null,
+    steps_per_second:null
+  };
   let lastOutputDir = "";
   let selectedTemplate = null;
   let selectedGuidancePersonId = null;
@@ -431,8 +447,9 @@
   let elapsedRunMs = 0;
   let activeRunStartedAt = null;
   let elapsedTicker = null;
-  let lastDrawMs = 0;
-  let lastSmokeDrawMs = 0;
+  let lastDrawMs = null;
+  let lastGridDrawMs = null;
+  let lastSmokeDrawMs = null;
   let sessionGeneration = 0;
   let lastExitDistributionSignature = "";
   let exitDisplayMapSource = null;
@@ -506,6 +523,18 @@
   }
   function resetRunClock(){ pauseRunClock(); elapsedRunMs = 0; refreshRunClock(); }
 
+  function selectedPlaybackSpeed(){
+    const key = String(($("speedSelect") && $("speedSelect").value) || "standard").toLowerCase();
+    return PLAYBACK_SPEEDS[key] || PLAYBACK_SPEEDS.standard;
+  }
+
+  function playbackWaitAfterStep(profile, stepDurationMs){
+    const measuredStep = Number.isFinite(Number(stepDurationMs))
+      ? Math.max(0, Number(stepDurationMs))
+      : 0;
+    return profile.waitAfterStepMs + (profile.compensateStep ? measuredStep : 0);
+  }
+
   async function loadCapabilities(){
     const response = await fetch("/api/capabilities");
     const data = await response.json().catch(() => ({ok:false, error:"能力信息无法解析"}));
@@ -551,8 +580,9 @@
   }
 
   function setRunControlsBusy(busy){
-    $("stepBtn").disabled = busy || sessionFinished;
-    ["resetBtn", "initBtn", "sampleBtn"].forEach(id => { $(id).disabled = busy; });
+    $("stepBtn").disabled = busy || autoPlaying || sessionFinished;
+    $("resetBtn").disabled = busy;
+    ["initBtn", "sampleBtn"].forEach(id => { $(id).disabled = busy || autoPlaying; });
     $("startBtn").disabled = busy || autoPlaying || sessionFinished;
     $("startBtn").textContent = busy ? "计算中" : (autoPlaying ? "运行中" : "开始");
     $("pauseBtn").disabled = !autoPlaying;
@@ -599,13 +629,88 @@
     return isPng ? {name:file.name, data_url:content} : {name:file.name, text:content};
   }
 
+  const apiClientDiagnostics = new WeakMap();
+
+  function measuredValue(value){
+    const numeric = Number(value);
+    return value !== null && value !== undefined && Number.isFinite(numeric) && numeric >= 0
+      ? numeric
+      : null;
+  }
+
+  function formatDuration(value){
+    const numeric = measuredValue(value);
+    return numeric === null ? "NA" : `${numeric.toFixed(1)} ms`;
+  }
+
+  function formatBytes(value){
+    const numeric = measuredValue(value);
+    return numeric === null ? "NA" : `${Math.round(numeric)} B`;
+  }
+
+  function resourceTimingFor(responseUrl, requestStarted){
+    try{
+      const entries = performance.getEntriesByName(responseUrl, "resource")
+        .filter(entry => Number(entry.startTime) >= requestStarted - 1);
+      return entries.length ? entries[entries.length - 1] : null;
+    }catch(error){
+      return null;
+    }
+  }
+
+  function resourceByteCount(value, responseBodyBytes){
+    const numeric = measuredValue(value);
+    // Resource Timing uses zero when byte details are unavailable. A non-empty
+    // response can still be measured exactly from the fetched ArrayBuffer.
+    return numeric !== null && (numeric > 0 || responseBodyBytes === 0) ? numeric : null;
+  }
+
+  function clientDiagnosticsFor(data){
+    return data && typeof data === "object" ? apiClientDiagnostics.get(data) || null : null;
+  }
+
   async function api(path, payload = {}){
+    const requestStarted = performance.now();
     const response = await fetch(path, {
       method: "POST",
       headers: {"Content-Type":"application/json"},
       body: JSON.stringify(payload)
     });
-    const data = await response.json().catch(() => ({ok:false, error:"服务端返回不可解析数据"}));
+    const headersReceived = performance.now();
+    const bodyStarted = headersReceived;
+    const responseBody = await response.arrayBuffer();
+    const bodyRead = performance.now();
+    const decodeStarted = bodyRead;
+    const text = new TextDecoder("utf-8").decode(responseBody);
+    const decodeFinished = performance.now();
+    const parseStarted = decodeFinished;
+    let data;
+    try{
+      data = JSON.parse(text);
+    }catch(error){
+      data = {ok:false, error:"服务端返回不可解析数据"};
+    }
+    const parseFinished = performance.now();
+    const responseUrl = response.url || new URL(path, location.href).href;
+    const resourceEntry = resourceTimingFor(responseUrl, requestStarted);
+    apiClientDiagnostics.set(data, {
+      headers_ms: headersReceived - requestStarted,
+      body_read_ms: bodyRead - bodyStarted,
+      text_decode_ms: decodeFinished - decodeStarted,
+      json_parse_ms: parseFinished - parseStarted,
+      http_total_ms: bodyRead - requestStarted,
+      client_total_ms: parseFinished - requestStarted,
+      response_body_bytes: responseBody.byteLength,
+      transfer_size_bytes: resourceEntry
+        ? resourceByteCount(resourceEntry.transferSize, responseBody.byteLength)
+        : null,
+      encoded_body_bytes: resourceEntry
+        ? resourceByteCount(resourceEntry.encodedBodySize, responseBody.byteLength)
+        : null,
+      decoded_body_bytes: resourceEntry
+        ? resourceByteCount(resourceEntry.decodedBodySize, responseBody.byteLength)
+        : null
+    });
     if(!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
     return data;
   }
@@ -644,7 +749,16 @@
   }
 
   function drawGrid(grid, ox, oy, cell){
+    const started = performance.now();
     const rows = grid.cell_type || [];
+    const alarmCells = Array.isArray(grid.alarm_cells)
+      ? grid.alarm_cells
+      : (snapshot && Array.isArray(snapshot.alarm_cells) ? snapshot.alarm_cells : []);
+    // Build once per render. Reusing the same key in the nested cell loop turns
+    // the previous cells x alarms scan into constant-time membership tests.
+    const alarmCellKeys = new Set(alarmCells.map(marker => (
+      Number(marker && marker.x) + Number(marker && marker.y) * grid.width
+    )));
     for(let y=0; y<grid.height; y++){
       for(let x=0; x<grid.width; x++){
         const type = normalizeCell(rows[y] && rows[y][x]);
@@ -664,14 +778,14 @@
           ctx.textBaseline = "middle";
           ctx.fillText("出口", ox + (x + .5) * cell, oy + (y + .5) * cell);
         }
-        const alarms = Array.isArray(grid.alarm_cells) ? grid.alarm_cells : (Array.isArray(snapshot.alarm_cells) ? snapshot.alarm_cells : []);
-        if(alarms.some(marker => Number(marker && marker.x) === x && Number(marker && marker.y) === y)){
+        if(alarmCellKeys.has(x + y * grid.width)){
           ctx.strokeStyle = "#dc2626";
           ctx.lineWidth = Math.max(2, cell * .14);
           ctx.strokeRect(ox + x * cell + 1, oy + y * cell + 1, Math.max(0, cell - 2), Math.max(0, cell - 2));
         }
       }
     }
+    lastGridDrawMs = performance.now() - started;
   }
 
   function drawExitEntityLabels(ox, oy, cell){
@@ -697,7 +811,7 @@
 
   function drawField(field, grid, ox, oy, cell){
     const started = performance.now();
-    if(!Array.isArray(field)){ lastSmokeDrawMs = 0; return; }
+    if(!Array.isArray(field)){ lastSmokeDrawMs = null; return; }
     let max = 0;
     field.forEach(row => Array.isArray(row) && row.forEach(v => { if(Number(v) > max) max = Number(v); }));
     if(max <= 0){ lastSmokeDrawMs = performance.now() - started; return; }
@@ -939,6 +1053,7 @@
     if(personTransitionFrame) cancelAnimationFrame(personTransitionFrame);
     personTransitionFrame = null;
     personTransition = null;
+    if(autoPlaying && selectedPlaybackSpeed().key === "fast") return;
     if(!previous || !Array.isArray(previous.people) || !next || !Array.isArray(next.people)) return;
     const before = new Map(previous.people.map(person => [personKey(person), person]).filter(([key]) => key !== null));
     const transitions = new Map();
@@ -1017,6 +1132,9 @@
   }
 
   function draw(){
+    lastDrawMs = null;
+    lastGridDrawMs = null;
+    lastSmokeDrawMs = null;
     const started = performance.now();
     renderMap(canvas, mainMapView);
     lastDrawMs = performance.now() - started;
@@ -1345,10 +1463,15 @@
       if(!next.exit_entities && previousSnapshot && previousSnapshot.exit_entities) next.exit_entities = previousSnapshot.exit_entities;
     }
     const nextGrid = next && next.grid;
-    const mapKey = nextGrid ? `${nextGrid.width}x${nextGrid.height}:${JSON.stringify(nextGrid.cell_type || []).length}` : "";
-    if(extra.resetMapView || extra.resetHistory || mapKey !== currentMapViewKey){
+    // Live steps omit the immutable grid and reuse the previous reference.
+    // Every reload/edit/new run is parsed from a new response and therefore
+    // creates a new object, so reference identity detects map changes without
+    // scanning or serializing 100k+ static cells on every animation frame.
+    const mapChanged = Boolean(nextGrid && nextGrid !== currentStaticGrid);
+    if(nextGrid) currentStaticGrid = nextGrid;
+    else if(extra.resetHistory) currentStaticGrid = null;
+    if(extra.resetMapView || extra.resetHistory || mapChanged){
       resetAllMapViews();
-      currentMapViewKey = mapKey;
     }
     if(extra.resetHistory){
       sessionGeneration += 1;
@@ -2143,6 +2266,7 @@
     if(!activeSession){ log("当前只有地图预览，尚未初始化仿真。 "); return; }
     if(pending) return;
     const manualClock = !autoPlaying && activeRunStartedAt === null;
+    const requestGeneration = sessionGeneration;
     if(manualClock) beginRunClock();
     pending = true;
     setRunControlsBusy(true);
@@ -2150,13 +2274,18 @@
     setStatus(`正在计算第 ${Number(snapshot && snapshot.step || 0) + 1} 步。\n请勿重置或重复点击。`, "计算中");
     try{
       const result = await api("/api/session/step", {});
+      if(requestGeneration !== sessionGeneration){
+        log("旧会话的仿真响应已忽略，未覆盖当前运行状态");
+        return;
+      }
       sessionFinished = Boolean(result.finished);
       const applyStarted = performance.now();
       const observed = applySnapshot(result.snapshot, {output_dir:result.output_dir, diagnostics:result.diagnostics});
       const applySnapshotMs = performance.now() - applyStarted;
       const serverTiming = result.diagnostics || {};
-      const clientTiming = result._client_diagnostics || {};
-      $("clientStepTiming").textContent = `后端 ${Number(serverTiming.runtime_step_ms || 0).toFixed(1)} ms · HTTP ${Number(clientTiming.http_total_ms || 0).toFixed(1)} ms · JSON ${Number(clientTiming.json_parse_ms || 0).toFixed(1)} ms · 应用 ${applySnapshotMs.toFixed(1)} ms · 绘制 ${lastDrawMs.toFixed(1)} ms · 烟雾 ${lastSmokeDrawMs.toFixed(1)} ms · ${Number(clientTiming.response_bytes || serverTiming.payload_bytes || 0)} B`;
+      const clientTiming = clientDiagnosticsFor(result) || {};
+      const playbackProfile = selectedPlaybackSpeed();
+      $("clientStepTiming").textContent = `后端 ${formatDuration(serverTiming.runtime_step_ms)} · 响应头 ${formatDuration(clientTiming.headers_ms)} · 响应体读取 ${formatDuration(clientTiming.body_read_ms)} · 文本解码 ${formatDuration(clientTiming.text_decode_ms)} · JSON 解析 ${formatDuration(clientTiming.json_parse_ms)} · HTTP ${formatDuration(clientTiming.http_total_ms)} · 应用 ${formatDuration(applySnapshotMs)} · 绘制 ${formatDuration(lastDrawMs)} · 静态网格 ${formatDuration(lastGridDrawMs)} · 烟雾 ${formatDuration(lastSmokeDrawMs)} · 读取响应体 ${formatBytes(clientTiming.response_body_bytes)} · 编码响应体 ${formatBytes(clientTiming.encoded_body_bytes)} · 解码 JSON ${formatBytes(clientTiming.decoded_body_bytes)} · 节奏 ${playbackProfile.label}${autoPlaying ? ` · 上步后等待 ${formatDuration(lastPlaybackWaitMs)}` : ""}`;
       const currentExitDistribution = {};
       const representation = liveExitUtilizationRepresentation || "legacy_cell";
       observed.people.forEach(person => {
@@ -2211,7 +2340,7 @@
         log(`烟雾在 step ${result.snapshot.step} 超出 0~10，动画已自动暂停`);
       }
       if(result.snapshot.step <= 5 || result.snapshot.step % 10 === 0 || result.finished || warnings.length){
-        log(`第 ${result.snapshot.step} 步：已撤离 ${$("evacCount").textContent}；后端 ${Number(serverTiming.runtime_step_ms || 0).toFixed(1)} ms，HTTP ${Number(clientTiming.http_total_ms || 0).toFixed(1)} ms，页面应用 ${applySnapshotMs.toFixed(1)} ms`);
+        log(`第 ${result.snapshot.step} 步：已撤离 ${$("evacCount").textContent}；后端 ${formatDuration(serverTiming.runtime_step_ms)}，请求总计 ${formatDuration(clientTiming.http_total_ms)}，页面应用 ${formatDuration(applySnapshotMs)}`);
       }
       if(result.finished) stopTimer();
     }catch(error){
@@ -2225,13 +2354,46 @@
     }
   }
 
+  async function runAutoStep(){
+    timer = null;
+    if(!autoPlaying || !activeSession || pending || sessionFinished) return;
+    const started = performance.now();
+    const previousStep = Number(snapshot && snapshot.step || 0);
+    await stepOnce();
+    lastAutoStepDurationMs = performance.now() - started;
+    const currentStep = Number(snapshot && snapshot.step || 0);
+    const advanced = Math.max(0, currentStep - previousStep);
+    playbackDiagnostics.last_step_ms = lastAutoStepDurationMs;
+    playbackDiagnostics.completed_steps += advanced;
+    if(autoRunStartedAt !== null){
+      playbackDiagnostics.elapsed_ms = performance.now() - autoRunStartedAt;
+      playbackDiagnostics.steps_per_second = playbackDiagnostics.elapsed_ms > 0
+        ? playbackDiagnostics.completed_steps / (playbackDiagnostics.elapsed_ms / 1000)
+        : null;
+    }
+    if(!autoPlaying || pending || sessionFinished) return;
+    scheduleNextStep();
+  }
+
   function scheduleNextStep(){
-    if(!autoPlaying || !activeSession || pending) return;
-    timer = setTimeout(async () => {
-      timer = null;
-      await stepOnce();
-      scheduleNextStep();
+    if(!autoPlaying || !activeSession || pending || sessionFinished || timer !== null) return;
+    const profile = selectedPlaybackSpeed();
+    autoDelayMs = playbackWaitAfterStep(profile, lastAutoStepDurationMs);
+    lastPlaybackWaitMs = autoDelayMs;
+    playbackDiagnostics.speed = profile.key;
+    playbackDiagnostics.last_wait_ms = autoDelayMs;
+    timer = setTimeout(() => {
+      void runAutoStep();
     }, autoDelayMs);
+  }
+
+  function reschedulePlaybackForSpeed(){
+    const profile = selectedPlaybackSpeed();
+    playbackDiagnostics.speed = profile.key;
+    if(!autoPlaying || pending || timer === null) return;
+    clearTimeout(timer);
+    timer = null;
+    scheduleNextStep();
   }
 
   function startTimer(){
@@ -2241,10 +2403,21 @@
     pauseRequested = false;
     autoPlaying = true;
     beginRunClock();
-    autoDelayMs = Math.max(100, Number($("speedSelect").value) || 300);
-    setStatus(`连续运行已开始：从 step ${Number(snapshot && snapshot.step || 0)} 继续。播放速度只影响页面请求间隔，不改变模型。`, "连续运行");
+    autoRunStartedAt = performance.now();
+    const profile = selectedPlaybackSpeed();
+    lastAutoStepDurationMs = null;
+    lastPlaybackWaitMs = null;
+    Object.assign(playbackDiagnostics, {
+      speed:profile.key,
+      last_step_ms:null,
+      last_wait_ms:null,
+      completed_steps:0,
+      elapsed_ms:0,
+      steps_per_second:null
+    });
+    setStatus(`连续运行已开始（${profile.label}）：从 step ${Number(snapshot && snapshot.step || 0)} 继续。播放速度只影响页面请求间隔，不改变模型。`, "连续运行");
     setRunControlsBusy(false);
-    stepOnce().then(scheduleNextStep);
+    void runAutoStep();
   }
 
   function stopTimer(){
@@ -2268,18 +2441,25 @@
 
   async function resetSession(){
     if(pending){ log("当前单步正在计算，不能重置。请等待完成或点击暂停停止后续自动步骤。"); return; }
-    if(!activeSession){ snapshot = null; draw(); refreshStats(); setStatus("已清空预览。", "等待导入地图"); return; }
-    const result = await api("/api/session/reset", {});
-    sessionFinished = false;
-    pauseRequested = false;
-    lastAnalysisStep = -1;
     stopTimer();
-    resetDerivedAnalysis("正在读取重置后的新日志。");
-    applySnapshot(result.snapshot, {output_dir:result.output_dir, resetHistory:true, resetMapView:true});
-    showEffectiveRuntime(result, $("configSourceValue").textContent);
-    refreshRealAnalysis().catch(error => log(`重置后分析未刷新：${error.message}`));
-    setStatus(`已重置。新的输出目录：${result.output_dir}`, "已重置");
-    log("仿真会话已重置");
+    if(!activeSession){ snapshot = null; draw(); refreshStats(); setStatus("已清空预览。", "等待导入地图"); return; }
+    pending = true;
+    setRunControlsBusy(true);
+    try{
+      const result = await api("/api/session/reset", {});
+      sessionFinished = false;
+      pauseRequested = false;
+      lastAnalysisStep = -1;
+      resetDerivedAnalysis("正在读取重置后的新日志。");
+      applySnapshot(result.snapshot, {output_dir:result.output_dir, resetHistory:true, resetMapView:true});
+      showEffectiveRuntime(result, $("configSourceValue").textContent);
+      refreshRealAnalysis().catch(error => log(`重置后分析未刷新：${error.message}`));
+      setStatus(`已重置。新的输出目录：${result.output_dir}`, "已重置");
+      log("仿真会话已重置");
+    }finally{
+      pending = false;
+      setRunControlsBusy(false);
+    }
   }
 
   function responseFilename(response, fallback){
@@ -2424,6 +2604,7 @@
   $("pauseBtn").onclick = pauseRun;
   $("stepBtn").onclick = () => { pauseRequested = false; stepOnce(); };
   $("resetBtn").onclick = () => resetSession().catch(error => setStatus(`重置失败：${error.message}`, "重置失败"));
+  $("speedSelect").onchange = reschedulePlaybackForSpeed;
   $("exportBtn").onclick = () => exportPackage().catch(error => setStatus(`导出失败：${error.message}`, "导出失败"));
   $("refreshAnalysis").onclick = () => refreshRealAnalysis().catch(error => setStatus(`刷新真实分析失败：${error.message}`, "分析失败"));
   $("academicHeatmapSelect").onchange = renderSelectedHeatmap;
