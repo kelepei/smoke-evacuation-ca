@@ -145,6 +145,85 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
         self.assertIn("extra.diagnostics.payload_bytes", self.page)
         self.assertIn("data.diagnostics.analysis_compute_ms", self.page)
 
+    def test_client_api_timing_is_measured_without_changing_response_data(self) -> None:
+        api_body = self.page[self.page.index("async function api(") : self.page.index("function normalizeCell(")]
+        self.assertIn("const apiClientDiagnostics = new WeakMap()", self.page)
+        self.assertIn(
+            "numeric !== null && (numeric > 0 || responseBodyBytes === 0) ? numeric : null",
+            self.page,
+        )
+        for marker in (
+            "const requestStarted = performance.now()",
+            "const headersReceived = performance.now()",
+            "const bodyRead = performance.now()",
+            "const decodeFinished = performance.now()",
+            "const parseFinished = performance.now()",
+            "const responseBody = await response.arrayBuffer()",
+            'const text = new TextDecoder("utf-8").decode(responseBody)',
+            "data = JSON.parse(text)",
+            "headers_ms: headersReceived - requestStarted",
+            "body_read_ms: bodyRead - bodyStarted",
+            "text_decode_ms: decodeFinished - decodeStarted",
+            "json_parse_ms: parseFinished - parseStarted",
+            "http_total_ms: bodyRead - requestStarted",
+            "client_total_ms: parseFinished - requestStarted",
+            "response_body_bytes: responseBody.byteLength",
+            "resourceByteCount(resourceEntry.transferSize, responseBody.byteLength)",
+            "resourceByteCount(resourceEntry.encodedBodySize, responseBody.byteLength)",
+            "resourceByteCount(resourceEntry.decodedBodySize, responseBody.byteLength)",
+            "apiClientDiagnostics.set(data,",
+            "if(!response.ok || !data.ok) throw new Error(data.error",
+        ):
+            self.assertIn(marker, api_body)
+        self.assertNotIn("await response.json()", api_body)
+        self.assertNotIn("await response.text()", api_body)
+        self.assertNotIn("response.clone()", api_body)
+
+    def test_client_timing_uses_na_for_unmeasured_values_and_ignores_stale_sessions(self) -> None:
+        step_body = self.page[self.page.index("async function stepOnce()") : self.page.index("function scheduleNextStep()")]
+        for marker in (
+            "let lastDrawMs = null",
+            "let lastGridDrawMs = null",
+            "let lastSmokeDrawMs = null",
+            "return numeric === null ? \"NA\" : `${numeric.toFixed(1)} ms`",
+            "const clientTiming = clientDiagnosticsFor(result) || {}",
+            "const requestGeneration = sessionGeneration",
+            "if(requestGeneration !== sessionGeneration)",
+            "旧会话的仿真响应已忽略",
+            "响应头 ${formatDuration(clientTiming.headers_ms)}",
+            "响应体读取 ${formatDuration(clientTiming.body_read_ms)}",
+            "文本解码 ${formatDuration(clientTiming.text_decode_ms)}",
+            "JSON 解析 ${formatDuration(clientTiming.json_parse_ms)}",
+            "HTTP ${formatDuration(clientTiming.http_total_ms)}",
+            "静态网格 ${formatDuration(lastGridDrawMs)}",
+            "读取响应体 ${formatBytes(clientTiming.response_body_bytes)}",
+            "编码响应体 ${formatBytes(clientTiming.encoded_body_bytes)}",
+            "解码 JSON ${formatBytes(clientTiming.decoded_body_bytes)}",
+        ):
+            self.assertIn(marker, self.page if marker.startswith("let last") or marker.startswith("return numeric") else step_body)
+        self.assertNotIn("result._client_diagnostics", self.page)
+        self.assertNotIn("Number(serverTiming.runtime_step_ms || 0)", self.page)
+        self.assertNotIn("Number(clientTiming.http_total_ms || 0)", self.page)
+
+    def test_static_map_identity_uses_reference_without_per_step_serialization(self) -> None:
+        apply_body = self.page[self.page.index("function applySnapshot(") : self.page.index("function finiteMean(")]
+        self.assertIn("let currentStaticGrid = null", self.page)
+        self.assertIn("const mapChanged = Boolean(nextGrid && nextGrid !== currentStaticGrid)", apply_body)
+        self.assertIn("if(nextGrid) currentStaticGrid = nextGrid", apply_body)
+        self.assertIn("else if(extra.resetHistory) currentStaticGrid = null", apply_body)
+        self.assertIn("extra.resetMapView || extra.resetHistory || mapChanged", apply_body)
+        self.assertNotIn("JSON.stringify(nextGrid.cell_type", apply_body)
+        self.assertNotIn("currentMapViewKey", self.page)
+
+    def test_alarm_cells_are_indexed_once_per_grid_draw(self) -> None:
+        draw_grid = self.page[self.page.index("function drawGrid(") : self.page.index("function drawExitEntityLabels(")]
+        self.assertLess(draw_grid.index("const alarmCells"), draw_grid.index("for(let y=0"))
+        self.assertIn("const alarmCellKeys = new Set(alarmCells.map(", draw_grid)
+        self.assertIn("if(alarmCellKeys.has(x + y * grid.width))", draw_grid)
+        self.assertNotIn("alarms.some(", draw_grid)
+        self.assertIn('ctx.strokeStyle = "#dc2626"', draw_grid)
+        self.assertIn("ctx.strokeRect(ox + x * cell + 1, oy + y * cell + 1", draw_grid)
+
     def test_enhanced_page_records_synchronous_render_timing_without_promising_a_long_step(self) -> None:
         self.assertIn("appendFrontendRenderTiming", self.page)
         self.assertIn("前端同步绘制", self.page)
