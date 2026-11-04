@@ -29,6 +29,10 @@ from experiments.crowd_metrics import (
     trajectory_kinematics,
     velocity_vector_field,
 )
+from experiments.key_parameter_workbook import (
+    WORKBOOK_FILENAME as KEY_PARAMETER_WORKBOOK_FILENAME,
+    build_key_parameter_workbook,
+)
 from experiments.metrics_registry import metric_rows
 from experiments.week6_analysis import analysis_summary_csv, analyze_run
 
@@ -596,6 +600,12 @@ def build_result_package(
             kinematic_rows=kinematics,
         )
     )
+    key_parameter_workbook = build_key_parameter_workbook(
+        final_snapshot=final_snapshot,
+        metrics=analysis["week6_metrics"],
+        academic=academic_crowd,
+        people_rows=people_rows,
+    )
 
     metadata = {
         "run_id": run_id,
@@ -647,6 +657,7 @@ def build_result_package(
         bundle.writestr(prefix + "congestion_level_field.csv", _congestion_level_csv_text(congestion_level["records"]))
         bundle.writestr(prefix + "academic_crowd_fields.json", json.dumps(academic_crowd, ensure_ascii=False, indent=2))
         bundle.writestr(prefix + "academic_crowd_fields.csv", _academic_crowd_csv_text(academic_crowd["records"]))
+        bundle.writestr(prefix + KEY_PARAMETER_WORKBOOK_FILENAME, key_parameter_workbook)
         bundle.writestr(prefix + "person_id_mapping.csv", _person_id_mapping_csv_text(person_id_mapping))
         bundle.write(people_path, prefix + "people_log.csv")
         bundle.write(event_path, prefix + "event_log.csv")
