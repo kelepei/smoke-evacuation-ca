@@ -311,6 +311,7 @@ class WebRuntimeServerTests(unittest.TestCase):
                 self.assertIn(prefix + "occupancy_heatmap.svg", names)
                 self.assertIn(prefix + "week6_metrics.json", names)
                 self.assertIn(prefix + "week6_metrics_summary.csv", names)
+                self.assertIn(prefix + "关键参数记录.xlsx", names)
                 self.assertIn(prefix + "inputs/map_file.json", names)
                 self.assertIn(prefix + "inputs/population_file.json", names)
                 packaged_people = list(

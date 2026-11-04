@@ -158,6 +158,7 @@ class ResultPackageTests(unittest.TestCase):
                         "run_01/velocity_vector_field.json", "run_01/velocity_vector_field.csv",
                         "run_01/congestion_level_field.json", "run_01/congestion_level_field.csv",
                         "run_01/academic_crowd_fields.json", "run_01/academic_crowd_fields.csv",
+                        "run_01/关键参数记录.xlsx",
                         "run_01/person_id_mapping.csv",
                         "run_01/metadata.json", "run_01/config.json", "run_01/inputs/map.json",
                         "run_01/inputs/population.json",
