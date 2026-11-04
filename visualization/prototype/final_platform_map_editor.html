@@ -396,6 +396,8 @@
   const expandedCanvas = $("mapExpandedView");
   const mainMapView = {scale:1, panX:0, panY:0};
   const expandedMapView = {scale:1, panX:0, panY:0};
+  const staticLayerCache = new WeakMap();
+  const smokeLayerCache = new WeakMap();
   let currentStaticGrid = null;
   let snapshot = null;
   let liveHistory = [];
@@ -847,6 +849,60 @@
     lastSmokeDrawMs = performance.now() - started;
   }
 
+  function drawStaticMapLayer(target, grid, w, h, cell, ox, oy){
+    const dpr = window.devicePixelRatio || 1;
+    const key = [
+      w,
+      h,
+      dpr,
+      cell,
+      ox,
+      oy,
+      $("layerExits").checked,
+      $("layerSmoke").checked
+    ].join("|");
+    let cached = staticLayerCache.get(target);
+    if(!cached || cached.grid !== grid || cached.key !== key){
+      const layer = cached && cached.canvas ? cached.canvas : document.createElement("canvas");
+      layer.width = target.width;
+      layer.height = target.height;
+      const previousCtx = ctx;
+      ctx = layer.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      drawGrid(grid, ox, oy, cell);
+      drawExitEntityLabels(ox, oy, cell);
+      ctx = previousCtx;
+      cached = {key, grid, canvas:layer};
+      staticLayerCache.set(target, cached);
+    }
+    ctx.drawImage(cached.canvas, 0, 0, w, h);
+  }
+
+  function drawCachedSmokeField(field, target, grid, w, h, cell, ox, oy){
+    if(!Array.isArray(field)){ lastSmokeDrawMs = null; return; }
+    const dpr = window.devicePixelRatio || 1;
+    const threshold = Number(snapshot?.c_runtime?.smoke_exposure_threshold ?? 0.02);
+    const key = [w, h, dpr, cell, ox, oy, threshold].join("|");
+    let cached = smokeLayerCache.get(target);
+    const started = performance.now();
+    if(!cached || cached.field !== field || cached.key !== key){
+      const layer = cached && cached.canvas ? cached.canvas : document.createElement("canvas");
+      layer.width = target.width;
+      layer.height = target.height;
+      const previousCtx = ctx;
+      ctx = layer.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      drawField(field, grid, ox, oy, cell);
+      ctx = previousCtx;
+      cached = {key, field, canvas:layer};
+      smokeLayerCache.set(target, cached);
+    }
+    ctx.drawImage(cached.canvas, 0, 0, w, h);
+    lastSmokeDrawMs = performance.now() - started;
+  }
+
   function drawSmokeSources(sources, grid, ox, oy, cell){
     if(!Array.isArray(sources)) return;
     sources.forEach(source => {
@@ -1125,11 +1181,10 @@
     }
     const grid = snapshot.grid;
     const {cell, ox, oy} = mapTransform(target, view, grid);
-    drawGrid(grid, ox, oy, cell);
-    drawExitEntityLabels(ox, oy, cell);
+    drawStaticMapLayer(target, grid, w, h, cell, ox, oy);
     drawCumulativeOccupancy(grid, ox, oy, cell);
     if(layerEnabled("layerSmoke")){
-      drawField(snapshot.fields && snapshot.fields.smoke_field, grid, ox, oy, cell);
+      drawCachedSmokeField(snapshot.fields && snapshot.fields.smoke_field, target, grid, w, h, cell, ox, oy);
       drawSmokeSources(snapshot.fields && snapshot.fields.smoke_sources, grid, ox, oy, cell);
     }
     drawTrajectories(grid, ox, oy, cell);

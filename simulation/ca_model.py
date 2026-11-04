@@ -104,7 +104,8 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
                        weights: dict = None,
                        use_softmax: bool = True,
                        softmax_lambda: float = 0.5,
-                       max_steps: int = 1):
+                       max_steps: int = 1,
+                       nearby_person_positions: dict[int, list[tuple[int, int]]] | None = None):
     """计算行人的下一个位置
 
     :param max_steps: 本步最多前进的元胞数（由速度模型给出，>=1）
@@ -196,15 +197,18 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
     follow_target_x, follow_target_y = None, None
     follow_weight_scale = 1.0
     if person_map is not None and alive_person_pos is not None:
-        neighbor_positions = []
-        for pid, alive_person in person_map.items():
-            if pid == person.id:
-                continue
-            if getattr(alive_person, "is_dead", False) or getattr(alive_person, "evacuated", False):
-                continue
-            ax, ay = alive_person.x, alive_person.y
-            if math.hypot(ax - px, ay - py) <= follow_max_dist:
-                neighbor_positions.append((ax, ay))
+        if nearby_person_positions is not None:
+            neighbor_positions = nearby_person_positions.get(int(person.id), [])
+        else:
+            neighbor_positions = []
+            for pid, alive_person in person_map.items():
+                if pid == person.id:
+                    continue
+                if getattr(alive_person, "is_dead", False) or getattr(alive_person, "evacuated", False):
+                    continue
+                ax, ay = alive_person.x, alive_person.y
+                if math.hypot(ax - px, ay - py) <= follow_max_dist:
+                    neighbor_positions.append((ax, ay))
         if neighbor_positions:
             xs = [p[0] for p in neighbor_positions]
             ys = [p[1] for p in neighbor_positions]

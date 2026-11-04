@@ -404,6 +404,25 @@ class EvacEngine:
         ca_weights = dict(self.scene.parameters.get("ca_weights", {}) or {})
         ca_weights.setdefault("w_lateral", self.movement.danger.lateral_bonus)
         ca_weights.setdefault("smoke_avoid_threshold", self.movement.smoke_avoid_threshold)
+        nearby_person_positions = None
+        if self.handles_movement_speed and alive:
+            positions = np.asarray(
+                [(int(person.x), int(person.y)) for person in alive],
+                dtype=float,
+            )
+            delta = positions[:, np.newaxis, :] - positions[np.newaxis, :, :]
+            pair_distances = np.hypot(delta[:, :, 0], delta[:, :, 1])
+            follow_max_dist = float(ca_weights.get("follow_max_dist", 6.0))
+            nearby_person_positions = {
+                int(person.id): [
+                    (int(alive[int(index)].x), int(alive[int(index)].y))
+                    for index in np.flatnonzero(
+                        pair_distances[person_index] <= follow_max_dist
+                    )
+                    if int(index) != person_index
+                ]
+                for person_index, person in enumerate(alive)
+            }
         for person in alive:
             pid = int(person.id)
             single_behavior = c_step_data.get(pid, {}) or {}
@@ -496,6 +515,7 @@ class EvacEngine:
                 use_softmax=True,
                 softmax_lambda=0.5,
                 max_steps=int(speed_state["cells"]),
+                nearby_person_positions=nearby_person_positions,
             )
             next_positions[pid] = (nx, ny)
             person.can_move = (nx, ny) != (px, py)

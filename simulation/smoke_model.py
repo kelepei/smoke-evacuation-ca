@@ -62,9 +62,13 @@ class SmokeDiffusionModel:
         # 预计算可通行掩膜与墙体掩膜
         self.passable = self._build_passable_mask()
         self.wall_mask = ~self.passable
+        self._passable_indices = np.flatnonzero(self.passable)
 
         # 烟源 → 测地距离场缓存（墙体静态，距离场只需算一次）
         self._geodesic_cache: dict[tuple[int, int], np.ndarray | None] = {}
+        self._squared_distance_cache: dict[
+            tuple[int, int], np.ndarray | None
+        ] = {}
 
     # ---------- 掩膜 ----------
 
@@ -124,25 +128,61 @@ class SmokeDiffusionModel:
             self._geodesic_cache[key] = None
             return None
 
-        dist = np.full((self.height, self.width), np.inf, dtype=np.float32)
+        total = self.height * self.width
+        flat_dist = np.full(total, np.inf, dtype=np.float32)
         sx, sy = start
-        dist[sy, sx] = 0.0
-        queue = deque([(sx, sy)])
-        passable = self.passable
+        start_index = sy * self.width + sx
+        flat_dist[start_index] = 0.0
+        queue = deque([start_index])
+        passable = self.passable.ravel()
+        width = self.width
 
         while queue:
-            cx, cy = queue.popleft()
-            nd = float(dist[cy, cx]) + 1.0
-            for nx, ny in ((cx - 1, cy), (cx + 1, cy), (cx, cy - 1), (cx, cy + 1)):
-                if not (0 <= nx < self.width and 0 <= ny < self.height):
-                    continue
-                if not passable[ny, nx] or np.isfinite(dist[ny, nx]):
-                    continue
-                dist[ny, nx] = nd
-                queue.append((nx, ny))
+            index = queue.popleft()
+            next_distance = flat_dist[index] + np.float32(1.0)
+            x = index % width
+            if x > 0:
+                neighbor = index - 1
+                if passable[neighbor] and flat_dist[neighbor] > next_distance:
+                    flat_dist[neighbor] = next_distance
+                    queue.append(neighbor)
+            if x + 1 < width:
+                neighbor = index + 1
+                if passable[neighbor] and flat_dist[neighbor] > next_distance:
+                    flat_dist[neighbor] = next_distance
+                    queue.append(neighbor)
+            neighbor = index - width
+            if neighbor >= 0 and passable[neighbor] and flat_dist[neighbor] > next_distance:
+                flat_dist[neighbor] = next_distance
+                queue.append(neighbor)
+            neighbor = index + width
+            if (
+                neighbor < total
+                and passable[neighbor]
+                and flat_dist[neighbor] > next_distance
+            ):
+                flat_dist[neighbor] = next_distance
+                queue.append(neighbor)
 
+        dist = flat_dist.reshape((self.height, self.width))
         self._geodesic_cache[key] = dist
         return dist
+
+    def _source_squared_distance_flat(
+        self, src: SmokeSource
+    ) -> np.ndarray | None:
+        """Return squared geodesic distances for passable cells only."""
+
+        key = (int(src.x), int(src.y))
+        if key in self._squared_distance_cache:
+            return self._squared_distance_cache[key]
+        dist = self._source_geodesic_distance(src)
+        if dist is None:
+            self._squared_distance_cache[key] = None
+            return None
+        squared = np.square(dist.ravel()[self._passable_indices])
+        self._squared_distance_cache[key] = squared
+        return squared
 
     # ---------- 高斯源项 ----------
 
@@ -154,9 +194,9 @@ class SmokeDiffusionModel:
         开放区域两者一致；有墙时烟雾只能沿可通行路径绕行，
         墙后不可达元胞的距离为 +inf，exp(-inf)=0，因此不会穿墙。
         """
-        Q = np.zeros((self.height, self.width), dtype=np.float32)
+        Q = np.zeros(self.height * self.width, dtype=np.float32)
         if not self.smoke_sources:
-            return Q
+            return Q.reshape((self.height, self.width))
 
         sigma_t = max(float(sigma_t), 1e-6)
         inv_two_sigma_sq = 1.0 / (2.0 * sigma_t * sigma_t)
@@ -164,15 +204,15 @@ class SmokeDiffusionModel:
         for src in self.smoke_sources:
             if src.intensity <= 1e-6:
                 continue
-            dist = self._source_geodesic_distance(src)
-            if dist is None:
+            squared_distance = self._source_squared_distance_flat(src)
+            if squared_distance is None:
                 continue
             # 1/(2πσ²) = inv_two_sigma_sq / π
             gauss = src.intensity * inv_two_sigma_sq / np.pi * np.exp(
-                -(dist * dist) * inv_two_sigma_sq
+                -squared_distance * inv_two_sigma_sq
             )
-            Q += gauss.astype(np.float32)
-        return Q
+            Q[self._passable_indices] += gauss
+        return Q.reshape((self.height, self.width))
 
     # ---------- 拉普拉斯 ----------
 

@@ -83,6 +83,61 @@ class RunArtifactTests(unittest.TestCase):
                 config["analysis_contract"]["physical_scale"]["value"],
             )
 
+    def test_derived_artifacts_can_be_deferred_until_export(self) -> None:
+        snapshot = {
+            "run_id": "deferred",
+            "scenario_id": "test",
+            "schema_version": "0.1-draft",
+            "time_step": 0.5,
+            "step": 1,
+            "time_s": 0.5,
+            "grid": {
+                "width": 3,
+                "height": 1,
+                "cell_type": [["free", "free", "exit"]],
+            },
+            "analysis_contract": {
+                "physical_scale": {
+                    "source": "unavailable",
+                    "value": None,
+                    "unit": "m",
+                }
+            },
+            "guidance": {
+                "status": "inactive",
+                "policy": "smoke_distance_baseline_v1",
+                "recommendations": [],
+            },
+            "people": [],
+            "fields": {"smoke_field": []},
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            output_dir = Path(temporary)
+            (output_dir / "event_log.csv").write_text(
+                "event_type,time_s\n", encoding="utf-8"
+            )
+            (output_dir / "people_log.csv").write_text(
+                "step,time_s,person_id,x,y,evacuated\n"
+                "0,0,1,0,0,false\n",
+                encoding="utf-8",
+            )
+            write_run_artifacts(
+                snapshot,
+                output_dir,
+                input_files={},
+                save_frame=False,
+                include_derived=False,
+            )
+            config = json.loads(
+                (output_dir / "config_used.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual("deferred", config["trajectory_kinematics"]["status"])
+            self.assertEqual("deferred", config["academic_crowd_fields"]["status"])
+            self.assertFalse((output_dir / "trajectory_kinematics.csv").exists())
+            self.assertFalse((output_dir / "academic_crowd_fields.json").exists())
+            self.assertTrue((output_dir / "metrics.json").is_file())
+            self.assertTrue((output_dir / "guidance_recommendations.json").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -282,23 +282,62 @@ class InformationDiffusionEngine:
         if not spreaders:
             return
 
+        positioned = all(
+            hasattr(person, "x") and hasattr(person, "y")
+            for person in all_persons
+        )
+        if positioned:
+            positions = np.asarray(
+                [(float(person.x), float(person.y)) for person in all_persons],
+                dtype=float,
+            )
+            delta = positions[:, np.newaxis, :] - positions[np.newaxis, :, :]
+            pair_distances = np.hypot(delta[:, :, 0], delta[:, :, 1])
+            nearby_indices = [
+                np.flatnonzero(pair_distances[index] <= radius)
+                for index in range(len(all_persons))
+            ]
+        else:
+            pair_distances = None
+            nearby_indices = None
+
         for spreader in spreaders:
             spreader_id = int(spreader.id)
             spreader_state = self.info_engine.get_state_value(spreader_id)
+            spreader_index = (
+                next(
+                    index
+                    for index, person in enumerate(all_persons)
+                    if int(person.id) == spreader_id
+                )
+                if positioned
+                else None
+            )
 
             targets = []
-            for person in all_persons:
+            if positioned:
+                candidates = (
+                    (
+                        all_persons[int(person_index)],
+                        float(pair_distances[spreader_index, int(person_index)]),
+                    )
+                    for person_index in nearby_indices[spreader_index]
+                )
+            else:
+                candidates = (
+                    (person, self._distance(spreader, person))
+                    for person in all_persons
+                )
+            for person, dist in candidates:
                 person_id = int(person.id)
                 if person_id == spreader_id:
                     continue
                 if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
                     continue
 
-                dist = self._distance(spreader, person)
-                if dist <= radius:
-                    target_state = self.info_engine.get_state_value(person_id)
-                    if self.info_engine.state_priority_str(target_state) < self.info_engine.state_priority_str(spreader_state):
-                        targets.append((dist, person))
+                target_state = self.info_engine.get_state_value(person_id)
+                if self.info_engine.state_priority_str(target_state) < self.info_engine.state_priority_str(spreader_state):
+                    targets.append((dist, person))
 
             if targets:
                 # 近的优先传播（不再随机抽取），保证周围离得近的人先被通知
@@ -421,16 +460,62 @@ class InformationDiffusionEngine:
             return
 
         # 所有距离超过阈值的无序 pair
-        far_pairs = []
-        for i in range(len(alive)):
-            for j in range(i + 1, len(alive)):
-                if self._distance(alive[i], alive[j]) > distance_threshold:
-                    far_pairs.append((alive[i], alive[j]))
-        if not far_pairs:
+        positioned = all(
+            hasattr(person, "x") and hasattr(person, "y")
+            for person in alive
+        )
+        far_pairs = None
+        far_pair_indices = None
+        left_indices = right_indices = None
+        pair_distances = None
+        if positioned:
+            positions = np.asarray(
+                [(float(person.x), float(person.y)) for person in alive],
+                dtype=float,
+            )
+            delta = positions[:, np.newaxis, :] - positions[np.newaxis, :, :]
+            pair_distances = np.hypot(delta[:, :, 0], delta[:, :, 1])
+            left_indices, right_indices = np.triu_indices(len(alive), k=1)
+            far_pair_indices = np.flatnonzero(
+                pair_distances[left_indices, right_indices] > distance_threshold
+            )
+        else:
+            far_pairs = []
+            for left_index in range(len(alive)):
+                for right_index in range(left_index + 1, len(alive)):
+                    if (
+                        self._distance(
+                            alive[left_index], alive[right_index]
+                        )
+                        > distance_threshold
+                    ):
+                        far_pairs.append(
+                            (alive[left_index], alive[right_index])
+                        )
+        if far_pair_indices is None:
+            if not far_pairs:
+                return
+        elif far_pair_indices.size == 0:
             return
 
         # 每个远距离 pair 以 ratio 概率被选中（随机选取该比例）
-        chosen_pairs = [pair for pair in far_pairs if np.random.random() < ratio]
+        if far_pair_indices is None:
+            chosen_pairs = [
+                pair
+                for pair in far_pairs
+                if np.random.random() < ratio
+            ]
+        else:
+            chosen_local_indices = far_pair_indices[
+                np.random.random(far_pair_indices.size) < ratio
+            ]
+            chosen_pairs = [
+                (
+                    alive[int(left_indices[index])],
+                    alive[int(right_indices[index])],
+                )
+                for index in chosen_local_indices
+            ]
 
         for a, b in chosen_pairs:
             # 双向：知情一方把信息告诉另一方
