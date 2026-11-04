@@ -96,15 +96,15 @@ class CWebRuntimeBridge:
         self.alarm_enabled = bool(
             settings.get("alarm_enabled", self.information_mode == "broadcast")
         )
-        self.guide_enabled = bool(settings.get("guide_enabled", True))
+        self.guide_enabled = bool(settings.get("guide_enabled", False))
         self.group_exit_max_detour_cells = max(
             0.0, float(settings.get("group_exit_max_detour_cells", 6.0))
         )
         self.smoke_perception_radius = max(
-            0.0, float(settings.get("smoke_perception_radius", 3.0))
+            0.0, float(settings.get("smoke_perception_radius", 8.0))
         )
         self.fire_awareness_radius_cells = max(
-            0.0, float(settings.get("fire_awareness_radius_cells", 3.0))
+            0.0, float(settings.get("fire_awareness_radius_cells", 5.0))
         )
         self.preference_bonus = max(
             0.0,
@@ -125,9 +125,9 @@ class CWebRuntimeBridge:
         self.guide_share = float(settings.get("guide_share", 0.30))
         # 网页运行时采用真实烟源语义：烟源附近先知情，浓度达阈值后广播。
         self.web_mode = bool(settings.get("web_mode", "source" in settings))
-        self.smoke_local_radius = max(0.0, float(settings.get("smoke_local_radius", 5.0)))
+        self.smoke_local_radius = max(0.0, float(settings.get("smoke_local_radius", 8.0)))
         self.smoke_exposure_threshold = max(
-            0.0, float(settings.get("smoke_exposure_threshold", 0.01))
+            0.0, float(settings.get("smoke_exposure_threshold", 0.005))
         )
         self.info_diffusion.smoke_confirmation_threshold = self.smoke_exposure_threshold
         self.info_diffusion.smoke_confirmation_radius = self.smoke_perception_radius
@@ -158,14 +158,14 @@ class CWebRuntimeBridge:
         self._move_credit: dict[int, float] = {}
         self._move_allowed: dict[int, bool] = {}
         self._speed_stats = {"blocked_total": 0, "congested_total": 0, "same_cell_congested_total": 0}
-        # 未获知险情人员行为：walk=正常速度随机行走（默认）/ freeze=原地 / evacuate=直接疏散
-        self.unknown_behavior = str(settings.get("unknown_behavior", "walk") or "walk").strip().lower()
+        # 未获知险情人员行为：evacuate=直接疏散（默认）/ walk=正常速度随机行走 / freeze=原地
+        self.unknown_behavior = str(settings.get("unknown_behavior", "evacuate") or "evacuate").strip().lower()
         if hasattr(self.engine, "unknown_behavior"):
             self.engine.unknown_behavior = self.unknown_behavior
         self.unknown_speed_factor = max(0.0, float(settings.get("unknown_speed_factor", 0.35)))
         self.informed_speed_factor = max(0.0, float(settings.get("informed_speed_factor", 1.15)))
         self.person_speed_variation = max(
-            0.0, min(0.45, float(settings.get("person_speed_variation", 0.30)))
+            0.0, min(1.0, float(settings.get("person_speed_variation", 0.45)))
         )
         self.panic_smoke_peak = max(0.0, min(1.0, float(settings.get("panic_smoke_peak", 0.5))))
         self.panic_sigma = max(0.01, float(settings.get("panic_sigma", 0.25)))

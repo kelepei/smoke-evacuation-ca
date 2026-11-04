@@ -34,7 +34,7 @@ _NEIGHBORS = (
     (0, 1, 1.0),
     (1, 1, math.sqrt(2.0)),
 )
-_BLOCKED_CELL_TYPES = {"wall", "obstacle"}
+_BLOCKED_CELL_TYPES = {"wall", "obstacle", "smoke_source"}
 
 
 class GuidanceError(ValueError):

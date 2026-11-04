@@ -42,7 +42,7 @@ class FloorField:
     def _build_passable(self) -> bytearray:
         passable = bytearray(self._width * self._height)
         for (x, y), cell in self._cell_index.items():
-            if 0 <= x < self._width and 0 <= y < self._height and _cell_type_value(cell) not in ("wall", "obstacle"):
+            if 0 <= x < self._width and 0 <= y < self._height and _cell_type_value(cell) not in ("wall", "obstacle", "smoke_source"):
                 passable[y * self._width + x] = 1
         return passable
 

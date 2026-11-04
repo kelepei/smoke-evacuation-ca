@@ -84,7 +84,7 @@ def _extend_path(px, py, dx, dy, steps, grid, cell_index, occupied_positions,
         if not (0 <= nx < max_x and 0 <= ny < max_y):
             break
         cell = cell_index.get((nx, ny))
-        if cell is None or _cell_type_value(cell) in ("wall", "obstacle"):
+        if cell is None or _cell_type_value(cell) in ("wall", "obstacle", "smoke_source"):
             break
         if (nx, ny) in occupied_positions:
             break
@@ -124,9 +124,8 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
     if getattr(person, "is_dead", False) or getattr(person, "evacuated", False):
         return px, py
 
-    # 等待
-    if single_behavior is not None and single_behavior.get("is_waiting", False):
-        return px, py
+    # 等待：结伴等待不再把人原地冻结——所有人最终目标都是朝出口走。
+    # （is_waiting 仍可被下游用于跟随/靠近，但不再作为原地不动的理由。）
 
     # 不知情
     if isinstance(single_behavior, dict):
@@ -167,14 +166,14 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
 
     # 权重
     weights = weights or {}
-    w_d      = weights.get("w_d", 7.0)
+    w_d      = weights.get("w_d", 15.0)
     w_s      = weights.get("w_s", 12.0)
     w_q      = weights.get("w_q", 0.8)
     w_g      = weights.get("w_g", 3.0)
-    w_h      = weights.get("w_h", 1.6)
-    w_rel    = weights.get("w_rel", 1.9)
+    w_h      = weights.get("w_h", 2.5)
+    w_rel    = weights.get("w_rel", 3.0)
     w_f      = weights.get("w_f", 1.0)
-    w_follow = weights.get("w_follow", 1.2)
+    w_follow = weights.get("w_follow", 4.0)
     w_dS     = weights.get("w_dS", 4.0)
     w_lateral = weights.get("w_lateral", 2.0)
     smoke_avoid = float(weights.get("smoke_avoid_threshold", 0.8))
@@ -187,6 +186,11 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
     current_cell_smoke = 0.0
     if 0 <= py < len(smoke_matrix) and 0 <= px < len(smoke_matrix[0]):
         current_cell_smoke = float(smoke_matrix[py][px])
+
+    # 当前位置到目标出口的距离（用于阻止折返：不允许朝远离出口的方向走）
+    current_dist = _distance_lookup(floor_field, target_exit, exit_list, px, py)
+    if not math.isfinite(current_dist) or current_dist >= 9998:
+        current_dist = 9998.0
 
     # 同伴质心
     follow_target_x, follow_target_y = None, None
@@ -243,7 +247,7 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
             continue
 
         cell = cell_index.get((tx, ty))          # ← 用字典，不用 get_cell
-        if cell is None or _cell_type_value(cell) in ("wall", "obstacle"):
+        if cell is None or _cell_type_value(cell) in ("wall", "obstacle", "smoke_source"):
             continue
 
         if (tx, ty) in occupied_positions:
@@ -261,6 +265,10 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
             dist = 9998.0
         utility -= w_d * dist
 
+        # 防折返：朝离出口更远的方向走，额外惩罚（保证最终方向始终朝出口）
+        if dist > current_dist:
+            utility -= 80.0 * (dist - current_dist)
+
         if _cell_type_value(cell) == "exit":
             utility += 2.0
 
@@ -269,9 +277,11 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
         w_s_eff = w_s * (0.5 + risk_sens)
         utility -= w_s_eff * (next_smoke ** 1.5)
 
-        # 高浓度约束：超过阈值给极大惩罚，逼出绕行；若四周全被烟封住，仍可选烟最轻的一格
+        # 高浓度烟雾：按浓度给较强惩罚（而非绝对壁垒式惩罚），
+        # 避免浓烟把行人逼得折返/横跳，反而在烟里停留更久致死。
+        # 四周全被烟封住时，仍会选择烟更轻、且更靠近出口的一格。
         if next_smoke > smoke_avoid:
-            utility -= 1000.0 + 50.0 * next_smoke
+            utility -= 150.0 * next_smoke
 
         # 3. ΔS
         dS = next_smoke - current_cell_smoke
@@ -312,7 +322,7 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
             follow_strength = single_behavior.get("follow_strength", 0.0)
             follow_target = single_behavior.get("follow_target")
             if is_following and follow_target is not None:
-                utility += w_rel * follow_strength * 0.3
+                utility += w_rel * follow_strength
 
             guide_influence = single_behavior.get("guide_influence", 0.0)
             if guide_influence > 0.1:
@@ -323,10 +333,14 @@ def calc_next_position(person, grid: Grid, smoke_matrix, risk_dict, single_behav
             guide_u = signage_model.get_guidance_utility(person, (tx, ty))
             utility += w_g * guide_u
 
-        # 8. 惯性
+        # 8. 惯性 + 防折返/防反复横跳
         if hasattr(person, 'prev_x') and hasattr(person, 'prev_y'):
-            if px - person.prev_x == dx and py - person.prev_y == dy:
-                utility += 0.1
+            prev_dx = px - person.prev_x
+            prev_dy = py - person.prev_y
+            if prev_dx == dx and prev_dy == dy:
+                utility += 3.0            # 延续上一方向，抑制反复横跳
+            elif prev_dx == -dx and prev_dy == -dy and (prev_dx != 0 or prev_dy != 0):
+                utility -= 80.0           # 禁止原地折返（走回上一格）
 
         # 9. 危险感知触发的横向换道（张琦 2022 模式1）
         if danger_urgent and (dx, dy) in lateral_dirs:

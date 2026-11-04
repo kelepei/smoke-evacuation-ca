@@ -35,11 +35,11 @@ DIFFUSION_PARAMS = {
     },
     "word_of_mouth": {
         "enabled": True,
-        "radius": 3,
-        "base_prob": 0.6,
+        "radius": 20,
+        "base_prob": 0.8,
         "trust_boost": 0.5,
         "state_required": "ALERTED",
-        "max_spread_per_step": 5,
+        "max_spread_per_step": 10,
     },
     "relation_spread": {
         "enabled": True,
@@ -57,21 +57,11 @@ DIFFUSION_PARAMS = {
         "max_spread_per_step": 3,
     },
     "remote_pair": {
-        # 远程关系传播：默认关闭（先不参与实验）。如需启用，
-        # 把 enabled 改为 True，并把 pairs_per_step 设为大于 0 的整数。
-        "enabled": False,
-        "pairs_per_step": 0,
-        # 未在 relation_probabilities 中列出的关系类型使用该回退概率
-        "probability": 0.2,
-        "relation_probabilities": {
-            "family": 1.0,
-            "friend": 0.7,
-            "classmate": 0.5,
-            "colleague": 0.4,
-            "doctor_patient": 0.5,
-            "staff_to_customer": 0.3,
-            "stranger": 0.1,
-        },
+        # 远程传播：距离超过 distance_threshold 格的两人中，随机选 ratio 比例传播。
+        "enabled": True,
+        "distance_threshold": 60,   # 距离阈值（格），超过才考虑远程传播
+        "ratio": 0.0001,            # 从远距离 pair 中随机选取 0.01%
+        "probability": 0.8,         # 被选中 pair 的传播成功概率
         "source_states": ["ALERTED", "CONFIRMED", "GUIDED"],
     },
     "misinformation": {
@@ -308,11 +298,12 @@ class InformationDiffusionEngine:
                 if dist <= radius:
                     target_state = self.info_engine.get_state_value(person_id)
                     if self.info_engine.state_priority_str(target_state) < self.info_engine.state_priority_str(spreader_state):
-                        targets.append(person)
+                        targets.append((dist, person))
 
             if targets:
-                np.random.shuffle(targets)
-                targets = targets[:max_spread]
+                # 近的优先传播（不再随机抽取），保证周围离得近的人先被通知
+                targets.sort(key=lambda item: item[0])
+                targets = [person for _dist, person in targets[:max_spread]]
 
                 for target in targets:
                     target_id = int(target.id)
@@ -410,58 +401,49 @@ class InformationDiffusionEngine:
                                                   "relation", f"关系传播: {rel_type}")
 
     def _apply_remote_pair_spread(self, all_persons: List, current_step: int):
-        """随机选几对关系，让知情的一方把信息告诉另一方（不限距离）。"""
+        """远程传播：距离超过阈值的两人中，随机选取一定比例进行信息传递。"""
         params = self.remote_pair_params
         if not params.get("enabled", False):
             return
 
-        max_pairs = max(0, int(params.get("pairs_per_step", 3)))
-        fallback_probability = min(1.0, max(0.0, float(params.get("probability", 0.2))))
-        relation_probabilities = params.get("relation_probabilities", {})
-        if not isinstance(relation_probabilities, dict):
-            relation_probabilities = {}
+        distance_threshold = max(0.0, float(params.get("distance_threshold", 60)))
+        ratio = min(1.0, max(0.0, float(params.get("ratio", 0.1))))
+        probability = min(1.0, max(0.0, float(params.get("probability", 0.8))))
         source_states = set(params.get("source_states", ["ALERTED", "CONFIRMED", "GUIDED"]))
-        if max_pairs <= 0:
+        if distance_threshold <= 0 or ratio <= 0:
             return
 
-        alive_ids = {
-            int(person.id) for person in all_persons
+        alive = [
+            person for person in all_persons
             if not getattr(person, "evacuated", False) and not getattr(person, "is_dead", False)
-        }
-        edges = [
-            (int(left), int(right))
-            for left, right in self.graph.graph.edges()
-            if int(left) in alive_ids and int(right) in alive_ids
         ]
-        if not edges:
+        if len(alive) < 2:
             return
 
-        np.random.shuffle(edges)
-        spread = 0
-        for left, right in edges:
-            if spread >= max_pairs:
-                break
-            for source_id, target_id in ((left, right), (right, left)):
+        # 所有距离超过阈值的无序 pair
+        far_pairs = []
+        for i in range(len(alive)):
+            for j in range(i + 1, len(alive)):
+                if self._distance(alive[i], alive[j]) > distance_threshold:
+                    far_pairs.append((alive[i], alive[j]))
+        if not far_pairs:
+            return
+
+        # 每个远距离 pair 以 ratio 概率被选中（随机选取该比例）
+        chosen_pairs = [pair for pair in far_pairs if np.random.random() < ratio]
+
+        for a, b in chosen_pairs:
+            # 双向：知情一方把信息告诉另一方
+            for source, target in ((a, b), (b, a)):
+                source_id = int(source.id)
+                target_id = int(target.id)
                 source_state = self.info_engine.get_state_value(source_id)
                 target_state = self.info_engine.get_state_value(target_id)
                 if source_state not in source_states:
                     continue
                 if self.info_engine.state_priority_str(target_state) >= self.info_engine.state_priority_str(source_state):
                     break
-                relation = self.graph.get_relation(source_id, target_id)
-                relation_type = (
-                    str(relation.get("relation_type", "stranger")).lower()
-                    if isinstance(relation, dict)
-                    else "stranger"
-                )
-                pair_probability = min(
-                    1.0,
-                    max(
-                        0.0,
-                        float(relation_probabilities.get(relation_type, fallback_probability)),
-                    ),
-                )
-                if np.random.random() < pair_probability:
+                if np.random.random() < probability:
                     transferred = self.info_engine.transition_state(
                         target_id,
                         self.info_engine.str_to_enum(source_state),
@@ -481,9 +463,8 @@ class InformationDiffusionEngine:
                     if transferred:
                         self.step_stats["remote_pair_spread"] += 1
                         self._log_propagation(
-                            source_id, target_id, current_step, "remote", "远程关系传播"
+                            source_id, target_id, current_step, "remote", "远程距离传播"
                         )
-                        spread += 1
                 break
 
     # ============================================================

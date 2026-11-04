@@ -144,7 +144,7 @@ class EvacEngine:
             weight_conc=1.0,
             weight_delta=0.6,
             weight_vis=1.2,
-            death_dose_threshold=12.0
+            death_dose_threshold=50.0
         )
 
         # 7. 烟雾剂量记录
@@ -473,6 +473,8 @@ class EvacEngine:
             # 显式告诉 calc_next_position，避免它再按 info_state 把人拦下。
             calc_behavior = dict(single_behavior) if isinstance(single_behavior, dict) else {}
             calc_behavior["is_informed"] = True
+            # 所有人最终目标都是朝出口走：忽略结伴等待，避免原地冻结
+            calc_behavior["is_waiting"] = False
 
             nx, ny = calc_next_position(
                 person,
@@ -623,14 +625,13 @@ class EvacEngine:
 
     # ------------------------------------------------------------------ 辅助
     def _is_evacuating(self, person, single_behavior) -> bool:
-        """本步是否应参与疏散移动：已获知险情、且不在群体等待。
+        """本步是否应参与疏散移动：已获知险情，或配置为所有人直接疏散。
 
         未获知者的行为由 B 的 unknown_behavior 统一决定：
         - walk / freeze：不参与疏散路径，交由 B 的日常行走逻辑；
         - evacuate：按疏散处理（等价于已获知）。
+        结伴等待不再把人原地冻结：所有人最终目标都是朝出口走。
         """
-        if isinstance(single_behavior, dict) and single_behavior.get("is_waiting", False):
-            return False
         info_state = None
         if isinstance(single_behavior, dict):
             info_state = single_behavior.get("info_state")
@@ -801,7 +802,7 @@ class EvacEngine:
                 return (step - 0.5) * cell_size, 0.0
             cell = cell_index.get((nx, ny))
             kind = str(getattr(cell.cell_type, "value", cell.cell_type)).lower() if cell else "wall"
-            if kind in {"wall", "obstacle"}:
+            if kind in {"wall", "obstacle", "smoke_source"}:
                 return (step - 0.5) * cell_size, 0.0
             if (nx, ny) in occupied_positions:
                 return step * cell_size, float(position_speed.get((nx, ny), 0.0))

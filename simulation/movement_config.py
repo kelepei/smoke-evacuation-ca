@@ -100,8 +100,8 @@ class SpeedConfig:
     use_deceleration_distance: bool = True
     # 向前探测的最远距离（m），需覆盖 L(v) 的最大值 10 m
     lookahead_m: float = 10.0
-    # 初始速度比例：行人进入仿真时已在行走，默认取 0.8 倍最大速度
-    initial_velocity_ratio: float = 0.8
+    # 初始速度比例：行人进入仿真时已在行走，默认取 0.3 倍最大速度
+    initial_velocity_ratio: float = 0.3
     # 初始"距离亏欠"：相当于行人已经走到半步，避免第一步全部原地不动
     initial_credit: float = 0.5
     # 单步最多前进的元胞数（元胞 0.5 m、步长 0.5 s 时，2 格对应 2 m/s）
@@ -201,8 +201,8 @@ class ConflictConfig:
 @dataclass
 class MovementConfig:
     enabled: bool = True
-    # 未获知险情人员的行为：walk=正常速度随机行走 / freeze=原地 / evacuate=直接疏散
-    unknown_behavior: str = "walk"
+    # 未获知险情人员的行为：evacuate=直接疏散（默认） / walk=正常速度随机行走 / freeze=原地
+    unknown_behavior: str = "evacuate"
     unknown_speed_factor: float = 0.35
     # 烟源危险感知的影响半径（米）：到烟源距离按 exp(-d^2/(2σ^2)) 衰减
     source_sigma_m: float = 1.5

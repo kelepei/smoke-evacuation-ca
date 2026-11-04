@@ -14,7 +14,7 @@ class SmokeRiskPerception:
         weight_delta: float = 0.6,    # b 烟雾浓度变化量权重
         weight_vis: float = 1.2,      # c 能见度损失权重
         vis_base_coeff: float = 0.08,  # 能见度换算系数，浓度越高能见度越低
-        death_dose_threshold: float = 12.0  # ✅新增：烟雾致死剂量阈值(无量纲)
+        death_dose_threshold: float = 50.0  # ✅新增：烟雾致死剂量阈值(无量纲)
     ):
         self.a = weight_conc
         self.b = weight_delta
