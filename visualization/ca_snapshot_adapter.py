@@ -19,6 +19,7 @@ from experiments.crowd_metrics import with_runtime_dt
 
 
 SCHEMA_VERSION = "0.1-draft"
+_MISSING = object()
 
 
 class SnapshotAdapterError(ValueError):
@@ -46,6 +47,13 @@ def _json_compatible(value: Any) -> Any:
     JSON, so conversion belongs at this read-only D boundary.
     """
 
+    value_type = type(value)
+    if value is None or value_type in (str, bool, int):
+        return value
+    if value_type is float:
+        if not math.isfinite(value):
+            raise SnapshotAdapterError("snapshot numeric values must be finite")
+        return value
     value = _enum_storage_value(value)
     if value is None or isinstance(value, (str, bool)):
         return value
@@ -85,8 +93,9 @@ def _optional_attr(obj: Any, *names: str) -> Any:
     for name in names:
         if isinstance(obj, Mapping) and name in obj:
             return obj[name]
-        if hasattr(obj, name):
-            return getattr(obj, name)
+        value = getattr(obj, name, _MISSING)
+        if value is not _MISSING:
+            return value
     return None
 
 
@@ -115,6 +124,8 @@ def _matrix_to_lists(
     width: int,
     height: int,
     field_name: str,
+    minimum: float | None = None,
+    maximum: float | None = None,
 ) -> list[list[float]]:
     if matrix is None:
         return []
@@ -133,6 +144,14 @@ def _matrix_to_lists(
         if not np.isfinite(matrix).all():
             raise SnapshotAdapterError(
                 f"{field_name} must contain only finite numeric values"
+            )
+        if minimum is not None and np.any(matrix < minimum):
+            raise SnapshotAdapterError(
+                f"{field_name} values must be at least {minimum:g}"
+            )
+        if maximum is not None and np.any(matrix > maximum):
+            raise SnapshotAdapterError(
+                f"{field_name} values must be at most {maximum:g}"
             )
         if matrix.dtype.kind == "f":
             return matrix.tolist()
@@ -158,6 +177,14 @@ def _matrix_to_lists(
             if not math.isfinite(normalized_value):
                 raise SnapshotAdapterError(
                     f"{field_name} must contain only finite numeric values"
+                )
+            if minimum is not None and normalized_value < minimum:
+                raise SnapshotAdapterError(
+                    f"{field_name} values must be at least {minimum:g}"
+                )
+            if maximum is not None and normalized_value > maximum:
+                raise SnapshotAdapterError(
+                    f"{field_name} values must be at most {maximum:g}"
                 )
             normalized_row.append(normalized_value)
         normalized.append(normalized_row)
@@ -388,6 +415,7 @@ class CaSnapshotAdapter:
             width=width,
             height=height,
             field_name="smoke_field",
+            minimum=0.0,
         )
         risk_field = _matrix_to_lists(
             _optional_attr(simulation, "risk_field", "risk_matrix"),
@@ -400,17 +428,9 @@ class CaSnapshotAdapter:
             width=width,
             height=height,
             field_name="congestion_field",
+            minimum=0.0,
+            maximum=1.0,
         )
-        if any(value < 0.0 for row in smoke_field for value in row):
-            raise SnapshotAdapterError("smoke_field values must be non-negative")
-        if any(
-            value < 0.0 or value > 1.0
-            for row in congestion_field
-            for value in row
-        ):
-            raise SnapshotAdapterError(
-                "congestion_field values must be within [0, 1]"
-            )
         smoke_sources = _smoke_sources_to_dicts(
             _optional_attr(simulation, "smoke_sources"),
             width=width,

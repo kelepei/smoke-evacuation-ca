@@ -404,6 +404,12 @@ class CWebRuntimeBridge:
         smoke = getattr(self.engine, "smoke_matrix", None)
         if smoke is None:
             return 0.0
+        vector_max = getattr(smoke, "max", None)
+        if callable(vector_max):
+            try:
+                return float(vector_max())
+            except (TypeError, ValueError):
+                return 0.0
         peak = 0.0
         try:
             for row in smoke:

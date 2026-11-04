@@ -301,6 +301,19 @@ class FinalPlatformMapEditorPageTests(unittest.TestCase):
         self.assertNotIn("target_exit", display_helper)
         self.assertNotIn("exit_usage", display_helper)
 
+    def test_animation_reuses_static_map_and_smoke_layers(self) -> None:
+        for marker in (
+            "const staticLayerCache = new WeakMap()",
+            "const smokeLayerCache = new WeakMap()",
+            "function drawStaticMapLayer(target, grid, w, h, cell, ox, oy)",
+            "function drawCachedSmokeField(field, target, grid, w, h, cell, ox, oy)",
+            "cached.grid !== grid || cached.key !== key",
+            "cached.field !== field || cached.key !== key",
+            "drawStaticMapLayer(target, grid, w, h, cell, ox, oy)",
+            "drawCachedSmokeField(snapshot.fields && snapshot.fields.smoke_field, target, grid, w, h, cell, ox, oy)",
+        ):
+            self.assertIn(marker, self.page)
+
     def test_animation_loop_defers_expensive_analysis_until_pause_or_completion(self) -> None:
         step_body = self.page[self.page.index("async function stepOnce()") : self.page.index("function scheduleNextStep()")]
         self.assertNotIn("refreshLogLayers()", step_body)

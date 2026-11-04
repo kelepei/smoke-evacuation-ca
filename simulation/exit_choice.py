@@ -154,14 +154,46 @@ class ExitChooser:
         exit_preferences = exit_preferences or {}
         counts = self._region_counts(persons)
         smoke_at_exit = self._region_smoke(smoke_matrix)
+        distance_columns: dict[str, np.ndarray] | None = None
+        if (
+            str(self.cfg.distance_mode).lower() != "euclidean"
+            and self.floor_field is not None
+            and persons
+        ):
+            x_indices = np.asarray([int(person.x) for person in persons])
+            y_indices = np.asarray([int(person.y) for person in persons])
+            distance_columns = {}
+            for exit_id, _ex, _ey, _weight in self.exits:
+                field = self.floor_field.exit_fields.get(str(exit_id))
+                if field is None:
+                    field = self.floor_field.dist_field
+                if field is not None:
+                    distance_columns[str(exit_id)] = field[y_indices, x_indices]
 
         result: dict[int, str] = {}
-        for person in persons:
+        for person_index, person in enumerate(persons):
             pid = int(person.id)
             current = self._target.get(pid)
             forced = forced_targets.get(pid)
             preference_bonus = exit_preferences.get(pid, {})
-            probs = self._probabilities(person, counts, smoke_at_exit, preference_bonus)
+            if distance_columns is not None:
+                distances = {
+                    eid: float(distance_columns[eid][person_index])
+                    for eid, _ex, _ey, _w in self.exits
+                    if eid in distance_columns
+                }
+            else:
+                distances = {
+                    eid: self._distance(eid, int(person.x), int(person.y))
+                    for eid, _ex, _ey, _w in self.exits
+                }
+            probs = self._probabilities(
+                person,
+                counts,
+                smoke_at_exit,
+                preference_bonus,
+                distances=distances,
+            )
             if not probs:
                 continue
             if forced and str(forced) in probs:
@@ -174,12 +206,8 @@ class ExitChooser:
             best_exit = max(probs, key=probs.get)
             best_prob = probs[best_exit]
             valid_distances = {
-                eid: self._distance(eid, int(person.x), int(person.y))
-                for eid, _ex, _ey, _w in self.exits
-            }
-            valid_distances = {
                 eid: distance
-                for eid, distance in valid_distances.items()
+                for eid, distance in distances.items()
                 if math.isfinite(distance) and distance < 9998
             }
             crowding_alternative = self._crowding_alternative(
@@ -272,13 +300,22 @@ class ExitChooser:
         return min(alternatives)[2] if alternatives else None
 
     # ------------------------------------------------------------------ 概率
-    def _probabilities(self, person, counts, smoke_at_exit, exit_preferences: Mapping[str, float] | None = None) -> dict[str, float]:
+    def _probabilities(
+        self,
+        person,
+        counts,
+        smoke_at_exit,
+        exit_preferences: Mapping[str, float] | None = None,
+        *,
+        distances: Mapping[str, float] | None = None,
+    ) -> dict[str, float]:
         cfg = self.cfg
         px, py = int(person.x), int(person.y)
-        distances = {
-            eid: self._distance(eid, px, py)
-            for eid, _ex, _ey, _w in self.exits
-        }
+        if distances is None:
+            distances = {
+                eid: self._distance(eid, px, py)
+                for eid, _ex, _ey, _w in self.exits
+            }
         valid = {eid: d for eid, d in distances.items() if math.isfinite(d) and d < 9998}
         if not valid:
             return {}
@@ -363,15 +400,22 @@ class ExitChooser:
     def _region_counts(self, persons: list[Any]) -> dict[str, float]:
         radius = self._radius_cells
         counts = {eid: 0.0 for eid, _x, _y, _w in self.exits}
-        for person in persons:
-            # Evacuated/dead people no longer occupy an exit approach and must
-            # not keep generating congestion pressure for active evacuees.
-            if getattr(person, "evacuated", False) or getattr(person, "is_dead", False):
-                continue
-            px, py = int(person.x), int(person.y)
-            for eid, ex, ey, _w in self.exits:
-                if math.hypot(px - ex, py - ey) <= radius:
-                    counts[eid] += 1.0
+        active = [
+            person
+            for person in persons
+            if not getattr(person, "evacuated", False)
+            and not getattr(person, "is_dead", False)
+        ]
+        if not active:
+            return counts
+        x_positions = np.asarray([int(person.x) for person in active], dtype=float)
+        y_positions = np.asarray([int(person.y) for person in active], dtype=float)
+        for eid, ex, ey, _weight in self.exits:
+            counts[eid] = float(
+                np.count_nonzero(
+                    np.hypot(x_positions - ex, y_positions - ey) <= radius
+                )
+            )
         return counts
 
     def _region_smoke(self, smoke_matrix) -> dict[str, float]:

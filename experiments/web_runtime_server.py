@@ -843,7 +843,13 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         }
         if yaml_path is not None:
             input_files["yaml"] = yaml_path
-        self._write_run_metadata(runner, snapshot, input_files, save_frame=True)
+        self._write_run_metadata(
+            runner,
+            snapshot,
+            input_files,
+            save_frame=True,
+            include_derived=False,
+        )
         self.server.session = RuntimeSession(
             temporary_directory=temporary_directory,
             runner=runner,
@@ -886,6 +892,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
                 snapshot,
                 session.input_files,
                 save_frame=False,
+                include_derived=False,
             )
             artifact_write_ms = (perf_counter() - artifacts_started) * 1000.0
         # 增量返回：grid / relations 是静态数据，初始化时已经下发过，
@@ -938,7 +945,11 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         session = self._require_session()
         snapshot = session.runner.reset()
         self._write_run_metadata(
-            session.runner, snapshot, session.input_files, save_frame=True
+            session.runner,
+            snapshot,
+            session.input_files,
+            save_frame=True,
+            include_derived=False,
         )
         return {
             "ok": True,
@@ -958,6 +969,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
         input_files: Mapping[str, Path],
         *,
         save_frame: bool = False,
+        include_derived: bool = True,
     ) -> None:
         run_id = str(snapshot.get("run_id") or runner.current_run_id)
         output_dir = runner.output_root / run_id
@@ -966,6 +978,7 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             output_dir,
             input_files=input_files,
             save_frame=save_frame,
+            include_derived=include_derived,
         )
 
     def _export_session(self) -> None:
@@ -987,9 +1000,6 @@ class RuntimeRequestHandler(SimpleHTTPRequestHandler):
             cache_key = self._academic_cache_key(snapshot)
             with self.server.academic_cache_lock:
                 cached_academic = self.server.academic_cache.get(cache_key)
-        self._write_run_metadata(
-            runner, snapshot, input_files, save_frame=False
-        )
         try:
             package = build_result_package(
                 output_dir=output_dir,
