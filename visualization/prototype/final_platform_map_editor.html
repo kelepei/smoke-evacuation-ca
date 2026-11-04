@@ -448,6 +448,24 @@
     return String(number);
   }
 
+  function exitEntityOrdinal(exitId){
+    const canonical = /^exit_entity_(\d+)$/i.exec(String(exitId));
+    const ordinal = canonical ? Number(canonical[1]) : NaN;
+    return Number.isInteger(ordinal) && ordinal > 0 ? ordinal : null;
+  }
+
+  function sortedActualExitEntries(distribution){
+    if(!distribution || typeof distribution !== "object" || Array.isArray(distribution)) return [];
+    return Object.entries(distribution).sort(([leftId], [rightId]) => {
+      const leftOrdinal = exitEntityOrdinal(leftId);
+      const rightOrdinal = exitEntityOrdinal(rightId);
+      if(leftOrdinal !== null && rightOrdinal !== null) return leftOrdinal - rightOrdinal;
+      if(leftOrdinal !== null) return -1;
+      if(rightOrdinal !== null) return 1;
+      return String(leftId).localeCompare(String(rightId), undefined, {numeric:true});
+    });
+  }
+
   function rebuildExitDisplayMap(sourceSnapshot = snapshot){
     const entities = sourceSnapshot && Array.isArray(sourceSnapshot.exit_entities) ? sourceSnapshot.exit_entities : [];
     if(entities === exitDisplayMapSource) return;
@@ -1478,8 +1496,7 @@
   }
 
   function renderActualExitDistribution(distribution, representation = "legacy_cell"){
-    const values = distribution && typeof distribution === "object" && !Array.isArray(distribution)
-      ? Object.entries(distribution) : [];
+    const values = sortedActualExitEntries(distribution);
     const total = values.reduce((sum, [, count]) => sum + Number(count || 0), 0);
     const container = $("exitBars");
     container.replaceChildren();
